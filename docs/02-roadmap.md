@@ -9,6 +9,8 @@ Work top to bottom. Each phase ends with an APK the owner tests. Tick boxes as y
   - 2026-11-25: cloned at upstream `3702598c`, `upstream` remote set, DeckOS branch `main` created. **Pending:** owner's repo URL → `origin`.
 - [ ] Build **unmodified** Pegasus on PC; run it; confirm a theme loads. Record exact toolchain in `DECISIONS.md`.
 - [ ] Get the upstream Android workflow green in the owner's GitHub repo (it downloads the prebuilt Qt 5.15.10 Android toolchain). Produce an installable debug APK artifact. Add a stable debug keystore via repo secrets so new builds install over old ones.
+  - [ ] Then switch to the DeckOS release flow (`13-release-flow.md`): `tools/check.ps1` gate, `tools/ship.ps1`, tag-triggered `android.yml` → GitHub pre-release with APK, Linux `ci.yml` for ordinary pushes; drop upstream's deploy/coverage jobs.
+  - [x] GitHub presentation: DeckOS README, docs index, Test report / Idea issue forms, upstream funding links removed (2026-11-25).
 - [ ] Rebrand identity: app name/label "DeckOS", applicationId `com.deckos.frontend`, new launcher icon + splash placeholders, window title, user-visible "Pegasus" strings → DeckOS. Keep copyright headers, LICENSE, and add About → Open-source licenses (Pegasus credit, Qt, SDL, every lib we add). Data dir names → `deckos`.
 - [x] Move `docs/` (incl. `DECISIONS.md`), `catalog/` and `CHANGELOG.md` into the repo; add `reference/` and `third_party_refs/` to `.gitignore`.
 - [ ] Add `src/backend/deckos/` module skeleton + `deckos` QML context object (empty services) + `deckos.db` with migrations.

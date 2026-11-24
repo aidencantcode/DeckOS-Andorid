@@ -13,3 +13,10 @@ Format: `## YYYY-MM-DD — Title` · **Decision** · **Why** · **Alternatives c
 - **Why:** A clean `master` makes upstream syncs a plain fast-forward followed by `git merge master` into `main`, and keeps the diff against upstream easy to read. Versioning the docs keeps the roadmap/decisions in step with the code.
 - **Alternatives:** Commit straight on `master` (muddles upstream syncs); keep docs outside the repo (unversioned, drift).
 - **Revisit if:** the owner wants a different default branch name on GitHub.
+
+## 2026-11-25 — Release flow, version numbers, GitHub presentation
+- **Decision:** Windows PC build is the test gate; only builds that pass it are shipped. Shipping = `tools/ship.ps1` tags `v0.<phase>.<build>` and pushes; the tag triggers the Android workflow, which publishes a GitHub pre-release with the signed APK. `versionCode = major*1000000 + phase*1000 + build`. Full spec: `docs/13-release-flow.md`.
+- **Why:** Owner wants to test on device only builds that already work on PC, and to grab APKs straight from the Releases page on the handheld (artifacts need a GitHub login and come zipped). A version-derived `versionCode` is reproducible and identical locally and in CI, unlike the CI run number (which differs per workflow and resets if workflows are renamed) or upstream's commit count (meaningless across forks).
+- **Alternatives:** Build an APK on every push (wastes CI time, floods the owner with untested builds); CI run number as `versionCode` (the original `03-dev-loop.md` plan).
+- **Also:** Upstream `.github/FUNDING.yml` and Pegasus issue templates replaced by DeckOS issue forms (upstream support is credited in the README instead). Upstream tags are not pushed to the DeckOS repo so its tag list shows only DeckOS versions. These files may conflict on upstream syncs — keep ours.
+- **Revisit if:** the owner wants nightly builds of every push, or a Play Store/F-Droid channel.

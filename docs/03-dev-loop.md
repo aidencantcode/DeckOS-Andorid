@@ -29,6 +29,8 @@ Pick what matches the machine Claude Code runs on; record the exact versions in 
 `tools/make_fixtures.py` generates a fake ROM tree: right extensions and folder names for ~25 systems, multi-disc sets with `.m3u`, `.cue/.bin`, a PS3 folder game, BIOS files to be excluded, junk files, odd unicode names, 1000-game stress collection. Tiny dummy files only. Optionally a few homebrew/public-domain ROMs for real hash tests (e.g. freely licensed homebrew), with sources noted.
 
 ## E. Android builds
+> The agreed end-to-end flow (Windows gate → `tools/ship.ps1` → tag → GitHub pre-release with APK), version numbers and signing are specified in [13-release-flow.md](13-release-flow.md); it supersedes the versioning bullets below where they differ.
+
 - CI: adapt upstream `.github/workflows/android.yml` (Qt 5.15.10 prebuilt + NDK r21e + androiddeployqt). Build `arm64-v8a` only by default (both targets are 64-bit); keep 32-bit job optional.
 - Sign debug builds with a stable keystore from repo secrets so builds update in place. Artifact name: `DeckOS_<version>_<shortsha>_arm64.apk`.
 - Version: `versionName` = `0.<phase>.<build>`; `versionCode` monotonic from CI run number.

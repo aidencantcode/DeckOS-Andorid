@@ -1,88 +1,70 @@
-![screenshot](etc/promo/screenshot_alpha10.jpg)
+# DeckOS
 
+**A Steam Deck–style game frontend for Android gaming handhelds.**
+One controller-first home for your retro ROMs, standalone emulators, PC-on-Android launchers and your Steam library — with Steam-style game pages, achievements, artwork and playtime for everything.
 
-# Pegasus Frontend
+[![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE.md)
+![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)
+![Platform: Android](https://img.shields.io/badge/platform-Android%20handhelds-3ddc84.svg)
 
-Pegasus is a graphical frontend for browsing your game library and launching all kinds of emulators from the same place. It's focusing on customizability, cross platform support (including embedded) and high performance.
+> **Status — pre-alpha (Phase 0).** The foundation is being laid: build pipeline, rebrand and developer tooling. The Steam-style interface arrives in Phase 1. Test builds are published on the [Releases](../../releases) page as they pass testing.
 
-[![CircleCI status](https://circleci.com/gh/mmatyas/pegasus-frontend.svg?style=shield)](https://circleci.com/gh/mmatyas/pegasus-frontend)
-[![AppVeyor status](https://ci.appveyor.com/api/projects/status/github/mmatyas/pegasus-frontend?svg=true&branch=master)](https://ci.appveyor.com/project/mmatyas/pegasus-frontend)
-[![GPLv3 license](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE.md)
+---
 
-- [**Main website**](http://pegasus-frontend.org)
-- [Documentation](https://pegasus-frontend.org/docs/)
-- [Latest releases](https://github.com/mmatyas/pegasus-frontend/releases/)
-- [Development thread](https://retropie.org.uk/forum/topic/9598/announcing-pegasus-frontend)
-- [Discord](https://discord.gg/KTtzP6y)
+## What it will be
 
+| | |
+|---|---|
+| 🎮 **Feels like Game Mode** | Home with a recent-games shelf over hero art, a tabbed Library, big game pages with Play button, stats and tabs, a Quick Access menu, button hints, toasts. Fully usable with a gamepad — no touch needed. |
+| 🏆 **RetroAchievements** | Per-game Achievements tab, Steam-style, matched by real ROM hashes (rcheevos), not by guessing titles. |
+| 🖼️ **One-click artwork** | SteamGridDB first, plus ScreenScraper, IGDB, libretro-thumbnails and more. Pick per game, or scrape the whole library with separate fast (art) and heavy (video) queues. |
+| 📂 **Easy setup** | First-run wizard: point it at your ROM folder, it detects systems and installed emulators and writes the metadata for you. |
+| 🔧 **Open for tinkerers** | Every launch command is visible and editable, with "Launch with…", custom emulators, Pegasus metadata files and custom themes still supported. |
+| 🟦 **Steam profile** | Link a public Steam profile: library, playtime and achievements alongside your other games. |
+| ⏱️ **Playtime & overlays** | Playtime tracking for everything you launch, a performance overlay and an in-game quick menu (where Android allows it). |
 
-## Features
+The full plan lives in [`docs/`](docs/README.md) — start with the [vision](docs/00-vision.md) and the [roadmap](docs/02-roadmap.md).
 
-**Open source and cross platform:** runs on Windows, Linux, Mac, Android, all Raspberries, Odroids and possibly on other devices too. Hardware accelerated and works with or without X11.
+## Devices
 
-**Full control over the UI:** themes can completely change everything that is on the screen. Add or remove UI elements, menu screens, animations, whatever. Want to make it look like Kodi? Steam? Any other launcher? No problem. You can even [run your custom shader code](etc/promo/shader_demo.jpg).
+Built and tested for the **AYN Odin 3 Max** (1080p, 16:9) and the **Retroid Pocket Classic** (1240×1080, near-square). Both layouts are first-class. Other Android devices with a gamepad should work but are not tested yet.
 
-**ES2 backward compatibility:** Pegasus can use EmulationStation's gamelist files, no need to invent a new set of tools.
+## Installing a test build
 
-**Features you'd expect:** Gamepad support and config. Multiple aspect ratio support. Portable mode support. Live theme reload. A clock in the corner.
+1. On the handheld, open this repo's [**Releases**](../../releases) page and download the newest `DeckOS_<version>_<commit>_arm64.apk`.
+2. Open the file and allow installing from your browser/file manager if Android asks.
+3. Later builds install **over** the previous one — settings and data are kept.
 
+DeckOS has its own app ID (`com.deckos.frontend`), so it installs next to Pegasus without touching it.
 
-## Installation and setup
+Found a bug? Open a [**Test report**](../../issues/new/choose) — it asks for exactly what's needed to fix it.
 
-You can find downloads and platform-specific notes on the [project's website](http://pegasus-frontend.org), under *Downloads*. Documentation and configuration guides can be found [HERE](http://pegasus-frontend.org/docs/), in particular you might want to take a look on the [Getting started](http://pegasus-frontend.org/docs/user-guide/getting-started/) page.
+## Versions
 
+Builds are numbered `0.<phase>.<build>` — e.g. `0.1.4` is the 4th test build of Phase 1. See [docs/13-release-flow.md](docs/13-release-flow.md) for how builds are tested on PC, shipped and signed, and [CHANGELOG.md](CHANGELOG.md) for what changed in each one.
 
 ## Building from source
 
-**Build dependencies**
-
-- C++11 compatible compiler
-- Qt 5.15.0 or later, with the following modules:
-    - QML and QtQuick2
-    - Multimedia
-    - SVG
-    - SQL (SQLite v3)
-- Either SDL (2.0.4 or later) or Qt Gamepad
-
-For more information, please see the detailed [build guide](http://pegasus-frontend.org/docs/dev/build).
-
-**Downloading the source**
-
-The project uses Git submodules. If you've cloned the repository recursively, they are automatically cloned as well. In case you forgot to do that, you can do it manually, like this:
+DeckOS is C++/Qt 5.15/QML. Android APKs are built by GitHub Actions; the Windows build exists for fast development and testing.
 
 ```sh
-# call this after every repo update
-git submodule update --init
+git clone --recursive <this repo>
+cd DeckOS && mkdir build && cd build
+qmake .. USE_SDL_GAMEPAD=1 USE_SDL_POWER=1   # plus SDL_LIBS / SDL_INCLUDES for your SDL2
+make            # mingw32-make on Windows
+make check      # unit tests
 ```
 
-**Building**
+Exact toolchain versions and every non-obvious choice are recorded in [docs/DECISIONS.md](docs/DECISIONS.md); the PC/Android dev loop is in [docs/03-dev-loop.md](docs/03-dev-loop.md).
 
-You can use any Qt-compatible IDEs, eg. Qt Creator to build the project, or you can manually invoke:
+## Credits
 
-```sh
-mkdir build && cd build
-qmake ..  # qmake [params] [project path], see below
-make
-make check    # optional, to run tests
-make install  # optional
-```
+DeckOS is a heavily modified fork of **[Pegasus Frontend](https://github.com/mmatyas/pegasus-frontend)** by Mátyás Mustoha and contributors — a fantastic, customizable frontend. Its core (game library, metadata format, theme API, launching) is the foundation everything here is built on. If you like DeckOS, consider [supporting Pegasus](https://pegasus-frontend.org) too.
 
-**For more details**, including possible build parameters, see the [build documentation](http://pegasus-frontend.org/docs/dev/build).
+Third-party libraries are listed in the app under *Settings → About → Open-source licenses*.
 
-
+DeckOS is an independent project. It is not affiliated with or endorsed by Valve Corporation; "Steam" and "Steam Deck" are trademarks of Valve, used here only to describe compatibility and inspiration. All other trademarks belong to their respective owners. DeckOS never downloads games or BIOS files.
 
 ## License
 
-Pegasus Frontend is available under GPLv3 license. Some included assets, such as product logos and symbols may not be available for commercial usage and/or may require additional permissions from their respective owners for certain legal uses. Furthermore, trademark usage may be limited as per §7 of the GPLv3 license. You can find the details in the [LICENSE](LICENSE.md) file.
-
-All trademarks, service marks, trade names, trade dress, product names and logos are property of their respective owners. All company, product and service names used in this product are for identification purposes only. Use of these names, logos, and brands does not imply endorsement.
-
-
-## Donate
-
-Pegasus is a free and open source project, and will remain as one. If you would like to provide financial support, you can use the following links. This is completely optional, but every contribution is much appreciated!
-
-[![PayPal](https://www.paypalobjects.com/webstatic/en_US/i/buttons/PP_logo_h_100x26.png)](https://paypal.me/MatyasMustoha)
-[![Liberapay](https://liberapay.com/assets/widgets/donate.svg)](https://liberapay.com/mmatyas/donate)
-[![Patreon](etc/promo/donate-patreon.png)](https://www.patreon.com/user?u=14424256)
-[![Buy Me a Coffee](etc/promo/donate-coffee.png)](https://www.buymeacoffee.com/mmatyas)
+DeckOS is free software under the **GNU General Public License v3** — see [LICENSE.md](LICENSE.md). As in upstream Pegasus, some included assets such as product logos and symbols may have additional usage restrictions, and trademark usage may be limited as per §7 of the GPLv3.

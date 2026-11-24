@@ -1,0 +1,21 @@
+name: 💡 Idea
+description: A feature, improvement or "it would be nice if…" for DeckOS.
+labels: ["idea"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What should DeckOS do? Where in the app would it live?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters
+      description: What problem does it solve, or what moment does it make better?
+  - type: textarea
+    id: refs
+    attributes:
+      label: References
+      description: Screenshots or links showing how Steam Deck, another frontend or app does it.

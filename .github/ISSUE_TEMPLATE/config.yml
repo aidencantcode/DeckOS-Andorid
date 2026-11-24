@@ -1,7 +1,5 @@
+blank_issues_enabled: true
 contact_links:
-  - name: 🎧 Discord Server
-    url: https://discord.gg/KTtzP6y
-    about: Would you like to chat with us? Feel free to join our Discord community!
-  - name: 🕹️ RetroPie forum thread
-    url: https://retropie.org.uk/forum/topic/9598/announcing-pegasus-frontend
-    about: Tinkering with Raspberries and other board computers? Take a look at this thread!
+  - name: Pegasus Frontend (upstream project)
+    url: https://github.com/mmatyas/pegasus-frontend
+    about: DeckOS is built on Pegasus. Bugs that also happen in stock Pegasus can be reported there.

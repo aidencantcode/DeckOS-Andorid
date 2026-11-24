@@ -1,0 +1,81 @@
+name: 🐞 Test report
+description: Something broken, wrong or weird in a DeckOS build.
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing! One problem per report makes fixes faster.
+        The build number is in **Settings → About** (or in the APK file name).
+  - type: input
+    id: build
+    attributes:
+      label: DeckOS build
+      description: Version and commit, e.g. `0.1.4 (abc1234)`.
+      placeholder: 0.1.4 (abc1234)
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: Device
+      options:
+        - AYN Odin 3 Max
+        - Retroid Pocket Classic
+        - Other (say which below)
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: Android version
+      placeholder: Android 15
+  - type: textarea
+    id: steps
+    attributes:
+      label: What I tried
+      description: Step by step, starting from where you were in the app.
+      placeholder: |
+        1. Library → All → opened "Super Mario World"
+        2. Pressed A on Play
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What I expected
+  - type: dropdown
+    id: repro
+    attributes:
+      label: How often
+      options:
+        - Always
+        - Sometimes
+        - Once
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Blocker (can't continue / crash)
+        - Annoying (works, but badly)
+        - Cosmetic (looks wrong)
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshots, video, logs
+      description: Drag files in. Logs — Settings → System → Export logs (once available), then attach the zip.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / ideas
