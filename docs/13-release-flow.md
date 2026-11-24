@@ -12,7 +12,7 @@ How a change gets from the PC onto the owner's handhelds. Agreed with the owner 
  (issue form / PROMPTS.md)        (installs over the previous build)      publishes a pre-release
 ```
 
-1. **Develop on Windows.** The PC build is the proper testing ground: everything is built, run and screenshotted here first.
+1. **Develop on Windows.** The PC build is the proper testing ground: everything is built, run and screenshotted here first. Every build that passes the gate is copied to `windows-build\` (next to `deckos\`, outside the repo) — double-click the exe there to try it yourself; see its `README.txt`.
 2. **The gate — `tools/check.ps1`.** Build with warnings visible → unit tests (`make check`) → `qmllint` → offscreen smoke test (fails on any QML warning) → screenshot tour at 1920×1080 and 1240×1080, which Claude Code opens and reviews. Until the smoke test and tour exist (Phase 0 "dev tooling" item), the gate is build + unit tests + a manual run with screenshots.
 3. **Ordinary pushes** to `origin/main` are fine at any time (backup, progress). They run a cheap Linux build + tests on GitHub, **not** an Android build.
 4. **Shipping a test build — `tools/ship.ps1`.** Re-runs the gate, picks the next version, turns the `## Unreleased` part of `CHANGELOG.md` into `## 0.P.B — <date>`, commits `Release DeckOS 0.P.B`, tags `v0.P.B`, pushes `main` + the tag.

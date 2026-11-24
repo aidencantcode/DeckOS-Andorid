@@ -29,13 +29,19 @@ Format: `## YYYY-MM-DD — Title` · **Decision** · **Why** · **Alternatives c
 - **Windows quirks found (workarounds are in the scripts):**
   - `sh.exe` on PATH (Git-bash) breaks qmake's MinGW makefiles → `env.ps1` builds a minimal PATH with `Git\cmd` only.
   - QTest output doesn't reach a redirected stdout here, so `make check` logs look empty → `test.ps1` runs each suite with `-o <file>,txt` and parses the totals.
-  - `windeployqt --release` misreads Qt 5.15.2's MinGW plugins as debug builds and refuses to deploy → no deploy step for dev runs; the exe runs from `build/run/` with the toolchain on PATH (aqt hard-wires the Qt prefix, so plugins/QML are found).
+  - `windeployqt` (default or `--release`) fails with "Unable to find the platform plugin": aqt's MinGW plugin DLLs carry a PE debug directory, so windeployqt classes them as *debug* and skips them all. **Fix:** `windeployqt --debug` — plugins are then accepted, and the Qt libraries still come from the exe's import table (release DLLs). Verified: the deployed folder runs with only `System32` on PATH. Used by `tools/deploy-windows.ps1`.
+  - PowerShell 5.1 mis-binds positional `Set-Content` arguments next to the dynamic `-Encoding` parameter (path and value get swapped, a file named after the value appears in the working directory) and `-Encoding utf8` writes a BOM → scripts write files with a BOM-less `[IO.File]::WriteAllLines` helper.
   - Pegasus only reads `metadata.pegasus.txt` directly inside each `game_dirs.txt` entry (not recursively) — fixtures must list each system folder.
   - The `offscreen` platform has no system fonts (`QFontDatabase: Cannot find font directory`) → the DeckOS theme must bundle its fonts (planned anyway); the smoke test must not count this line as a theme warning.
   - No OpenSSL 1.1.1 DLLs yet → "SSL support not available" on PC. Add them (aqt `tools_openssl_x64`) before Phase 2 networking.
   - Pegasus's PC-only providers (Steam/GOG/…) scan this machine → smoke tests must disable them for deterministic results.
 - **Alternatives:** MSVC 2019-ABI Qt build with VS 2026 (works, upstream AppVeyor uses it, but further from Android); official Qt online installer (needs a Qt account); building Qt 5.15.10 from source (hours, little gain).
 - **Revisit if:** a Qt 5.15.2-vs-5.15.10 difference bites, or a later Qt 5.15.x MinGW binary becomes available.
+
+## 2026-11-25 — `windows-build/`: a double-clickable Windows build for the owner
+- **Decision:** `tools/deploy-windows.ps1` copies the exe + `windeployqt` runtime + `SDL2.dll` into `<DECKOS root>/windows-build/` (outside the repo, next to `toolchain/`), in portable mode with a tiny fake library and windowed, PC-importers-off settings. `tools/check.ps1` runs it as its **last** step, so the folder only ever holds a build that passed the gate. App files are overwritten each time; `config/` and `test-roms/` are created once and kept. Never deletes anything.
+- **Why:** the owner asked for an easy way to try each Windows build themselves; the old `build/run/` only worked with the toolchain on PATH. Living outside the repo keeps 100 MB of Qt DLLs out of git, and `-Clean` builds can't wipe the owner's settings.
+- **Alternatives:** a zip artifact from CI (slower loop, Linux CI doesn't build Windows); a static Qt build (hours of Qt compilation for a dev convenience).
 
 ## 2026-11-25 — GitHub workflows: one lean Linux CI, Android unchanged for its first run
 - **Decision:** Replace upstream `x11.yml` (3 jobs incl. Coveralls coverage upload, .deb/zip packaging, deploy to mmatyas's staging repo) and `macos.yml` with one `ci.yml`: Linux build + unit tests with qmake and CMake, on pushes to `main` and PRs. `android.yml` is left exactly as upstream for the first push, to prove the upstream Android build is green in the DeckOS repo before it is changed to the tag-driven release flow (`13-release-flow.md`).
