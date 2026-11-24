@@ -36,3 +36,9 @@ Format: `## YYYY-MM-DD — Title` · **Decision** · **Why** · **Alternatives c
   - Pegasus's PC-only providers (Steam/GOG/…) scan this machine → smoke tests must disable them for deterministic results.
 - **Alternatives:** MSVC 2019-ABI Qt build with VS 2026 (works, upstream AppVeyor uses it, but further from Android); official Qt online installer (needs a Qt account); building Qt 5.15.10 from source (hours, little gain).
 - **Revisit if:** a Qt 5.15.2-vs-5.15.10 difference bites, or a later Qt 5.15.x MinGW binary becomes available.
+
+## 2026-11-25 — GitHub workflows: one lean Linux CI, Android unchanged for its first run
+- **Decision:** Replace upstream `x11.yml` (3 jobs incl. Coveralls coverage upload, .deb/zip packaging, deploy to mmatyas's staging repo) and `macos.yml` with one `ci.yml`: Linux build + unit tests with qmake and CMake, on pushes to `main` and PRs. `android.yml` is left exactly as upstream for the first push, to prove the upstream Android build is green in the DeckOS repo before it is changed to the tag-driven release flow (`13-release-flow.md`).
+- **Why:** Coveralls would fail on the DeckOS repo (red ✗ on every push); packaging/deploy steps target upstream infrastructure; DeckOS doesn't target macOS or desktop Linux distribution. Both build systems stay compiled so new DeckOS code can't silently break one.
+- **Alternatives:** Keep upstream workflows and ignore failures (noisy, hides real failures).
+- **Revisit if:** we ever ship desktop builds.

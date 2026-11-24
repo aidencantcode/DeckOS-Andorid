@@ -1,0 +1,82 @@
+# DeckOS CI — Linux build + unit tests on every push to main and every PR.
+# Cheap sanity check for ordinary pushes; Android APKs are built by android.yml.
+# Toolchain: upstream Pegasus's prebuilt static Qt 5.15.12 + SDL2 (same as upstream x11.yml).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TOOLS_URL: https://github.com/mmatyas/pegasus-frontend/releases/download/alpha1
+  QT_TARGET: x11-static
+  QT_VERSION: qt51512
+  SDL_TARGET: x11-jammy
+  SDL_VERSION: "2.32.10"
+
+jobs:
+  linux:
+    name: Linux (${{ matrix.buildgen }})
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        buildgen: [qmake, cmake]   # qmake = what the Android build uses; cmake kept healthy too
+    steps:
+      - uses: actions/checkout@v4
+        with: {submodules: 'recursive', fetch-depth: 0, fetch-tags: true}
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-linux-${{ matrix.buildgen }}-${{ github.sha }}
+          restore-keys: ccache-linux-${{ matrix.buildgen }}-
+
+      - name: APT deps
+        run: sudo apt-get update && sudo apt-get install -y libunwind-dev && sudo apt-get install -y
+          ccache g++ libasound-dev libgl1-mesa-dev libgstreamer-plugins-base1.0-dev libpulse-dev
+          libudev-dev libxcb-glx0-dev libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev
+          libxcb-randr0-dev libxcb-render-util0-dev libxcb-shape0-dev libxcb-sync-dev libxcb-util-dev
+          libxcb-xfixes0-dev libxcb-xinerama0-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev
+          libzstd-dev ninja-build xvfb
+
+      - name: Get Qt + SDL2
+        run: |
+          .circleci/prepare.sh
+          curl -L "${TOOLS_URL}/SDL2-${SDL_VERSION}_${SDL_TARGET}.tar.xz" | tar xJf - -C /opt/
+          /opt/${QT_VERSION}_${QT_TARGET}/bin/qmake --version
+
+      - name: Build (qmake)
+        if: matrix.buildgen == 'qmake'
+        run: |
+          /opt/${QT_VERSION}_${QT_TARGET}/bin/qmake . \
+            ENABLE_APNG=1 USE_SDL_GAMEPAD=1 USE_SDL_POWER=1 CONFIG+=ccache \
+            SDL_LIBS="-L/opt/SDL2-${SDL_VERSION}/lib -lSDL2" \
+            SDL_INCLUDES=/opt/SDL2-${SDL_VERSION}/include/SDL2 \
+            QMAKE_CXXFLAGS+="-Wall -Wextra -pedantic"
+          make -j$(nproc)
+      - name: Test (qmake)
+        if: matrix.buildgen == 'qmake'
+        run: xvfb-run -a make check
+
+      - name: Configure (cmake)
+        if: matrix.buildgen == 'cmake'
+        run: cmake -B build -G Ninja
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          -DCMAKE_PREFIX_PATH="/opt/${QT_VERSION}_${QT_TARGET};/opt/SDL2-${SDL_VERSION}"
+          -DCMAKE_CXX_FLAGS=-fdiagnostics-color=always
+          -DPEGASUS_ENABLE_APNG=ON
+          -DPEGASUS_STATIC_CXX=ON
+      - name: Build (cmake)
+        if: matrix.buildgen == 'cmake'
+        run: cmake --build build
+      - name: Test (cmake)
+        if: matrix.buildgen == 'cmake'
+        run: xvfb-run -a ctest --test-dir build --output-on-failure
