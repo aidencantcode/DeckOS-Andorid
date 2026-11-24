@@ -3,6 +3,7 @@ import QtMultimedia 5.9
 import QtQuick.Layouts 1.15
 import QtGraphicalEffects 1.15
 import QtQuick.Window 2.15
+import "../ra" // DECKOS: RetroAchievements (from BigScreenFE)
 
 FocusScope {
     id: root
@@ -11,7 +12,23 @@ FocusScope {
 
     property real topH: 95
     property var theme
-    property int focusZone: 0 // 0 = top, 1 = zone2 buttons, 2 = zone3 tabs
+    property int focusZone: 0 // 0 = top, 1 = zone2 buttons, 2 = zone3 tabs, 3 = achievements list (DECKOS)
+    readonly property int achievementsTab: 2 // DECKOS: the third tab (was COMMUNITY) shows RetroAchievements
+
+    // DECKOS: move focus from the tab row into the achievements panel and back
+    function enterAchievements() {
+        topButtonsRow.focus = false
+        zone2.focus = false
+        zone3Tabs.focus = false
+        focusZone = 3
+        flick.contentY = Math.max(0, flick.contentHeight - flick.height) // whole panel above the footer
+        raSection.forceActiveFocus()
+        raSection.gridFocusAtZero()
+    }
+    function leaveAchievements() {
+        goToZone(2)
+        zone3Tabs.currentIndex = achievementsTab
+    }
     property bool optionsMenuVisible: false
 property var currentFocusedGame: null
 
@@ -77,6 +94,12 @@ function goToZone(zoneIndex) {
 // === ДОБАВЛЯЕМ ЭТОТ КОД ===
 // Основной обработчик клавиш для всего интерфейса
 Keys.onPressed: {
+    // DECKOS: the login overlay and the achievements panel handle their own keys
+    if (raLogin.visible) { event.accepted = true; return }
+    if (focusZone === 3) {
+        if (api.keys.isCancel(event) || event.key === Qt.Key_Escape) { leaveAchievements(); event.accepted = true }
+        return
+    }
     // Клавиша ВНИЗ
     if (event.key === Qt.Key_Down || api.keys.isDetails(event)) {
         if (focusZone === 0) {
@@ -209,7 +232,8 @@ Item {
         id: flick
         anchors.fill: parent
         contentWidth: parent.width 
-        contentHeight: parent.height * 1.5 // 25% выше экрана
+        // DECKOS: +260 while the ACHIEVEMENTS tab is open, so the locked row can scroll above the footer
+        contentHeight: parent.height * 1.5 + (zone3Tabs.currentIndex === root.achievementsTab ? 260 : 0)
         flickableDirection: Flickable.VerticalFlick
         boundsBehavior: Flickable.DragAndOvershootBounds
         interactive: true
@@ -521,7 +545,7 @@ Rectangle {
             
             Text {
                 anchors.centerIn: parent
-                text: "COMMUNITY"
+                text: "ACHIEVEMENTS" // DECKOS: was COMMUNITY
                 color: tabCommunity.activeFocus ? "black" : "white"
                 font.pixelSize: 27
                 font.family: bold.name
@@ -600,9 +624,29 @@ Rectangle {
 
         Keys.onDownPressed: {
             event.accepted = true
+            if (currentIndex === root.achievementsTab) root.enterAchievements() // DECKOS
         }
     }
-    
+
+    // DECKOS: ACHIEVEMENTS tab content - BigScreenFE's RetroAchievements panel
+    RAGameInfoSection {
+        id: raSection
+        anchors {
+            left: zone3.left
+            right: zone3.right
+            top: zone3Tabs.bottom
+            bottom: zone3.bottom
+            leftMargin: 60
+            rightMargin: 60
+            topMargin: 40
+            bottomMargin: 40
+        }
+        visible: zone3Tabs.currentIndex === root.achievementsTab
+        game: theme ? theme.currentGame : null
+        onTabFocusRequested: root.leaveAchievements()
+        onLoginRequested: raLogin.open()
+    }
+
     // Содержимое вкладки GAME INFO
 Item {
     id: gameInfoContent
@@ -669,7 +713,7 @@ Item {
                         return "No information about this game"
                     }
                     
-                    var desc = currentGame.summary || currentGame.description
+                    var desc = theme.currentGame.summary || theme.currentGame.description // DECKOS: was an undefined `currentGame`
                     var maxLines = Math.floor(parent.height / 30) // примерная высота строки
                     var lines = desc.split('\n')
                     
@@ -1428,7 +1472,7 @@ Item {
             "icon": "€"
         })
         var btn4 = menuButtonComponent.createObject(buttonColumn, { 
-            "title": "Freands and Chat", 
+            "title": "Friends and Chat", 
             "buttonIndex": 3,
             "icon": "F"
             })
@@ -1726,5 +1770,12 @@ goToZone(1)
             zone2.forceActiveFocus()
             zone2.currentButtonIndex = 0
         }
+    }
+
+    // DECKOS: RetroAchievements login (opened from the ACHIEVEMENTS tab)
+    RALogin {
+        id: raLogin
+        onSaved: { raSection.load(); root.enterAchievements() }
+        onClosed: root.enterAchievements()
     }
 }

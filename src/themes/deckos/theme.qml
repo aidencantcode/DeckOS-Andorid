@@ -15,6 +15,19 @@ FocusScope {
         // Добавить в корень FocusScope в theme.qml
     property bool navTrigger: false
 
+    // DECKOS: StMini is laid out in fixed pixels for a 1920x1080 screen. Everything is drawn on a logical
+    // canvas (deckCanvas) scaled to the real screen: Odin 3 1920x1080 -> x1.0 (native). Narrow screens
+    // (Retroid Pocket Classic 1240x1080) would shrink to x0.65 when fitting the width, which is unreadable
+    // on a 3.9" display, so the scale never drops below minNarrowScale of the height-fit; the layout then
+    // gets a narrower (1653 px) but taller logical canvas.
+    readonly property real minNarrowScale: 0.75
+    readonly property real deckScale: Math.max(0.1, Math.max(Math.min(width / 1920, height / 1080),
+                                                             minNarrowScale * height / 1080))
+    // DECKOS: the BigScreenFE parts (ra/) size things with Pegasus's vpx(), designed for a 720 px tall
+    // window. The canvas is 1080 logical px tall at 16:9, so this matches Pegasus at 1080p without scaling
+    // twice (Pegasus's own vpx() would multiply by the real window height on top of deckScale).
+    function vpx(value) { return value * 1.5 }
+
     
     FontLoader { id: extrabold; source: "./assets/font/Gilroy-ExtraBold.otf" }
     FontLoader { id: bold; source: "./assets/font/ARIALBD.TTF" }
@@ -55,6 +68,14 @@ function toggleLeftBar(component) {
     }
 }
 
+// DECKOS: logical Deck-sized canvas, see deckScale
+Item {
+    id: deckCanvas
+    width: root.width / root.deckScale
+    height: root.height / root.deckScale
+    scale: root.deckScale
+    transformOrigin: Item.TopLeft
+
 Rectangle {
     id: globalBackground
     anchors.fill: parent
@@ -76,10 +97,13 @@ Rectangle {
             }
         }
     }
+} // DECKOS: end of deckCanvas
 
     function finalizeNavigation(index) {
+    // DECKOS: clear the source before changing currentPage; the other order re-ran the source binding and
+    // created the next page twice on the first navigation (one copy destroyed right away)
+    pageLoader.source = "";
     root.currentPage = index; // Сначала обновляем индекс
-    pageLoader.source = ""; 
     pageLoader.source = getPageSource(index); // Затем загружаем файл
     isTransitioning = false;
 }

@@ -2167,7 +2167,7 @@ Item {
             "icon": "€"
         })
         var btn4 = menuButtonComponent.createObject(buttonColumn, { 
-            "title": "Freands and Chat", 
+            "title": "Friends and Chat", 
             "buttonIndex": 3,
             "icon": "F"
             })

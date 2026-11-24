@@ -35,6 +35,7 @@ FocusScope {
 
     signal tabFocusRequested()
     signal gameSelected(var newGame)
+    signal loginRequested()   // DECKOS: "Connect account" button (the game page opens RALogin)
 
     readonly property bool gridActiveFocus: {
         if (typeof _earnedListView !== "undefined" && _earnedListView.activeFocus) return true
@@ -96,6 +97,7 @@ FocusScope {
         xhr.open("GET", url, true);
         xhr.onreadystatechange = function() {
             if (xhr.readyState !== XMLHttpRequest.DONE) return;
+            if (!root) return; // DECKOS: the page was closed while the request ran
             if (xhr.status === 200) {
                 try { cb(null, JSON.parse(xhr.responseText)); }
                 catch(e) { cb("JSON parse error: " + e, null); }
@@ -381,23 +383,26 @@ FocusScope {
         return "";
     }
 
+    // DECKOS: every property write in load()/_searchForGame()/_fetchProgress() is qualified with `root.`.
+    // Unqualified writes inside the XHR callbacks failed with "Invalid write to global property", which
+    // left _searching/_loading true forever (endless spinner) and dropped the results.
     function load() {
-        _apiKey = api.memory.has("ra_api_key") ? api.memory.get("ra_api_key") : "";
-        _apiUser = api.memory.has("ra_api_user") ? api.memory.get("ra_api_user") : "";
+        root._apiKey = api.memory.has("ra_api_key") ? api.memory.get("ra_api_key") : "";
+        root._apiUser = api.memory.has("ra_api_user") ? api.memory.get("ra_api_user") : "";
 
-        _raGameId = ""; _raTitle = ""; _raConsole = ""; _raImgIcon = "";
-        _raNumAch = 0; _raPoints = 0; _numEarned = 0;
-        _achievements = []; _selIdx = 0;
-        _notFound = false;
-        _noAchievementsYet = false;
-        _errorMsg = ""; _debugLog = "";
-        _searching = false; _loading = false;
+        root._raGameId = ""; root._raTitle = ""; root._raConsole = ""; root._raImgIcon = "";
+        root._raNumAch = 0; root._raPoints = 0; root._numEarned = 0;
+        root._achievements = []; root._selIdx = 0;
+        root._notFound = false;
+        root._noAchievementsYet = false;
+        root._errorMsg = ""; root._debugLog = "";
+        root._searching = false; root._loading = false;
 
         _log("=== load() ===");
 
         if (!game) {
             _log("ERROR: game is null");
-            _errorMsg = "No game selected.";
+            root._errorMsg = "No game selected.";
             return;
         }
 
@@ -427,14 +432,14 @@ FocusScope {
 
         if (!_hasCredentials) {
             _log("No credentials (ra_api_key / ra_api_user missing)");
-            _errorMsg = "Connect your RetroAchievements account\nto see your progress here.";
+            root._errorMsg = "Connect your RetroAchievements account\nto see your progress here.";
             return;
         }
         _log("Credentials OK: user='" + _apiUser + "', key=" + _apiKey.substring(0,4) + "****");
 
         if (directId !== "") {
             _log("Using direct RA ID from extraData: " + directId);
-            _raGameId = directId;
+            root._raGameId = directId;
             _fetchProgress(directId);
         } else {
             _searchForGame(colShort);
@@ -442,17 +447,17 @@ FocusScope {
     }
 
     function _searchForGame(colShort) {
-        _searching = true;
+        root._searching = true;
         _log("Fetching API_GetUserCompletionProgress (c=500)...");
 
         var url = _apiUrl("API_GetUserCompletionProgress.php",
                           { u: _apiUser, c: 500, o: 0 });
         _get(url, function(err, data) {
-            _searching = false;
+            root._searching = false;
 
             if (err || !data) {
                 _log("API error: " + (err || "empty response"));
-                _errorMsg = "Could not reach RetroAchievements.\n(" + (err || "empty") + ")";
+                root._errorMsg = "Could not reach RetroAchievements.\n(" + (err || "empty") + ")";
                 return;
             }
 
@@ -529,7 +534,7 @@ FocusScope {
                 _log("MATCH ACCEPTED: f1=" + bestF1Base.toFixed(3)
                 + " total=" + best.score.toFixed(3)
                 + " title='" + best.g.Title + "' ID=" + best.g.GameID);
-                _raGameId = String(best.g.GameID || "");
+                root._raGameId = String(best.g.GameID || "");
                 _fetchProgress(_raGameId);
             } else {
                 if (best) {
@@ -590,7 +595,7 @@ FocusScope {
             if (best && best.score >= THRESHOLD) {
                 var gid = String(best.g.ID || best.g.GameID || "");
                 _log("FALLBACK MATCH ACCEPTED: '" + best.g.Title + "' ID=" + gid);
-                _raGameId = gid;
+                root._raGameId = gid;
                 _fetchProgress(gid);
             } else {
                 _log("FALLBACK MATCH REJECTED"
@@ -602,31 +607,31 @@ FocusScope {
 
     function _showNotFound(pegTitle) {
         _log("=== NOT FOUND: '" + pegTitle + "' ===");
-        _notFound = true;
+        root._notFound = true;
     }
 
     function _fetchProgress(gid) {
-        _loading = true;
+        root._loading = true;
         _log("Fetching API_GetGameInfoAndUserProgress ID=" + gid + " user=" + _apiUser + "...");
 
         var url = _apiUrl("API_GetGameInfoAndUserProgress.php",
                           { u: _apiUser, g: gid });
         _get(url, function(err, data) {
-            _loading = false;
+            root._loading = false;
 
             if (err || !data) {
                 _log("GetGameInfoAndUserProgress error: " + (err || "empty"));
-                _errorMsg = "Could not load game data.\n(" + (err || "empty") + ")";
+                root._errorMsg = "Could not load game data.\n(" + (err || "empty") + ")";
                 return;
             }
 
-            _raTitle = data.Title || "";
-            _raConsole = data.ConsoleName || "";
-            _raImgIcon = data.ImageIcon ? (_media + data.ImageIcon) : "";
-            _raNumAch = parseInt(data.NumAchievements) || 0;
-            _raPoints = parseInt(data.Points) || 0;
-            _numEarned = parseInt(data.NumAwardedToUser) || 0;
-            _raPlayers = parseInt(data.NumDistinctPlayersCasual) || 0;
+            root._raTitle = data.Title || "";
+            root._raConsole = data.ConsoleName || "";
+            root._raImgIcon = data.ImageIcon ? (_media + data.ImageIcon) : "";
+            root._raNumAch = parseInt(data.NumAchievements) || 0;
+            root._raPoints = parseInt(data.Points) || 0;
+            root._numEarned = parseInt(data.NumAwardedToUser) || 0;
+            root._raPlayers = parseInt(data.NumDistinctPlayersCasual) || 0;
 
             _log("Loaded: '" + _raTitle + "' / " + _raConsole);
             _log("Achievements: " + _numEarned + "/" + _raNumAch + "  Points: " + _raPoints);
@@ -653,12 +658,12 @@ FocusScope {
                 if (a.earned !== b.earned) return a.earned ? -1 : 1;
                 return b.points - a.points;
             });
-            _achievements = ach;
-            _earnedIdx = 0;
-            _lockedIdx = 0;
-            _activeSection = _earnedList.length > 0 ? "earned" : "locked";
+            root._achievements = ach;
+            root._earnedIdx = 0;
+            root._lockedIdx = 0;
+            root._activeSection = _earnedList.length > 0 ? "earned" : "locked";
             _log("Done. " + ach.length + " achievements loaded.");
-            if (_raNumAch === 0) _noAchievementsYet = true;
+            if (_raNumAch === 0) root._noAchievementsYet = true;
         });
     }
 
@@ -785,6 +790,41 @@ FocusScope {
                     }
                 }
 
+                // DECKOS: without credentials, offer the login instead of a dead end
+                Item {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: vpx(160); height: vpx(28)
+                    visible: !root._hasCredentials
+                    readonly property bool _foc: activeFocus
+                    focus: !root._hasCredentials
+
+                    Rectangle {
+                        anchors.fill: parent; radius: vpx(14)
+                        color: parent._foc ? _buttonFocusBg : _buttonBg
+                        border.color: parent._foc ? _buttonFocusBg : _buttonBorder
+                        border.width: vpx(1)
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                    }
+                    Text {
+                        anchors.centerIn: parent; text: "Connect account"
+                        font.pixelSize: vpx(11); font.family: global.fonts.sans; font.bold: true
+                        color: parent._foc ? _buttonFocusText : _textSecondary
+                    }
+                    Keys.onUpPressed: { event.accepted = true; root.tabFocusRequested() }
+                    Keys.onPressed: {
+                        if (!event.isAutoRepeat && api.keys.isAccept(event)) {
+                            event.accepted = true; root.loginRequested()
+                        }
+                        if (!event.isAutoRepeat && api.keys.isCancel(event)) {
+                            event.accepted = true; root.tabFocusRequested()
+                        }
+                    }
+                    MouseArea {
+                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                        onClicked: root.loginRequested()
+                    }
+                }
+
                 Rectangle {
                     width: parent.width
                     height: _dbgTxt.implicitHeight + vpx(14)
@@ -792,7 +832,7 @@ FocusScope {
                     radius: vpx(4)
                     border.color: _borderColor
                     border.width: vpx(1)
-                    visible: root._debugLog !== ""
+                    visible: root._debugLog !== "" && root._hasCredentials // DECKOS: no log on the first-run screen
                     Behavior on color { ColorAnimation { duration: 300 } }
                     Behavior on border.color { ColorAnimation { duration: 300 } }
 

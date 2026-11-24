@@ -269,7 +269,7 @@ Rectangle {
     // Обновление фона при смене игры
     Connections {
         target: gameList
-        onCurrentIndexChanged: {
+        function onCurrentIndexChanged() { // DECKOS: Qt 5.15 Connections syntax
         if (gameList.focus) {
     }
             if (gameList.model && gameList.model.count > 0) {
@@ -444,7 +444,7 @@ Keys.onPressed: {
             property bool isWide: index === 0
             property real dH: gameList.height
             property real scaleFactor: index === gameList.currentIndex && gameList.focus ? 1.04 : 1.0
-            property bool hasImage: isWide ? (modelData && modelData.assets.steam) : (modelData && modelData.assets.poster)
+            property bool hasImage: !!(isWide ? (modelData && modelData.assets.steam) : (modelData && modelData.assets.poster)) // DECKOS: !! - was undefined without a game
             property bool isGrayPlaceholder: index === gameList.displayCount - 1    
     // Скрываем элементы, которые идут после лимита
     visible: index < gameList.displayCount
@@ -465,7 +465,7 @@ color: isGrayPlaceholder ? "#AA2A2E35" : (hasImage ? "transparent" : "#555")
                 // Изображение
                 Image {
                     anchors.fill: parent
-                    source: isWide ? (modelData && modelData.assets.steam) : (modelData && modelData.assets.poster)
+                    source: (isWide ? (modelData && modelData.assets.steam) : (modelData && modelData.assets.poster)) || "" // DECKOS: never undefined
                     fillMode: Image.PreserveAspectCrop
                     visible: hasImage && !isGrayPlaceholder
                     z: 10
@@ -730,7 +730,7 @@ Text {
     anchors {
         left: parent.left
         leftMargin: 40
-        top: bottomTabsRow.bottom
+        // top: bottomTabsRow.bottom (DECKOS: not a sibling, Qt ignored it; y below positions it)
     }
     y: bottomTabsRow.height * 0.3 // Смещение на 10% ниже
     text: "<"
@@ -749,7 +749,7 @@ Text {
     anchors {
         right: parent.right
         rightMargin: 40
-        top: bottomTabsRow.bottom
+        // top: bottomTabsRow.bottom (DECKOS: not a sibling, Qt ignored it; y below positions it)
     }
     y: bottomTabsRow.height * 0.3
     text: ">"
@@ -764,10 +764,10 @@ Text {
 }
     
     
-    Column {
+    Item { // DECKOS: was a Column whose child uses anchors.fill (positioning was off anyway; same layout, no warning)
         anchors.fill: parent
         anchors.margins: 36
-        spacing: 30
+        // spacing: 30 (DECKOS: Item has no spacing)
 
         // вкладки
         Row {
@@ -1251,7 +1251,7 @@ Item {
             left: parent.left
             right: parent.right
             top: parent.top
-            leftMargin: sideMargin
+            leftMargin: recommendedContainer.sideMargin // DECKOS: defined there (out of scope here)
             rightMargin: 45
         }
         height: parent.height
@@ -1494,7 +1494,7 @@ Keys.onDownPressed: {
     Connections {
         target: middleSorted
         function onCountChanged() {
-            updateUnfilteredGames()
+            recommendedContainer.updateUnfilteredGames() // DECKOS: out of scope here
         }
     }
 }
@@ -2350,7 +2350,7 @@ Item {
             "icon": "€"
         })
         var btn4 = menuButtonComponent.createObject(buttonColumn, { 
-            "title": "Freands and Chat", 
+            "title": "Friends and Chat", 
             "buttonIndex": 3,
             "icon": "F"
             })
