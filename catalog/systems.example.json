@@ -1,0 +1,48 @@
+{
+  "$comment": "SHAPE EXAMPLE ONLY. Fill every ID from the authoritative source named in 'sources' and verify (RA: API_GetConsoleIDs, ScreenScraper: systemesListe, IGDB: platforms endpoint). Values marked null are unknown on purpose.",
+  "schema_version": 1,
+  "systems": [
+    {
+      "id": "snes",
+      "name": "Super Nintendo Entertainment System",
+      "short": "SNES",
+      "manufacturer": "Nintendo",
+      "year": 1990,
+      "folder_aliases": ["snes", "sfc", "superfamicom", "super nintendo", "supernintendo"],
+      "extensions": ["sfc", "smc", "fig", "swc", "bs", "zip", "7z"],
+      "ambiguous_extensions": [],
+      "ra_console_id": null,
+      "screenscraper_id": null,
+      "igdb_platform_id": null,
+      "tgdb_platform_id": null,
+      "libretro_thumbnails": "Nintendo - Super Nintendo Entertainment System",
+      "default_emulators": ["retroarch:snes9x"],
+      "hash": { "ra": "rc_hash (header-aware)", "scrape": "crc32" },
+      "bios": [],
+      "icon": "systems/snes.svg",
+      "accent": "#6B5FD3",
+      "sources": { "ra_console_id": "TODO", "screenscraper_id": "TODO" }
+    },
+    {
+      "id": "ps2",
+      "name": "PlayStation 2",
+      "short": "PS2",
+      "manufacturer": "Sony",
+      "year": 2000,
+      "folder_aliases": ["ps2", "playstation2", "playstation 2"],
+      "extensions": ["iso", "chd", "cso", "zso", "bin", "cue", "m3u", "gz"],
+      "ambiguous_extensions": ["iso", "bin", "cue", "chd"],
+      "ra_console_id": null,
+      "screenscraper_id": null,
+      "igdb_platform_id": null,
+      "tgdb_platform_id": null,
+      "libretro_thumbnails": "Sony - PlayStation 2",
+      "default_emulators": ["armsx2", "nethersx2"],
+      "hash": { "ra": "rc_hash (disc, lazy/background)", "scrape": "serial from SYSTEM.CNF + filename" },
+      "bios": ["scph*.bin"],
+      "icon": "systems/ps2.svg",
+      "accent": "#2E4FA3",
+      "sources": {}
+    }
+  ]
+}

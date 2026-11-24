@@ -1,0 +1,85 @@
+{
+  "$comment": "SHAPE EXAMPLE ONLY. Values below are unverified starting points — verify every package/activity/extra on a real device and against the emulator's own docs/source before setting verified=true. Final catalog: one file per emulator in catalog/emulators/<id>.json.",
+  "schema_version": 1,
+  "emulators": [
+    {
+      "id": "retroarch",
+      "name": "RetroArch",
+      "systems": ["nes", "snes", "gb", "gbc", "gba", "megadrive", "psx", "n64", "pce", "arcade"],
+      "priority": 50,
+      "android": {
+        "packages": ["com.retroarch", "com.retroarch.aarch64", "com.retroarch.ra32"],
+        "profiles": [
+          {
+            "id": "default",
+            "label": "RetroArch (core per system)",
+            "launch_kind": "file",
+            "file_access": "path",
+            "activity": "com.retroarch.browser.retroactivity.RetroActivityFuture",
+            "command_template": "am start -n {pkg}/{activity} -e ROM {file.path} -e LIBRETRO {core.path} -e CONFIGFILE {retroarch.config} -e QUITFOCUS \"\" --activity-clear-task --activity-clear-top --activity-no-history",
+            "requires": ["core"]
+          }
+        ],
+        "cores": {
+          "core_dir_hint": "/data/data/{pkg}/cores",
+          "default_by_system": {
+            "nes": "mesen_libretro_android.so",
+            "snes": "snes9x_libretro_android.so",
+            "gba": "mgba_libretro_android.so",
+            "psx": "swanstation_libretro_android.so"
+          }
+        }
+      },
+      "pc": { "exe": ["retroarch", "retroarch.exe"], "args": "-L {core.path} \"{file.path}\"" },
+      "notes": "Core paths and config path differ between Play Store and website builds. Detect, don't assume.",
+      "verified": false,
+      "verified_on": null,
+      "source": "TODO: record where the intent format was confirmed"
+    },
+    {
+      "id": "ppsspp",
+      "name": "PPSSPP",
+      "systems": ["psp"],
+      "priority": 90,
+      "android": {
+        "packages": ["org.ppsspp.ppsspp", "org.ppsspp.ppssppgold"],
+        "profiles": [
+          {
+            "id": "default",
+            "label": "PPSSPP",
+            "launch_kind": "file",
+            "file_access": "content_uri",
+            "activity": ".PpssppActivity",
+            "command_template": "am start -n {pkg}/{activity} -a android.intent.action.VIEW -c android.intent.category.DEFAULT -d {file.uri} -t application/octet-stream --activity-clear-task --activity-clear-top --activity-no-history"
+          }
+        ]
+      },
+      "pc": { "exe": ["PPSSPPWindows64.exe", "PPSSPPSDL"], "args": "\"{file.path}\"" },
+      "verified": false,
+      "verified_on": null,
+      "source": "TODO"
+    },
+    {
+      "id": "generic-view",
+      "name": "Any app (generic)",
+      "systems": ["*"],
+      "priority": 0,
+      "android": {
+        "packages": [],
+        "profiles": [
+          {
+            "id": "view-intent",
+            "label": "Open file with app",
+            "launch_kind": "file",
+            "file_access": "content_uri",
+            "activity": "{resolved.view_activity}",
+            "command_template": "am start -n {pkg}/{activity} -a android.intent.action.VIEW -d {file.uri} -t {file.mime} --grant-read-uri-permission"
+          }
+        ]
+      },
+      "notes": "Fallback for unknown emulators: the user picks an installed app; DeckOS resolves its VIEW-capable or launcher activity.",
+      "verified": true,
+      "source": "DeckOS built-in"
+    }
+  ]
+}

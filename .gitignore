@@ -21,3 +21,8 @@ build*/
 *.qmlc
 *.jsc
 *.autosave
+
+# DECKOS: study-only references and local toolchains never enter the repo
+/reference/
+/third_party_refs/
+/toolchain/
