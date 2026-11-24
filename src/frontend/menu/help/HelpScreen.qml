@@ -66,12 +66,13 @@ MenuScreen {
                     text: qsTr("About") + api.tr
                 }
                 Text {
-                    property string programInfo: qsTr("Pegasus Frontend, version <tt>%1</tt> (%2)")
+                    // DECKOS: DeckOS name + version; Pegasus credited
+                    property string programInfo: qsTr("DeckOS, version <tt>%1</tt> (%2)")
                         .arg(Internal.meta.gitRevision)
                         .arg(Internal.meta.gitDate)
                         + api.tr
 
-                    text: programInfo + "<br>Copyright \u00a9 2017-2020 Mátyás Mustoha"
+                    text: programInfo + "<br>Based on Pegasus Frontend, copyright \u00a9 2017-2020 Mátyás Mustoha and contributors"
                     color: "#eee"
                     font.pixelSize: bodyFontSize
                     font.family: globalFonts.sans
@@ -88,7 +89,8 @@ MenuScreen {
                     text: qsTr("Help") + api.tr
                 }
                 Text {
-                    text: qsTr("You can find the documentation and user guide on the following address:")
+                    // DECKOS: the Pegasus docs remain the reference for metadata files and themes
+                    text: qsTr("DeckOS reads Pegasus metadata files and themes, documented at:")
                         + api.tr
                     color: "#eee"
                     font.pixelSize: bodyFontSize
@@ -157,7 +159,7 @@ MenuScreen {
                     Text {
                         text: "You should have received a copy of the full license along with this "
                             + "program. If not, you can also find it on the following address: "
-                            + "<tt>http://pegasus-frontend.org/license</tt>."
+                            + "<tt>https://www.gnu.org/licenses/gpl-3.0.html</tt>." // DECKOS
                         color: licenses.textColor
                         lineHeight: licenses.textLineHeight
                         font.pixelSize: licenses.textSize
@@ -166,6 +168,31 @@ MenuScreen {
                         width: parent.width
                         wrapMode: Text.WordWrap
                         horizontalAlignment: Text.AlignJustify
+                    }
+                    // DECKOS: credits for everything DeckOS ships. Add every new library here
+                    // (and to docs/DECISIONS.md). Licenses verified 2026-11-25.
+                    Repeater {
+                        model: [
+                            "DeckOS is based on Pegasus Frontend (pegasus-frontend.org), copyright © "
+                                + "2017-2020 Mátyás Mustoha and contributors, licensed under the GNU GPL v3.",
+                            "Uses SortFilterProxyModel, copyright © 2016 Pierre-Yves Siret (MIT License); "
+                                + "QtApng by Skycoder42 (BSD 3-Clause License); and on PC, SDL2, "
+                                + "copyright © Sam Lantinga (zlib License).",
+                            "Android builds include OpenSSL. This product includes software developed by the "
+                                + "OpenSSL Project for use in the OpenSSL Toolkit (http://www.openssl.org/), and "
+                                + "cryptographic software written by Eric Young (eay@cryptsoft.com).",
+                        ]
+                        Text {
+                            text: modelData
+                            color: licenses.textColor
+                            lineHeight: licenses.textLineHeight
+                            font.pixelSize: licenses.textSize
+                            font.family: globalFonts.sans
+
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            horizontalAlignment: Text.AlignJustify
+                        }
                     }
                 }
                 Row {
@@ -227,6 +254,9 @@ MenuScreen {
                         + "and logos are property of their respective owners. All company, product "
                         + "and service names used in this product are for identification purposes "
                         + "only. Use of these names, logos, and brands does not imply endorsement."
+                        // DECKOS
+                        + " Steam and Steam Deck are trademarks of Valve Corporation; DeckOS is not "
+                        + "affiliated with or endorsed by Valve."
                     color: licenses.textColor
                     lineHeight: licenses.textLineHeight
                     font.pixelSize: licenses.textSize

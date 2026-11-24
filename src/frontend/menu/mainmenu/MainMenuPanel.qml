@@ -162,7 +162,7 @@ FocusScope {
                 },
                 SecondaryMenuItem {
                     id: mbQuitExit
-                    text: qsTr("Exit Pegasus") + api.tr
+                    text: qsTr("Exit DeckOS") + api.tr // DECKOS
                     onActivated: requestQuit()
 
                     readonly property bool callable: Internal.meta.allowAppClose

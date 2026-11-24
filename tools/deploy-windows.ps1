@@ -18,18 +18,22 @@ $OutDir = (Resolve-Path $OutDir).Path
 $exe = Get-ChildItem (Join-Path $BuildDir 'src\app\release') -Filter *.exe -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $exe) { Write-Output "[deploy] no build found - run tools\build.ps1 first"; exit 1 }
 
-$running = Get-Process -Name $exe.BaseName -ErrorAction SilentlyContinue |
+# The build target keeps upstream's name (pegasus-fe); the owner-facing copy is DeckOS.exe.
+$appName = 'DeckOS.exe'
+$running = Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($appName)), $exe.BaseName -ErrorAction SilentlyContinue |
     Where-Object { try { $_.Path -like "$OutDir\*" } catch { $false } }
-if ($running) { Write-Output "[deploy] $($exe.Name) is running from $OutDir - close it and run again"; exit 1 }
+if ($running) { Write-Output "[deploy] DeckOS is running from $OutDir - close it and run again"; exit 1 }
 
-Copy-Item $exe.FullName $OutDir -Force
+Copy-Item $exe.FullName (Join-Path $OutDir $appName) -Force
+$old = Join-Path $OutDir $exe.Name                       # pre-rebrand copies were named pegasus-fe.exe
+if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force }
 Copy-Item (Join-Path $SdlDir 'bin\SDL2.dll') $OutDir -Force
 
 # --debug is deliberate: aqt's MinGW Qt plugins carry a PE debug directory, so windeployqt classes them as
 # debug builds and in release mode skips every one ("Unable to find the platform plugin"). Qt libraries are
 # taken from the exe's import table, so they are the release DLLs either way. (docs/DECISIONS.md)
 $log = Join-Path $BuildDir 'windeployqt.log'
-$target = Join-Path $OutDir $exe.Name
+$target = Join-Path $OutDir $appName
 cmd /c "windeployqt --debug --compiler-runtime --no-translations --qmldir `"$DeckosRoot\src`" `"$target`" > `"$log`" 2>&1"
 if ($LASTEXITCODE -ne 0) { Write-Output "[deploy] windeployqt failed (exit $LASTEXITCODE), see $log"; exit 1 }
 if (-not (Test-Path (Join-Path $OutDir 'platforms\qwindows.dll'))) { Write-Output "[deploy] platform plugin missing after windeployqt, see $log"; exit 1 }
@@ -80,7 +84,7 @@ Write-Utf8 (Join-Path $OutDir 'README.txt') @(
     'DeckOS - Windows test build',
     '',
     "Build:  $commit  ($(Get-Date -Format 'yyyy-MM-dd HH:mm'))",
-    "Run:    double-click $($exe.Name)",
+    "Run:    double-click $appName",
     '',
     'This folder is refreshed automatically every time a build passes the test gate (tools\check.ps1).',
     'App files are replaced on each refresh; config\ and test-roms\ are kept.',

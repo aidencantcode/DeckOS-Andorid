@@ -65,9 +65,10 @@ FocusScope {
         Text {
             id: info
 
+            // DECKOS: name + grammar
             text: qsTr("Some Android apps may not launch games unless you manually allow access "
-                     + "to the game's directory, in both Pegasus and the launched app. Pegasus "
-                     + "have permission for the following locations:") + api.tr
+                     + "to the game's directory, in both DeckOS and the launched app. DeckOS "
+                     + "has permission for the following locations:") + api.tr
             color: "#eee"
             font.family: globalFonts.sans
             font.pixelSize: vpx(18)

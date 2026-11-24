@@ -43,6 +43,19 @@ Format: `## YYYY-MM-DD — Title` · **Decision** · **Why** · **Alternatives c
 - **Why:** the owner asked for an easy way to try each Windows build themselves; the old `build/run/` only worked with the toolchain on PATH. Living outside the repo keeps 100 MB of Qt DLLs out of git, and `-Clean` builds can't wipe the owner's settings.
 - **Alternatives:** a zip artifact from CI (slower loop, Linux CI doesn't build Windows); a static Qt build (hours of Qt compilation for a dev convenience).
 
+## 2026-11-25 — Rebrand: what changed, and what deliberately didn't
+- **Decision:**
+  - Installed app ID `com.deckos.frontend` is set as `applicationId` in `build.gradle`. The manifest `package` (= Java namespace `org.pegasus_frontend.android`) and all Java/JNI class paths stay, so upstream Java/JNI changes still merge cleanly.
+  - FileProvider authority → `${applicationId}.files` (Java builds it from `getPackageName()`). With upstream's fixed authority Android refuses to install DeckOS while Pegasus is installed (`INSTALL_FAILED_CONFLICTING_PROVIDER`).
+  - Data dirs: app + org name `deckos` → Android config in `<shared storage>/deckos/` (Pegasus uses `/pegasus-frontend/`), PC `%LOCALAPPDATA%\deckos` or portable `config\`. DeckOS does not pick up an existing Pegasus config — clean separation.
+  - Version: `GIT_REVISION` (qmake and CMake) = `git describe --tags --match v[0-9]*` without the `v`, so the log header, Help → About and Android `versionName` all show the DeckOS version. `versionCode` is computed in `.qmake.conf` (qmake can't multiply → zero-padded concatenation, tested on sample tags).
+  - The build target stays `pegasus-fe` (the native lib name inside the APK; referenced by CMake, CI and packaging files across ~12 upstream files). Nobody sees it: CI names the APK, the Windows folder gets `DeckOS.exe`.
+  - Icons: placeholder "D" mark from `tools/make-placeholder-icons.ps1` (shapes only, no fonts), written over upstream's icon files in place — same names, so no manifest/build changes. Final art is a Phase 7 item. Splash: Qt's `android.app.splash_screen_drawable` with a background-colour + icon layer-list (first checked on device with 0.0.1).
+  - Help → About/Licenses credits Pegasus and every bundled library (SortFilterProxyModel MIT, QtApng BSD-3-Clause, SDL2 zlib — verified via GitHub API 2026-11-25; OpenSSL acknowledgment for Android). Every library added later goes there too.
+  - Changed English UI strings lose their community translations (fall back to English). Acceptable: English first.
+  - **Left alone on purpose:** upstream's misspelt `android.theme` manifest attribute (fixing it would apply a parent-less style — revisit with Phase 1 theming); `setOrganizationDomain("pegasus-frontend.org")` (invisible on our platforms); copyright headers; the `PEGASUS_HOME` env var.
+- **Alternatives:** renaming the manifest package and moving the Java sources (large diff on every upstream merge for no user-visible gain); renaming the build target (same).
+
 ## 2026-11-25 — GitHub workflows: one lean Linux CI, Android unchanged for its first run
 - **Decision:** Replace upstream `x11.yml` (3 jobs incl. Coveralls coverage upload, .deb/zip packaging, deploy to mmatyas's staging repo) and `macos.yml` with one `ci.yml`: Linux build + unit tests with qmake and CMake, on pushes to `main` and PRs. `android.yml` is left exactly as upstream for the first push, to prove the upstream Android build is green in the DeckOS repo before it is changed to the tag-driven release flow (`13-release-flow.md`).
 - **Why:** Coveralls would fail on the DeckOS repo (red ✗ on every push); packaging/deploy steps target upstream infrastructure; DeckOS doesn't target macOS or desktop Linux distribution. Both build systems stay compiled so new DeckOS code can't silently break one.

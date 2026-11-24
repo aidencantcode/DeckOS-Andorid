@@ -39,8 +39,9 @@ using QSP = QStandardPaths;
 
 void remove_orgname(QString& str)
 {
-    const QRegularExpression replace_regex(QStringLiteral("(/pegasus-frontend){2}$"));
-    str.replace(replace_regex, QStringLiteral("/pegasus-frontend"));
+    // DECKOS: data dirs are named "deckos" (app + org name, see main.cpp)
+    const QRegularExpression replace_regex(QStringLiteral("(/deckos){2}$"));
+    str.replace(replace_regex, QStringLiteral("/deckos"));
 }
 
 void create_dir_if_not_exists(const QString& dir_path)
@@ -53,7 +54,7 @@ QString get_appconfig_dir()
 {
 #ifdef Q_OS_ANDROID
     const QString dir_path = QSP::writableLocation(QSP::GenericDataLocation)
-                           + QStringLiteral("/pegasus-frontend");
+                           + QStringLiteral("/deckos");  // DECKOS
 #else
     QString dir_path = AppSettings::general.portable
         ? paths::app_dir_path() + QStringLiteral("/config")
@@ -126,14 +127,14 @@ const QStringList& configDirs()
             paths << QSP::standardLocations(QSP::AppDataLocation);
 
             // do not add the organization name to the search path
-            const QRegularExpression regex(QStringLiteral("(/pegasus-frontend){2}$"));
-            paths.replaceInStrings(regex, QStringLiteral("/pegasus-frontend"));
+            const QRegularExpression regex(QStringLiteral("(/deckos){2}$"));  // DECKOS
+            paths.replaceInStrings(regex, QStringLiteral("/deckos"));
         }
 
 #ifdef Q_OS_ANDROID
         const QStringList all_roots = android::storage_paths();
         for (const QString& storage_root : all_roots) {
-            QString path = storage_root + QStringLiteral("/pegasus-frontend");
+            QString path = storage_root + QStringLiteral("/deckos");  // DECKOS
             if (QFileInfo::exists(path))
                 paths << std::move(path);
         }

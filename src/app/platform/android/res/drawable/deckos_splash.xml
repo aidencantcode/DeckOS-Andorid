@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DECKOS: placeholder splash (shown by Qt's loader until the first frame): background colour + icon mark -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/deckos_bg"/>
+    <item>
+        <bitmap android:gravity="center" android:src="@mipmap/icon_fg"/>
+    </item>
+</layer-list>

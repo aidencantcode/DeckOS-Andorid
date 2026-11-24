@@ -89,7 +89,7 @@ FocusScope {
         Text {
             id: info
 
-            text: qsTr("Pegasus will look for collection files (metadata.pegasus.txt or "
+            text: qsTr("DeckOS will look for collection files (metadata.pegasus.txt or " // DECKOS
                      + "metadata.txt)\nin the following directories:") + api.tr
             color: "#eee"
             font.family: globalFonts.sans

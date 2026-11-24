@@ -1,4 +1,7 @@
 <?xml version="1.0"?>
+<!-- DECKOS: app name, splash and a per-app FileProvider authority (so DeckOS installs next to Pegasus).
+     "package" stays the Java namespace; the installed app ID is applicationId in build.gradle.
+     @GIT_COMMIT_CNT@ is replaced with DECKOS_VERSION_CODE by src/app/install.pri. -->
 <manifest
     package="org.pegasus_frontend.android"
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -8,7 +11,7 @@
     <application
         android:hardwareAccelerated="true"
         android:name="org.qtproject.qt5.android.bindings.QtApplication"
-        android:label="Pegasus"
+        android:label="DeckOS"
         android:icon="@mipmap/icon"
         android:banner="@mipmap/banner"
         android:extractNativeLibs="true"
@@ -16,7 +19,7 @@
         <activity
             android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
             android:name=".MainActivity"
-            android:label="Pegasus"
+            android:label="DeckOS"
             android:screenOrientation="userLandscape"
             android:launchMode="singleTop"
             android.theme="@style/PegasusMain">
@@ -66,11 +69,13 @@
             <!-- meta-data android:name="android.app.splash_screen_drawable_landscape" android:resource="@drawable/logo_landscape" / -->
             <!-- meta-data android:name="android.app.splash_screen_drawable" android:resource="@drawable/logo"/ -->
             <!-- meta-data android:name="android.app.splash_screen_sticky" android:value="true"/ -->
+            <!-- DECKOS: placeholder splash -->
+            <meta-data android:name="android.app.splash_screen_drawable" android:resource="@drawable/deckos_splash"/>
         </activity>
 
         <provider
             android:name="org.pegasus_frontend.android.LaunchFileProvider"
-            android:authorities="org.pegasus_frontend.android.files"
+            android:authorities="${applicationId}.files"
             android:grantUriPermissions="true"
             android:exported="false">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/fileprovider_paths" />

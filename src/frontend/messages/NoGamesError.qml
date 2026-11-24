@@ -20,8 +20,9 @@ import QtQuick 2.0
 
 Error {
     title: qsTr("No games found :(") + api.tr
-    details: qsTr("Pegasus couldn't find any games on your device. If you have not"
-                + " set up Pegasus yet, you can find the documentation here: <i>%1</i>."
+    // DECKOS: until the setup wizard (Phase 4), games are added with Pegasus metadata files
+    details: qsTr("DeckOS couldn't find any games on your device. Games are added with"
+                + " Pegasus metadata files, documented here: <i>%1</i>."
                 + "<br>"
                 + "If you still see this message, make sure your config files are readable,"
                 + " exist in one of the expected locations and are in the expected format.")

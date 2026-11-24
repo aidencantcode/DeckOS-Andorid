@@ -60,9 +60,10 @@ int main(int argc, char *argv[])
     QSettings::setDefaultFormat(QSettings::IniFormat);
 
     QGuiApplication app(argc, argv);
-    app.setApplicationName(QStringLiteral("pegasus-frontend"));
+    // DECKOS: app + org name give the data dir names (deckos/); Paths.cpp collapses deckos/deckos
+    app.setApplicationName(QStringLiteral("deckos"));
     app.setApplicationVersion(QStringLiteral(GIT_REVISION));
-    app.setOrganizationName(QStringLiteral("pegasus-frontend"));
+    app.setOrganizationName(QStringLiteral("deckos"));
     app.setOrganizationDomain(QStringLiteral("pegasus-frontend.org"));
     app.setWindowIcon(QIcon(QStringLiteral(":/icon.png")));
 
@@ -113,9 +114,9 @@ backend::CliArgs handle_cli_args(QGuiApplication& app)
 
     QCommandLineParser argparser;
     argparser.setApplicationDescription(CMDMSG(
-        "\nPegasus is a graphical frontend for browsing your game library (especially\n"
-        "retro games) and launching them from one place. It's focusing on customization,\n"
-        "cross platform support (including embedded devices) and high performance."));
+        // DECKOS: DeckOS description, Pegasus credited
+        "\nDeckOS is a controller-first game frontend for Android handhelds: your ROMs,\n"
+        "emulators and game library in one place. Based on Pegasus Frontend."));
 
     const QCommandLineOption arg_portable = add_cli_option(argparser,
         QStringLiteral("portable"),
@@ -139,7 +140,7 @@ backend::CliArgs handle_cli_args(QGuiApplication& app)
 
     const QCommandLineOption arg_menu_appclose = add_cli_option(argparser,
         QStringLiteral("disable-menu-appclose"),
-        CMDMSG("Hides the closing Pegasus entry in the main menu"));
+        CMDMSG("Hides the closing DeckOS entry in the main menu"));  // DECKOS
 
     const QCommandLineOption arg_menu_settings = add_cli_option(argparser,
         QStringLiteral("disable-menu-settings"),
@@ -156,7 +157,7 @@ backend::CliArgs handle_cli_args(QGuiApplication& app)
     const QCommandLineOption arg_gamepad_autoconfig = add_cli_option(argparser,
         QStringLiteral("disable-gamepad-autoconfig"),
         CMDMSG("Disables the automatic layout detection for connected gamepads.\n"
-               "When you connect a gamepad, Pegasus tries to guess its button and axis layout "
+               "When you connect a gamepad, DeckOS tries to guess its button and axis layout "  // DECKOS
                "automatically based on a list of known devices. Unfortunately this doesn't seem "
                "to work perfectly with some platforms and devices (eg. arcades), in which case "
                "you can disable this feature here."));

@@ -47,10 +47,11 @@ unix:!macx {
     }
 }
 win32 {
-    QMAKE_TARGET_PRODUCT = "pegasus-frontend"
-    QMAKE_TARGET_COMPANY = "pegasus-frontend.org"
-    QMAKE_TARGET_DESCRIPTION = "Pegasus emulator frontend"
-    QMAKE_TARGET_COPYRIGHT = "Copyright (c) 2017-2020 Matyas Mustoha"
+    # DECKOS: DeckOS identity; Pegasus copyright kept (DeckOS is a fork, see Help -> Licenses)
+    QMAKE_TARGET_PRODUCT = "DeckOS"
+    QMAKE_TARGET_COMPANY = "DeckOS"
+    QMAKE_TARGET_DESCRIPTION = "DeckOS game frontend (based on Pegasus Frontend)"
+    QMAKE_TARGET_COPYRIGHT = "Copyright (c) 2017-2020 Matyas Mustoha, 2026 DeckOS contributors"
     RC_ICONS = platform/windows/app_icon.ico
     OTHER_FILES += $${RC_ICONS}
 
@@ -105,7 +106,7 @@ android {
     QMAKE_POST_LINK += \
         $${QMAKE_COPY_DIR} $$shell_path($$ANDROID_CFGDIR_IN) $$shell_path($$ANDROID_CFGDIR_OUT) && \
         sed -i s/@GIT_REVISION@/$${GIT_REVISION}/ $$shell_path($$ANDROID_MANIFEST_OUT) && \
-        sed -i s/@GIT_COMMIT_CNT@/$${GIT_COMMIT_CNT}/ $$shell_path($$ANDROID_MANIFEST_OUT)
+        sed -i s/@GIT_COMMIT_CNT@/$${DECKOS_VERSION_CODE}/ $$shell_path($$ANDROID_MANIFEST_OUT)  # DECKOS: versionCode from the version tag
 
     ANDROID_PACKAGE_SOURCE_DIR = $${ANDROID_CFGDIR_OUT}
     ANDROID_EXTRA_LIBS += \

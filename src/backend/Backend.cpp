@@ -54,7 +54,7 @@ class FolderListModel;
 namespace {
 void print_metainfo()
 {
-    Log::info(LOGMSG("Pegasus " GIT_REVISION " (" GIT_DATE ")"));
+    Log::info(LOGMSG("DeckOS " GIT_REVISION " (" GIT_DATE ")"));  // DECKOS
     Log::info(LOGMSG("Running on %1 (%2, %3)").arg(
         QSysInfo::prettyProductName(),
         QSysInfo::currentCpuArchitecture(),

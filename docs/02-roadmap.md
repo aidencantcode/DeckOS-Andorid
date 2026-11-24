@@ -5,13 +5,14 @@ Work top to bottom. Each phase ends with an APK the owner tests. Tick boxes as y
 ---
 
 ## Phase 0 — Foundation (no visible features yet)
-- [ ] Run `tools/bootstrap.sh` (or `.ps1`): clone upstream with submodules into `./deckos`, rename `origin` → `upstream`, create the owner's repo as `origin` (ask for its URL; until then work locally).
-  - 2026-11-25: cloned at upstream `3702598c`, `upstream` remote set, DeckOS branch `main` created. **Pending:** owner's repo URL → `origin`.
+- [x] Run `tools/bootstrap.sh` (or `.ps1`): clone upstream with submodules into `./deckos`, rename `origin` → `upstream`, create the owner's repo as `origin` (ask for its URL; until then work locally).
+  - 2026-11-25: cloned at upstream `3702598c`, `upstream` remote set, DeckOS branch `main` created; `origin` = github.com/aidencantcode/DeckOS-Andorid (gh CLI auth, repo-local credential helper).
 - [x] Build **unmodified** Pegasus on PC; run it; confirm a theme loads. Record exact toolchain in `DECISIONS.md`. (2026-11-25: Qt 5.15.2 MinGW 8.1, 191/191 tests, Pegasus Grid loads; `tools/check.ps1` gate = build + unit tests.)
 - [ ] Get the upstream Android workflow green in the owner's GitHub repo (it downloads the prebuilt Qt 5.15.10 Android toolchain). Produce an installable debug APK artifact. Add a stable debug keystore via repo secrets so new builds install over old ones.
+  - 2026-11-25: first push green — upstream `android.yml` built both ABIs (debug APK artifacts), `ci.yml` qmake + CMake green. **Pending:** stable keystore.
   - [ ] Then switch to the DeckOS release flow (`13-release-flow.md`): `tools/check.ps1` gate, `tools/ship.ps1`, tag-triggered `android.yml` → GitHub pre-release with APK, Linux `ci.yml` for ordinary pushes; drop upstream's deploy/coverage jobs.
   - [x] GitHub presentation: DeckOS README, docs index, Test report / Idea issue forms, upstream funding links removed (2026-11-25).
-- [ ] Rebrand identity: app name/label "DeckOS", applicationId `com.deckos.frontend`, new launcher icon + splash placeholders, window title, user-visible "Pegasus" strings → DeckOS. Keep copyright headers, LICENSE, and add About → Open-source licenses (Pegasus credit, Qt, SDL, every lib we add). Data dir names → `deckos`.
+- [x] Rebrand identity: app name/label "DeckOS", applicationId `com.deckos.frontend`, new launcher icon + splash placeholders, window title, user-visible "Pegasus" strings → DeckOS. Keep copyright headers, LICENSE, and add About → Open-source licenses (Pegasus credit, Qt, SDL, every lib we add). Data dir names → `deckos`. (2026-11-25, verified on PC; device check with 0.0.1. Details in DECISIONS.)
 - [x] Move `docs/` (incl. `DECISIONS.md`), `catalog/` and `CHANGELOG.md` into the repo; add `reference/` and `third_party_refs/` to `.gitignore`.
 - [ ] Add `src/backend/deckos/` module skeleton + `deckos` QML context object (empty services) + `deckos.db` with migrations.
 - [ ] Dev tooling: `--deckos-dev` flags (mock data, screenshot tour, fixture ROM dir), offscreen smoke test, qmllint step (see `03-dev-loop.md`). CI runs smoke test on Linux.

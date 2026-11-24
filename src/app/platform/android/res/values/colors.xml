@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="pegasus_bg">#333333</color>
+    <!-- DECKOS: adaptive icon + splash background; keep in sync with tools/make-placeholder-icons.ps1 -->
+    <color name="deckos_bg">#121822</color>
 </resources>

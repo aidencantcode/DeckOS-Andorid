@@ -80,7 +80,7 @@ FocusScope {
         Text {
             id: info
 
-            text: qsTr("When looking for games, Pegasus can use the following data sources, if enabled:") + api.tr
+            text: qsTr("When looking for games, DeckOS can use the following data sources, if enabled:") + api.tr // DECKOS
             color: "#eee"
             font.family: globalFonts.sans
             font.pixelSize: vpx(18)

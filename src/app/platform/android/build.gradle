@@ -74,6 +74,7 @@ android {
     }
 
     defaultConfig {
+        applicationId "com.deckos.frontend"  // DECKOS: own app ID, installs next to Pegasus
         resConfig "en"
         minSdkVersion = qtMinSdkVersion
         targetSdkVersion = qtTargetSdkVersion
