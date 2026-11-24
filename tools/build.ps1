@@ -15,6 +15,19 @@ try {
         if ($LASTEXITCODE -ne 0) { Get-Content qmake.log -Tail 20; throw "qmake failed ($LASTEXITCODE)" }
     }
 
+    # The Qt Quick Compiler's per-file rules come from qmake: after adding QML files to a .qrc (or
+    # changing a .pro/.pri) every Makefile must be regenerated, or linking fails with undefined
+    # QmlCacheGeneratedCode symbols.
+    $makefileTime = (Get-Item 'Makefile').LastWriteTime
+    $newer = Get-ChildItem (Join-Path $DeckosRoot 'src'), (Join-Path $DeckosRoot 'tests') -Recurse -File -Include *.qrc, *.pro, *.pri |
+        Where-Object { $_.LastWriteTime -gt $makefileTime } | Select-Object -First 1
+    if ($newer) {
+        Write-Output "[build] $($newer.Name) changed - regenerating Makefiles"
+        cmd /c "mingw32-make qmake_all > qmake_all.log 2>&1"
+        if ($LASTEXITCODE -ne 0) { Get-Content qmake_all.log -Tail 20; throw "qmake_all failed ($LASTEXITCODE)" }
+        (Get-Item 'Makefile').LastWriteTime = Get-Date
+    }
+
     $start = Get-Date
     cmd /c "mingw32-make -j$Jobs > make.log 2>&1"
     $code = $LASTEXITCODE
