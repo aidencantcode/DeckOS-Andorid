@@ -9,9 +9,9 @@ Push-Location $BuildDir
 try {
     if (-not (Test-Path 'Makefile')) {
         $sdl = $SdlDir -replace '\\', '/'
-        & qmake.exe $DeckosRoot USE_SDL_GAMEPAD=1 USE_SDL_POWER=1 `
-            "SDL_LIBS=-L$sdl/lib -lSDL2" "SDL_INCLUDES=$sdl/include/SDL2" `
-            'QMAKE_CXXFLAGS+=-Wall -Wextra -pedantic' 2>&1 | Out-File -Encoding utf8 qmake.log
+        # Through cmd: qmake prints normal "Project MESSAGE" lines on stderr, which PowerShell 5.1
+        # turns into a terminating error under $ErrorActionPreference = 'Stop'.
+        cmd /c "qmake.exe `"$DeckosRoot`" USE_SDL_GAMEPAD=1 USE_SDL_POWER=1 `"SDL_LIBS=-L$sdl/lib -lSDL2`" `"SDL_INCLUDES=$sdl/include/SDL2`" `"QMAKE_CXXFLAGS+=-Wall -Wextra -pedantic`" > qmake.log 2>&1"
         if ($LASTEXITCODE -ne 0) { Get-Content qmake.log -Tail 20; throw "qmake failed ($LASTEXITCODE)" }
     }
 
