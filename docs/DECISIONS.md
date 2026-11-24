@@ -20,3 +20,19 @@ Format: `## YYYY-MM-DD — Title` · **Decision** · **Why** · **Alternatives c
 - **Alternatives:** Build an APK on every push (wastes CI time, floods the owner with untested builds); CI run number as `versionCode` (the original `03-dev-loop.md` plan).
 - **Also:** Upstream `.github/FUNDING.yml` and Pegasus issue templates replaced by DeckOS issue forms (upstream support is credited in the README instead). Upstream tags are not pushed to the DeckOS repo so its tag list shows only DeckOS versions. These files may conflict on upstream syncs — keep ours.
 - **Revisit if:** the owner wants nightly builds of every push, or a Play Store/F-Droid channel.
+
+## 2026-11-25 — Windows PC toolchain (verified: unmodified Pegasus builds, tests pass, theme loads)
+- **Decision:** Qt **5.15.2** `win64_mingw81` + MinGW-w64 **GCC 8.1.0** (`qt.tools.win64_mingw810`), both installed with **aqtinstall 3.3.0** (standalone `aqt_x64.exe`) from download.qt.io; **SDL2 2.32.10** MinGW dev libs (libsdl-org release, same SDL version as upstream CI); **qmake** build with `USE_SDL_GAMEPAD=1 USE_SDL_POWER=1` and upstream's `-Wall -Wextra -pedantic`. Git for Windows 2.56.1. All of it lives in `../toolchain/` next to the repo (never committed; override with `DECKOS_TOOLCHAIN`). Scripts: `tools/env.ps1`, `build.ps1`, `test.ps1`, `check.ps1`.
+- **Baseline (2026-11-25, upstream `3702598c`):** clean build 1.6 min at `-j12`, 0 warnings in `src/`/`tests/` (only Qt-header `-Wpedantic` and SortFilterProxyModel deprecation noise), **23 suites / 191 tests pass**, Pegasus Grid theme loads with a fixture library (5 games, 2 systems) in a portable config.
+- **Why MinGW, not the MSVC 2026 already on this PC:** GCC's warnings/behaviour are closer to the Android NDK's clang than MSVC's; upstream's Windows releases are MinGW builds; the docs prescribe it; fully self-contained (no VS dependency).
+- **Known version skew:** Android CI uses Qt **5.15.10**; 5.15.2 is the newest open-source 5.15 with official Windows binaries. Fine for development; if a bug only reproduces on one side, suspect this first.
+- **Windows quirks found (workarounds are in the scripts):**
+  - `sh.exe` on PATH (Git-bash) breaks qmake's MinGW makefiles → `env.ps1` builds a minimal PATH with `Git\cmd` only.
+  - QTest output doesn't reach a redirected stdout here, so `make check` logs look empty → `test.ps1` runs each suite with `-o <file>,txt` and parses the totals.
+  - `windeployqt --release` misreads Qt 5.15.2's MinGW plugins as debug builds and refuses to deploy → no deploy step for dev runs; the exe runs from `build/run/` with the toolchain on PATH (aqt hard-wires the Qt prefix, so plugins/QML are found).
+  - Pegasus only reads `metadata.pegasus.txt` directly inside each `game_dirs.txt` entry (not recursively) — fixtures must list each system folder.
+  - The `offscreen` platform has no system fonts (`QFontDatabase: Cannot find font directory`) → the DeckOS theme must bundle its fonts (planned anyway); the smoke test must not count this line as a theme warning.
+  - No OpenSSL 1.1.1 DLLs yet → "SSL support not available" on PC. Add them (aqt `tools_openssl_x64`) before Phase 2 networking.
+  - Pegasus's PC-only providers (Steam/GOG/…) scan this machine → smoke tests must disable them for deterministic results.
+- **Alternatives:** MSVC 2019-ABI Qt build with VS 2026 (works, upstream AppVeyor uses it, but further from Android); official Qt online installer (needs a Qt account); building Qt 5.15.10 from source (hours, little gain).
+- **Revisit if:** a Qt 5.15.2-vs-5.15.10 difference bites, or a later Qt 5.15.x MinGW binary becomes available.

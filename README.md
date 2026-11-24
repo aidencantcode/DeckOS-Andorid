@@ -55,6 +55,8 @@ make            # mingw32-make on Windows
 make check      # unit tests
 ```
 
+On Windows, with the toolchain from [DECISIONS.md](docs/DECISIONS.md) in `../toolchain/`, the scripts do all of this — `tools\check.ps1` builds and runs every test (it is the gate a build must pass before it ships).
+
 Exact toolchain versions and every non-obvious choice are recorded in [docs/DECISIONS.md](docs/DECISIONS.md); the PC/Android dev loop is in [docs/03-dev-loop.md](docs/03-dev-loop.md).
 
 ## Credits
