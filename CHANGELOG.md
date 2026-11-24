@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.0.1 — 2026-11-25
 **First installable DeckOS build.** Underneath it is still the stock Pegasus interface: this build proves that the DeckOS app, its install/update path and the build pipeline work on real hardware. The Steam-style DeckOS interface starts in Phase 1.
 
 ### Test checklist (Odin 3 Max and Retroid Pocket Classic)
