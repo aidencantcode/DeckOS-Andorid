@@ -2,6 +2,14 @@
 
 Work top to bottom. Each phase ends with an APK the owner tests. Tick boxes as you go (`[x]`). The owner's **current top priority** is Phase 2 (RetroAchievements tab) and Phase 3 (scraping) — get to them quickly, but Phases 0–1 must be solid first because everything sits on them.
 
+> **2026-11-25 — personal-build track (owner decision, `DECISIONS.md`).** The app is now built on StMini + BigScreenFE's RA panel in a private repo, so Phase 1 ("build the shell from scratch") and the RA-tab part of Phase 2 are replaced by:
+> - [x] StMini as the built-in default theme, scaled for 1080p (Odin 3) with a floor for near-square screens; QML warnings fixed.
+> - [x] RetroAchievements tab on the game page (BigScreenFE panel), controller login, verified with the owner's account on PC.
+> - [ ] Device check on the Odin 3 (0.0.2 checklist in `CHANGELOG.md`).
+> - [ ] Artwork: SteamGridDB (owner's key available) for grids/heroes/logos, so StMini's tiles and hero areas fill in.
+> - [ ] Retroid Pocket Classic layout pass; RA badge on tiles; credentials into an encrypted store.
+> The remaining phases (scraping, setup wizard, emulators, Steam, playtime, overlays) still apply on top of this theme.
+
 ---
 
 ## Phase 0 — Foundation (no visible features yet)

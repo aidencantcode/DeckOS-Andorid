@@ -7,7 +7,7 @@ One controller-first home for your retro ROMs, standalone emulators, PC-on-Andro
 ![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)
 ![Platform: Android](https://img.shields.io/badge/platform-Android%20handhelds-3ddc84.svg)
 
-> **Status — pre-alpha (Phase 0).** The foundation is being laid: build pipeline, rebrand and developer tooling. The Steam-style interface arrives in Phase 1. Test builds are published on the [Releases](../../releases) page as they pass testing.
+> **Private personal build.** This repository is private and its APKs are for the owner's own devices only: the interface is built on the StMini theme and BigScreenFE's RetroAchievements panel, which may not be redistributed (see [`src/themes/deckos/CREDITS.md`](src/themes/deckos/CREDITS.md)). Test builds appear on the [Releases](../../releases) page once they pass testing; downloading them requires being signed in to GitHub.
 
 ---
 
@@ -62,6 +62,8 @@ Exact toolchain versions and every non-obvious choice are recorded in [docs/DECI
 ## Credits
 
 DeckOS is a heavily modified fork of **[Pegasus Frontend](https://github.com/mmatyas/pegasus-frontend)** by Mátyás Mustoha and contributors — a fantastic, customizable frontend. Its core (game library, metadata format, theme API, launching) is the foundation everything here is built on. If you like DeckOS, consider [supporting Pegasus](https://pegasus-frontend.org) too.
+
+The interface is **StMini** 0.3.1 by ScriptUT, and the RetroAchievements panel comes from **[BigScreenFE](https://github.com/ZagonAb/BigScreenFE)** by Gonzalo Abbate (CC BY-NC-SA 4.0), both modified for DeckOS.
 
 Third-party libraries are listed in the app under *Settings → About → Open-source licenses*.
 
