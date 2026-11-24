@@ -7,7 +7,7 @@ One controller-first home for your retro ROMs, standalone emulators, PC-on-Andro
 ![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)
 ![Platform: Android](https://img.shields.io/badge/platform-Android%20handhelds-3ddc84.svg)
 
-> **Private personal build.** This repository is private and its APKs are for the owner's own devices only: the interface is built on the StMini theme and BigScreenFE's RetroAchievements panel, which may not be redistributed (see [`src/themes/deckos/CREDITS.md`](src/themes/deckos/CREDITS.md)). Test builds appear on the [Releases](../../releases) page once they pass testing; downloading them requires being signed in to GitHub.
+> **Personal build — not for general use.** This repository is public for now only so the owner can install test builds on several handhelds; it will go private again when development ends. The APKs are for the owner's own devices: the interface is built on the StMini theme and BigScreenFE's RetroAchievements panel, which may not be redistributed (see [`src/themes/deckos/CREDITS.md`](src/themes/deckos/CREDITS.md)). Please don't fork it, mirror it or share the builds. Test builds appear on the [Releases](../../releases) page once they pass testing.
 
 ---
 

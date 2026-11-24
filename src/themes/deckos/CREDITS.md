@@ -1,8 +1,9 @@
 # DeckOS theme — credits and licensing (PRIVATE PERSONAL BUILD)
 
 This theme is a modified combination of two third-party Pegasus themes, used by the repo owner for
-**private, non-commercial, personal use only**. The repository must stay private and the APK must not be
-shared (decision 2026-11-25, `docs/DECISIONS.md`).
+**private, non-commercial, personal use only**. The APK is not for distribution. The repository is
+temporarily public only so the owner's own handhelds can download test builds without signing in to GitHub;
+the owner will make it private again when development ends (decisions 2026-11-25, `docs/DECISIONS.md`).
 
 | Part | Source | Author | License |
 |---|---|---|---|
