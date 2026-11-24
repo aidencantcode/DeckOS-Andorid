@@ -125,15 +125,16 @@ FocusScope {
         },
         SettingsEntry {
             label: QT_TR_NOOP("Scan for games on launch")
-            desc: QT_TR_NOOP("Scan for games every time Pegasus starts. You can disable this to improve loading times, but you will need to manually reload the game list to pick up changes.")
+            desc: QT_TR_NOOP("Scan for games every time DeckOS starts. You can disable this to improve loading times, but you will need to manually reload the game list to pick up changes.") // DECKOS
             type: SettingsEntry.Type.Bool
             boolValue: Internal.settings.scanOnLaunch
             boolSetter: (val) => Internal.settings.scanOnLaunch = val
             section: "gaming"
         },
         SettingsEntry {
-            label: QT_TR_NOOP("Hide Pegasus after launching a game")
-            desc: QT_TR_NOOP("Keeping Pegasus visible for a while hides the desktop until the game appears. On platforms that allow only one program on the screen, Pegasus always hides immediately.")
+            // DECKOS: name
+            label: QT_TR_NOOP("Hide DeckOS after launching a game")
+            desc: QT_TR_NOOP("Keeping DeckOS visible for a while hides the desktop until the game appears. On platforms that allow only one program on the screen, DeckOS always hides immediately.")
             type: SettingsEntry.Type.Select
             selectBox: hideDelayBox
             selectValue: root.hideDelayLabel(Internal.settings.hideDelayAfterLaunch)
