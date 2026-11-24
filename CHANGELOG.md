@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.0.2 — 2026-11-25
 **The Steam Deck look arrives.** DeckOS now starts in the StMini Steam Deck interface (Home, Library, side menu, game pages with the green Play button, Deck sounds), sized for the Odin's 1080p screen, with **RetroAchievements on every game page**.
 
 ### Test checklist (Odin 3 Max first)
