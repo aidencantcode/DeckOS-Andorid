@@ -20,6 +20,7 @@
 #include "providers/Provider.h"
 
 #include <QDateTime>
+#include <QFutureSynchronizer>
 #include <QMutex>
 
 
@@ -32,6 +33,7 @@ class PlaytimeStats : public Provider {
 public:
     explicit PlaytimeStats(QString db_path, QObject* parent = nullptr);
     explicit PlaytimeStats(QObject* parent = nullptr);
+    ~PlaytimeStats() override;  // DECKOS: waits for background writes
 
     Provider& run(SearchContext&) final;
 
@@ -72,6 +74,11 @@ private:
     std::vector<MigrationQueueEntry> m_active_migrations;
 
     QMutex m_queue_guard;
+
+    // DECKOS: the writer tasks capture `this` and emit finishedWriting() as their last step. Whoever
+    // waits for that signal may destroy this object while the task is still inside the emit
+    // (use-after-free; crashed test_Playtime on Linux CI). The destructor waits for every task.
+    QFutureSynchronizer<void> m_writers;
 
     void start_processing();
 };

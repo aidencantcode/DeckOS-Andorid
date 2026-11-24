@@ -187,6 +187,12 @@ PlaytimeStats::PlaytimeStats(QString db_path, QObject* parent)
     , m_db_path(std::move(db_path))
 {}
 
+// DECKOS: never destroy the object under a running writer task (see m_writers in the header)
+PlaytimeStats::~PlaytimeStats()
+{
+    m_writers.waitForFinished();
+}
+
 Provider& PlaytimeStats::run(SearchContext& sctx)
 {
     if (!QFileInfo::exists(m_db_path))
@@ -306,7 +312,7 @@ void PlaytimeStats::start_processing()
     m_active_tasks.swap(m_pending_tasks);
     m_active_migrations.swap(m_pending_migrations);
 
-    QtConcurrent::run([this]{
+    m_writers.addFuture(QtConcurrent::run([this]{  // DECKOS: tracked, see ~PlaytimeStats()
         emit startedWriting();
 
         while (!m_active_tasks.empty() || !m_active_migrations.empty()) {
@@ -373,7 +379,7 @@ void PlaytimeStats::start_processing()
         }
 
         emit finishedWriting();
-    });
+    }));
 }
 
 } // namespace playtime

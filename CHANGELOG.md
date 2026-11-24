@@ -3,6 +3,7 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+- Fixed a rare crash when DeckOS closes right after saving a game session's play time (upstream Pegasus bug; also made a unit test crash on Linux CI).
 
 ## 0.0.1 — 2026-11-25
 **First installable DeckOS build.** Underneath it is still the stock Pegasus interface: this build proves that the DeckOS app, its install/update path and the build pipeline work on real hardware. The Steam-style DeckOS interface starts in Phase 1.
