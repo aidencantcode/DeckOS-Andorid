@@ -85,8 +85,9 @@ Study `reference/stmini` (see `reference/REFERENCE_NOTES.md`) then build `src/th
 
 ## Phase 6 — Overlays (spec: `09-overlays.md`)
 - [ ] Capability detection (normal / Shizuku / root).
-- [ ] Performance overlay levels 0–4.
-- [ ] In-game Quick Menu overlay (controller combo via AccessibilityService, plus notification/QS tile fallback).
+- [x] Performance overlay levels 0–4 (0.0.10; no FPS without Shizuku; needs a device check of which sensors are readable).
+- [x] In-game Quick Menu overlay, opened from the in-game notification (0.0.10): Performance, RA achievements, music, quick settings; play time + battery time left.
+- [ ] Open the Quick Menu with a controller combo (AccessibilityService) and a Quick Settings tile; real per-game profiles and AYN / Retroid performance modes.
 - **Exit:** overlay works over at least RetroArch, an AetherSX2-family PS2 emulator and a Winlator-family launcher on Odin 3.
 
 ## Phase 7 — Polish & release

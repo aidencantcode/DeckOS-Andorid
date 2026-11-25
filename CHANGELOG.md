@@ -3,6 +3,34 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**The in-game layer: play time, a Steam-style overlay and a performance HUD.** While you play, DeckOS shows a notification with the game and a live play timer. Tap it for a Steam Deck-style Quick Access menu over the game, with performance info, your RetroAchievements and an overlay level slider. 0.0.9 never got an APK, so this build also carries all of 0.0.9 (ROM-hash achievements, the new keyboard, the boot and menu fixes); its checklist is below.
+
+### Test checklist (Odin 3 Max first, then the Retroid Pocket Classic)
+1. **Permissions:** start DeckOS. On Android 13+ it asks to allow notifications: say yes. Settings → **In-Game** → *Allow drawing over games* opens Android's "Display over other apps" screen: turn DeckOS on, go back, and the row shows ✓.
+2. **Notification:** launch a game. Pull down the notification shade: "**<game name>** · Playing" with a timer counting up. Going to the home screen without a game shows "DeckOS · Tap for the quick access menu". Back in DeckOS, the notification disappears.
+3. **Quick Access:** tap the notification during a game. A panel slides in from the right over the game:
+   - It has a top bar (Wi-Fi, battery, clock, your picture) and a strip with the game, "Playing for…" and the battery time left.
+   - The tabs are Notifications, ★ Achievements, Friends, Quick Settings, Performance, Music, Help and Keyboard. D-pad moves, L1/R1 switch tabs, B closes back into the game, and tapping beside the panel closes it too.
+4. **Performance tab:** shows the battery % and projected time. Set **Performance Overlay Level** with the D-pad to 1, 2, 3 and 4; each draws a different overlay in the game's top-left corner:
+   - 1: battery and play time.
+   - 2: one bar.
+   - 3: the detailed block.
+   - 4: every CPU core and a load graph.
+
+   Tell me which numbers show "-" on each device: CPU %, CPU/GPU temperature, GPU %, fan. Android hides some of them from apps, and I'll look for other places to read them. *Advanced View* shows the same values as rows. *Use per-game profile* and *Performance mode* are switches only for now.
+5. **Achievements tab:** with a game RA knows (signed in to RA in DeckOS), it shows the game, "You've unlocked X/Y", and rows like Steam's list: a check, the badge, the name and description, and the % of players who have it. Unlock something in RetroArch, open the overlay again (or press *Refresh*), and it appears under **Unlocked this session**.
+6. **Music tab:** Play/Pause, Previous and Next control whatever is playing. **Quick Settings** opens Android's Wi-Fi, Bluetooth, volume and display panels. **Return to DeckOS** (Notifications or Help tab) brings DeckOS back.
+7. Everything from 0.0.9 below.
+
+### Under the hood
+- Java `com.deckos.ingame`:
+  - `Session`: what's playing, the settings and lifecycle hooks.
+  - `SessionService`: a foreground service with a chronometer notification, stats once a second and the HUD window.
+  - `QuickAccessActivity`: translucent, in its own task.
+  - `HudView`, `Stats`, `RaClient`, `LevelSlider`, `Ui`.
+- C++ `deckos.ingame` (`InGame`): it hands the game, RA account and profile to Java at every launch (connected before the launcher), then the RA game id once `RaMatcher` finds the ROM's hash.
+- Fixed 0.0.9's failed builds: zipped ROMs are read with miniz (MIT, vendored), because Qt's `QZipReader` is compiled out of the Android and Linux Qt; `PAGE_SIZE` is a macro on Android.
+- New permissions: notifications, foreground service, display over other apps. The overlay's icons are based on Material Design icons (Apache 2.0) and are credited in the licenses screen.
 
 ## 0.0.9 — 2026-11-25
 > **Not published:** the Android build failed (Qt's zip reader is missing from the Android Qt). Everything below ships in the next build.
