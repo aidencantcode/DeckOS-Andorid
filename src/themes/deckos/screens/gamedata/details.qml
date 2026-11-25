@@ -13,8 +13,12 @@ DeckSettingsPage {
 
     // refreshed after every change (gameChanges() is a plain call, not a binding source)
     property var changes: ({})
-    function refresh() { changes = (dk && game) ? dk.gameChanges(game) : ({}) }
+    function refresh() {
+        changes = (dk && game) ? dk.gameChanges(game) : ({})
+        launchCommand = (dk && game) ? dk.gameLaunchCommand(game) : ""
+    }
     Component.onCompleted: refresh()
+    onGameChanged: refresh() // the theme hands the game over after this page is created
 
     property string scrapeMessage: ""
     property bool confirmReset: false
@@ -34,7 +38,37 @@ DeckSettingsPage {
         return t.length > n ? t.substring(0, n) + "…" : t
     }
 
-    rows: [
+    // "Launch with...": the page lists the emulators instead of the details until one is picked or B
+    property bool pickingEmulator: false
+    property string launchCommand: ""
+    backHandler: function () { if (!pickingEmulator) return false; pickingEmulator = false; backToLaunchRow(); return true }
+    function backToLaunchRow() {
+        Qt.callLater(function () {
+            for (var i = 0; i < detailsPage.rows.length; i++)
+                if (detailsPage.rows[i].label === "Launch with2026") { detailsPage.activeItemIndex = i; break }
+        })
+    }
+
+    function emulatorRows() {
+        var r = [{ type: "section", label: "Launch this game with" }]
+        r.push({ type: "button", label: "The system's emulator",
+                 desc: "Same as the other games of this system (Settings > Emulators)",
+                 value: function () { return detailsPage.changes.launchEdited ? "" : "✓" },
+                 activate: function () { dk.setGameLaunchCommand(game, ""); detailsPage.pickingEmulator = false; detailsPage.refresh(); detailsPage.backToLaunchRow() } })
+        var emus = dk ? dk.gameEmulators(game) : []
+        for (var i = 0; i < emus.length; i++) {
+            (function (emu) {
+                r.push({ type: "button", label: emu.name,
+                         desc: (emu.installed ? "Installed" : "Not installed") + (emu.achievements ? "  ·  RetroAchievements" : ""),
+                         activate: function () { dk.setGameEmulator(game, emu.id); detailsPage.pickingEmulator = false; detailsPage.refresh(); detailsPage.backToLaunchRow() } })
+            })(emus[i])
+        }
+        if (emus.length === 0)
+            r.push({ type: "info", label: "No emulators known for this game's system", desc: "Edit the launch command by hand instead" })
+        return r
+    }
+
+    rows: pickingEmulator ? emulatorRows() : [
         { type: "section", label: "Game" },
         { type: "button", label: "Name",
           desc: function () { return detailsPage.changes.titleEdited ? "Renamed in DeckOS — clear it to go back" : "" },
@@ -61,6 +95,14 @@ DeckSettingsPage {
         { type: "button", label: "Choose artwork by hand…",
           desc: "Browse SteamGridDB covers, heroes and logos for this game",
           activate: function () { if (theme) theme.openPage(12) } },
+        { type: "section", label: "Launch" },
+        { type: "button", label: "Launch with…",
+          desc: "Use another emulator for this game only",
+          value: function () { return detailsPage.changes.launchEdited ? "Custom" : "" },
+          activate: function () { detailsPage.pickingEmulator = true; detailsPage.activeItemIndex = 0 } },
+        { type: "button", label: "Launch command",
+          desc: function () { return detailsPage.shortText(detailsPage.launchCommand, 110) || "None" },
+          activate: function () { cmdEntry.original = detailsPage.launchCommand; cmdEntry.open(detailsPage.launchCommand) } },
         { type: "section", label: "Undo" },
         { type: "button", label: "Undo all DeckOS changes",
           desc: function () { return detailsPage.confirmReset ? "Press A again: forgets the new name, description and scraped artwork"
@@ -97,6 +139,20 @@ DeckSettingsPage {
         multiline: true
         onAccepted: {
             if (detailsPage.dk && detailsPage.game && text.trim() !== original.trim()) detailsPage.dk.setGameDescription(detailsPage.game, text)
+            detailsPage.refresh()
+            goToZone(1)
+        }
+    }
+    TextEntry {
+        id: cmdEntry
+        property string original: ""
+        title: "Launch command"
+        hint: "{file.path} = the game's file, {file.uri} = a content:// link to it. Clear it (X) to use the system's command."
+        multiline: true
+        maxLength: 1200
+        onAccepted: {
+            if (detailsPage.dk && detailsPage.game && text.trim() !== original.trim())
+                detailsPage.dk.setGameLaunchCommand(detailsPage.game, text)
             detailsPage.refresh()
             goToZone(1)
         }

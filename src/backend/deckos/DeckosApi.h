@@ -31,6 +31,13 @@ public:
     /// { edited: bool, titleEdited, descriptionEdited, scraped: ISO date or "", sources: "TheGamesDB, ..." }
     Q_INVOKABLE QVariantMap gameChanges(QObject* game) const;
 
+    /// The command a game launches with, a hand-written one for it (empty = back to its system's),
+    /// and "Launch with...": the emulators known for its system, or one of them for this game only.
+    Q_INVOKABLE QString gameLaunchCommand(QObject* game) const;
+    Q_INVOKABLE void setGameLaunchCommand(QObject* game, const QString& command);
+    Q_INVOKABLE QVariantList gameEmulators(QObject* game) const;
+    Q_INVOKABLE void setGameEmulator(QObject* game, const QString& emulatorId);
+
     /// Reloads the library: from the game index cache if no game folder or metadata file changed
     /// (seconds), otherwise a full scan. Settings > Library > "Reload all games" forces a full scan.
     Q_INVOKABLE void refreshLibrary();

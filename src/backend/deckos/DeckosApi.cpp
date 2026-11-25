@@ -6,7 +6,9 @@
 #include "GameOverrides.h"
 #include "RomLibrary.h"
 #include "Scraper.h"
+#include "Catalog.h"
 #include "model/gaming/Game.h"
+#include "model/gaming/Collection.h"
 
 #include <QJsonObject>
 
@@ -122,9 +124,72 @@ QVariantMap DeckosApi::gameChanges(QObject* obj) const
         { QStringLiteral("edited"), !entry.isEmpty() },
         { QStringLiteral("titleEdited"), entry.contains(QStringLiteral("title")) },
         { QStringLiteral("descriptionEdited"), entry.value(QStringLiteral("edited_description")).toBool() },
+        { QStringLiteral("launchEdited"), entry.contains(QStringLiteral("launch")) },
         { QStringLiteral("scraped"), entry.value(QStringLiteral("scraped")).toString() },
         { QStringLiteral("sources"), entry.value(QStringLiteral("sources")).toString() },
     };
+}
+
+} // namespace deckos
+
+namespace {
+// the catalog system a game belongs to: its collection's short name (DeckOS ROM-folder collections use
+// the catalog id), or any of its collections that matches a catalog folder alias
+const deckos::CatalogSystem* system_of(const model::Game& game)
+{
+    const deckos::Catalog& catalog = deckos::Catalog::instance();
+    for (const model::Collection* coll : game.collectionsModel()->entries()) {
+        if (const deckos::CatalogSystem* sys = catalog.byId(coll->shortName()))
+            return sys;
+        if (const deckos::CatalogSystem* sys = catalog.byFolderName(coll->shortName()))
+            return sys;
+        if (const deckos::CatalogSystem* sys = catalog.byFolderName(coll->name()))
+            return sys;
+    }
+    return nullptr;
+}
+} // namespace
+
+namespace deckos {
+
+QString DeckosApi::gameLaunchCommand(QObject* obj) const
+{
+    auto game = qobject_cast<model::Game*>(obj);
+    return game ? game->launchCmd() : QString();
+}
+
+void DeckosApi::setGameLaunchCommand(QObject* obj, const QString& command)
+{
+    auto game = qobject_cast<model::Game*>(obj);
+    if (!game)
+        return;
+    const QString key = GameOverrides::keyFor(*game);
+    const QString clean = command.trimmed();
+    if (clean.isEmpty()) {
+        GameOverrides::instance().update(key, { { QStringLiteral("launch"), QJsonValue::Null } });
+        const QVariantMap& extra = game->extraMap();
+        if (extra.contains(QStringLiteral("deckos_original_launch")))
+            game->setLaunchCmd(extra.value(QStringLiteral("deckos_original_launch")).toString());
+        return;
+    }
+    GameOverrides::instance().update(key, { { QStringLiteral("launch"), clean } });
+    GameOverrides::apply(*game, { { QStringLiteral("launch"), clean } }, true);
+}
+
+QVariantList DeckosApi::gameEmulators(QObject* obj) const
+{
+    auto game = qobject_cast<model::Game*>(obj);
+    const CatalogSystem* sys = game ? system_of(*game) : nullptr;
+    return sys ? m_library->emulatorsFor(sys->id) : QVariantList();
+}
+
+void DeckosApi::setGameEmulator(QObject* obj, const QString& emulator_id)
+{
+    auto game = qobject_cast<model::Game*>(obj);
+    const CatalogSystem* sys = game ? system_of(*game) : nullptr;
+    const CatalogEmulator* emu = sys ? sys->emulator(emulator_id) : nullptr;
+    if (emu)
+        setGameLaunchCommand(game, launch_command(*emu));
 }
 
 } // namespace deckos

@@ -240,6 +240,13 @@ void GameOverrides::apply(model::Game& game, const QJsonObject& entry, bool live
     const QDate release = QDate::fromString(entry.value(QStringLiteral("release")).toString(), Qt::ISODate);
     if (release.isValid()) { game.setReleaseDate(release); meta_changed = true; }
 
+    // a per-game launch command ("Launch with..." / edited in Properties)
+    const QString launch = entry.value(QStringLiteral("launch")).toString();
+    if (!launch.isEmpty()) {
+        keep_original(game, "launch", game.launchCmd());
+        game.setLaunchCmd(launch);
+    }
+
     const int players = entry.value(QStringLiteral("players")).toInt(0);
     if (players > 0) { game.setPlayerCount(players); meta_changed = true; }
 
@@ -273,6 +280,8 @@ void GameOverrides::restore(model::Game& game)
     if (found) { game.setDescription(value); changed = true; }
     value = original("summary", found);
     if (found) game.setSummary(value);
+    value = original("launch", found);
+    if (found) game.setLaunchCmd(value);
 
     // scraped artwork files are not shown any more (other sources' files stay)
     const QString media_prefix = QUrl::fromLocalFile(mediaDir()).toString();

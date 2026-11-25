@@ -373,7 +373,9 @@ FocusScope {
     }
     // ── НАЗАД / ОТМЕНА ──
     else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape) {
-        if (activeZone === 1 && page && page.hasOwnProperty("sliderActive") && page.sliderActive) {
+        if (activeZone === 1 && page && typeof page.handleBack === "function" && page.handleBack()) {
+            sBack.stop(); sBack.play() // DECKOS: the page went back within itself (sub-list)
+        } else if (activeZone === 1 && page && page.hasOwnProperty("sliderActive") && page.sliderActive) {
             if (page.hasOwnProperty("handleCancel")) page.handleCancel()
         } else if (activeZone === 1) {
             activeZone = 0

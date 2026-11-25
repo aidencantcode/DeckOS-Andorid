@@ -18,7 +18,8 @@ Work top to bottom. Each phase ends with an APK the owner tests. Tick boxes as y
 > - [x] "Show Boot Animation" toggle wired to the boot video. (0.0.5)
 > - [ ] Native (Steam-styled) key/gamepad editors.
 > - [x] ROM folders without metadata: system detection by folder name, per-system generated metadata, per-system rescan, emulator catalog (NeoStation, GPL-3.0) with installed-emulator auto-pick and editable commands. (0.0.6)
-> - [ ] The remaining original QoL items below (wizard + folder scan, emulator catalog/launch editor, RetroArch, Steam profile, overlays) — study `misobadev/neostation-frontend` for launch args, scraping and RA.
+> - [x] Per-game "Launch with…" and editable per-game command (0.0.8); first-start welcome card (0.0.7).
+> - [ ] The remaining original QoL items below (Steam profile, overlays, RA hash matching, native key editors) — study `misobadev/neostation-frontend` for launch args, scraping and RA.
 > The remaining phases (scraping, setup wizard, emulators, Steam, playtime, overlays) still apply on top of this theme.
 
 ---

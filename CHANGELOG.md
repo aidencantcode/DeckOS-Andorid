@@ -3,6 +3,16 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**Launch with… for single games.** A game's Properties → Details now has a *Launch* section: pick another emulator for just that game, or view and edit its full launch command.
+
+### Test checklist
+1. A game → gear → Properties → Details → **Launch with…**: the emulators for its system (installed first). Pick one → that game starts with it; the rest of the system keeps its emulator.
+2. **Launch command** shows the exact `am start …` command; edit it (keyboard, Y pastes) → saved for this game. Clear it (X) and save → back to the system's command. *The system's emulator* in Launch with… does the same.
+3. *Undo all DeckOS changes* also resets the launch command.
+
+### Under the hood
+- Per-game `launch` in the DeckOS game changes (applied over the system's command on every load, original kept for undo); `deckos.gameLaunchCommand/setGameLaunchCommand/gameEmulators/setGameEmulator`.
+- Fixed: the Details page read its game before the theme handed it over (flags like "Edited" could show stale values).
 
 ## 0.0.7 — 2026-11-25
 **A first-start welcome.** On a fresh install (no ROM folder, no metadata folder) Home shows a "Welcome to DeckOS" card: A goes straight to Settings → Library to add your ROM folder, B hides it for good.
