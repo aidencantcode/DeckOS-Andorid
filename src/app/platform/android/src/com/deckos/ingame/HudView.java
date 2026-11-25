@@ -1,6 +1,6 @@
 // DeckOS - in-game layer
 // The performance overlay, MangoHud / Steam Deck style, drawn in a window over the game.
-//   1  battery + play time (the frame rate Steam shows here isn't readable on Android without Shizuku)
+//   1  frame rate (AYN / Retroid, through PServer), battery and play time
 //   2  one horizontal bar: BATT | GPU | CPU | RAM | play time
 //   3  the vertical block: clock, GPU, CPU, RAM, BATT, time left, fan, session
 //   4  level 3 + every CPU core and a 60 s CPU load graph
@@ -32,6 +32,7 @@ final class HudView extends View {
     static final int FAN = Color.rgb(0xe5, 0x5b, 0x5b);
     static final int SESSION = Color.rgb(0xff, 0xff, 0xff);
     static final int GRAPH = Color.rgb(0x00, 0xff, 0x00);
+    static final int ENGINE = Color.rgb(0xeb, 0x5b, 0x5b); // MangoHud's frame rate line
 
     private final float u;
     private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -44,6 +45,8 @@ final class HudView extends View {
     private int level = 0;
     private Stats.Snapshot snap = new Stats.Snapshot();
     private long sessionStart = System.currentTimeMillis();
+    private float fps = Float.NaN;   // NaN: not shown
+    private String profile = "";     // AYN / Retroid mode, fan and underclock
     private final float[] history = new float[60];
     private int historyCount = 0;
 
@@ -83,9 +86,11 @@ final class HudView extends View {
         rebuild();
     }
 
-    void update(Stats.Snapshot s, long start) {
+    void update(Stats.Snapshot s, long start, float framesPerSecond, String profileLine) {
         snap = s;
         sessionStart = start;
+        fps = framesPerSecond;
+        profile = profileLine == null ? "" : profileLine;
         if (!Float.isNaN(s.cpuPct)) {
             System.arraycopy(history, 1, history, 0, history.length - 1);
             history[history.length - 1] = s.cpuPct;
@@ -120,6 +125,7 @@ final class HudView extends View {
         Stats.Snapshot s = snap;
         if (level == 1) {
             List<Cell> l = new ArrayList<>();
+            if (!Float.isNaN(fps)) { l.add(new Cell("FPS", "", ENGINE, true)); l.add(new Cell(num(fps), "", 0, false)); }
             l.add(new Cell("BATT", "", BATT, true));
             l.add(new Cell(num(s.battPct), "%", 0, false));
             l.add(new Cell(playTime(sessionStart), "", SESSION, false));
@@ -127,6 +133,7 @@ final class HudView extends View {
         }
         else if (level == 2) {
             List<Cell> l = new ArrayList<>();
+            if (!Float.isNaN(fps)) { l.add(new Cell("FPS", "", ENGINE, true)); l.add(new Cell(num(fps), "", 0, false)); }
             l.add(new Cell("BATT", "", BATT, true));
             l.add(new Cell(num(s.battPct), "%", 0, false));
             l.add(new Cell(Float.isNaN(s.battWatts) ? "-" : String.format(Locale.US, "%.1f", s.battWatts), "W", 0, false));
@@ -143,6 +150,11 @@ final class HudView extends View {
         }
         else if (level >= 3) {
             lines.add(row(new Cell(clock.format(new Date()), "", Color.WHITE, true)));
+            if (!Float.isNaN(fps))
+                lines.add(row(new Cell("FPS", "", ENGINE, true), new Cell(num(fps), "", 0, false), new Cell("", "", 0, false),
+                              new Cell(fps > 0 ? String.format(Locale.US, "%.1f", 1000f / fps) : "-", "ms", 0, false)));
+            if (!profile.isEmpty())
+                lines.add(row(new Cell(profile, "", Color.WHITE, false)));
             lines.add(row(new Cell("GPU", "", GPU, true), new Cell(num(s.gpuPct), "%", 0, false),
                           new Cell(num(s.gpuTempC), "\u00b0C", 0, false), new Cell(s.gpuMhz < 0 ? "-" : String.valueOf(s.gpuMhz), "MHz", 0, false)));
             lines.add(row(new Cell("CPU", "", CPU, true), new Cell(num(s.cpuPct), "%", 0, false),
@@ -213,7 +225,9 @@ final class HudView extends View {
         }
         float w = 0;
         for (float c : colWidth) w += c + 12 * u;
-        return Math.max(w, labelPaint.measureText(lines.get(0).get(0).value));
+        for (List<Cell> l : lines) // lines of one cell (clock, profile) span the block
+            if (l.size() == 1) w = Math.max(w, cellWidth(l.get(0)));
+        return w;
     }
 
 

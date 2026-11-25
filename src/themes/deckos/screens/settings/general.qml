@@ -59,7 +59,7 @@ DeckSettingsPage {
                  desc: "Show the pointer and react to clicks and taps",
                  value: function () { return Internal.settings.mouseSupport },
                  toggle: function () { Internal.settings.mouseSupport = !Internal.settings.mouseSupport } })
-        // DECKOS: Android keeps DeckOS loaded while playing instead (Settings > In-Game); PC only
+        // DECKOS: Android keeps DeckOS loaded while playing instead (Settings > Overlay); PC only
         if (!isAndroid)
             r.push({ type: "choice", label: "Hide DeckOS after launching a game",
                      desc: "When the game takes over the screen",

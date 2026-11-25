@@ -29,8 +29,13 @@ public final class Session {
 
     private static final String PREFS = "deckos_ingame";
     private static final String KEY_HUD = "hud_level";
-    private static final String KEY_NOTIFY = "notification";
+    static final String KEY_NOTIFY = "notification";
     private static final String KEY_KEEP_LOADED = "keep_loaded";
+    static final String KEY_SCALE = "overlay_scale";
+    static final String KEY_KEEP_RUNNING = "keep_running";
+    static final String KEY_SHORTCUT = "shortcut";
+    static final String KEY_HUD_POS = "hud_position";
+    static final String KEY_FPS = "show_fps";
     static final String KEY_PER_GAME = "per_game_profile";
     static final String KEY_PERF_MODE = "performance_mode";
     static final String KEY_TAB = "last_tab";
@@ -49,6 +54,8 @@ public final class Session {
     static volatile String profilePicture = "";
     static volatile long startedAt = 0;
     private static volatile boolean sGameLaunched = false;
+    /// DeckOS itself is on screen (the controller shortcut does nothing then)
+    static volatile boolean frontendInFront = true;
 
     private Session() {}
 
@@ -143,9 +150,116 @@ public final class Session {
     }
 
 
+    // --- overlay settings (the overlay's own Overlay tab and DeckOS's Settings > Overlay) ----------
+
+    /// Quick Access and HUD size, percent of Steam Deck size
+    public static int overlayScale() {
+        return sApp == null ? 125 : Math.max(50, Math.min(250, prefs().getInt(KEY_SCALE, 125)));
+    }
+
+    public static void setOverlayScale(int percent) {
+        if (sApp == null) return;
+        prefs().edit().putInt(KEY_SCALE, Math.max(50, Math.min(250, percent))).apply();
+        SessionService.refresh();
+    }
+
+    /// Quick Access as an overlay window: the game isn't paused
+    public static boolean keepRunning() {
+        return sApp != null && prefs().getBoolean(KEY_KEEP_RUNNING, false);
+    }
+
+    public static void setKeepRunning(boolean on) {
+        if (sApp != null) prefs().edit().putBoolean(KEY_KEEP_RUNNING, on).apply();
+    }
+
+    /// controller shortcut: 0 off, 1 Select+Start, 2 Select+R1, 3 L3+R3
+    public static int shortcut() {
+        return sApp == null ? 0 : prefs().getInt(KEY_SHORTCUT, 2);
+    }
+
+    public static void setShortcut(int combo) {
+        if (sApp != null) prefs().edit().putInt(KEY_SHORTCUT, Math.max(0, Math.min(3, combo))).apply();
+    }
+
+    public static boolean shortcutServiceEnabled() {
+        return sApp != null && ShortcutService.enabled(sApp);
+    }
+
+    public static void openAccessibilitySettings() {
+        openSettings(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+    }
+
+    /// performance overlay corner: 0 top left, 1 top right, 2 bottom left, 3 bottom right
+    public static int hudPosition() {
+        return sApp == null ? 0 : prefs().getInt(KEY_HUD_POS, 0);
+    }
+
+    public static void setHudPosition(int pos) {
+        if (sApp == null) return;
+        prefs().edit().putInt(KEY_HUD_POS, Math.max(0, Math.min(3, pos))).apply();
+        SessionService.refresh();
+    }
+
+    public static boolean showFps() {
+        return sApp != null && prefs().getBoolean(KEY_FPS, true);
+    }
+
+    public static void setShowFps(boolean on) {
+        if (sApp == null) return;
+        prefs().edit().putBoolean(KEY_FPS, on).apply();
+        SessionService.refresh();
+    }
+
+    /// the AYN / Retroid system service DeckOS uses for modes, underclocking and the frame rate
+    public static boolean privilegedAvailable() {
+        return Privileged.available();
+    }
+
+    public static String deviceInfo() {
+        return sApp == null ? "" : DeviceControl.deviceInfo(sApp);
+    }
+
+    /// a ClusterTune export file's text: keeps its first profile as "Custom". Its name, or "!error".
+    public static String importClusterTune(String json) {
+        return sApp == null ? "!" : DeviceControl.importClusterTune(json);
+    }
+
+    public static String customUnderclockName() {
+        if (sApp == null) return "";
+        org.json.JSONObject p = DeviceControl.customProfile(sApp);
+        return p == null ? "" : p.optString("name", "Custom");
+    }
+
+    static void openSettings(Intent intent) {
+        if (sApp == null) return;
+        try {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            sApp.startActivity(intent);
+        }
+        catch (Exception e) {
+            Log.w(TAG, "can't open settings: " + e);
+        }
+    }
+
+    /// the notification and the controller shortcut: Quick Access as an overlay (keep running) or activity
+    static void openQuickAccess(Context ctx) {
+        if (keepRunning() && QuickAccessOverlay.show(ctx))
+            return;
+        Intent i = new Intent(ctx, QuickAccessActivity.class);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            ctx.startActivity(i);
+        }
+        catch (Exception e) {
+            Log.w(TAG, "can't open quick access: " + e);
+        }
+    }
+
+
     // --- DeckOS's main activity -------------------------------------------------------------------
 
     public static void onFrontendStopped(Activity activity) {
+        frontendInFront = false;
         if (sApp == null || !notificationEnabled())
             return;
         if (!sGameLaunched) {
@@ -160,6 +274,8 @@ public final class Session {
     }
 
     public static void onFrontendResumed(Activity activity) {
+        frontendInFront = true;
+        QuickAccessOverlay.hide();
         sGameLaunched = false;
         SessionService.stop(activity);
     }

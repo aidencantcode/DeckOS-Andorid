@@ -206,7 +206,7 @@ FocusScope {
                         ["Accessibility", "¹", "settings/accessibility.qml"],
                         ["Sound",         "S", "settings/sound.qml"],
                         ["Power",         "~", "settings/power.qml"],
-                        ["In-Game",       "4", "settings/ingame.qml"], /* DECKOS: notification, overlay */
+                        ["Overlay",       "4", "settings/ingame.qml"], /* DECKOS: in-game menu + performance overlay */
                         ["High Contrast", "●", "settings/highcontrast.qml"],
                         ["Customization", "☆", "settings/customization.qml"],
                         ["Controller",    "G", "settings/controller.qml"],

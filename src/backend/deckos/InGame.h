@@ -34,6 +34,23 @@ class InGame : public QObject {
     /// a game started from DeckOS is running (Android, with keepLoaded): DeckOS is waiting for it
     Q_PROPERTY(bool playing READ playing NOTIFY playingChanged)
 
+    // the overlay's own settings (its Overlay tab shows the same values: Java Session prefs)
+    /// Quick Access and performance overlay size, percent of Steam Deck size (75-200)
+    Q_PROPERTY(int overlayScale READ overlayScale WRITE setOverlayScale NOTIFY changed)
+    /// Quick Access as an overlay window, so the game isn't paused
+    Q_PROPERTY(bool keepRunning READ keepRunning WRITE setKeepRunning NOTIFY changed)
+    /// controller shortcut: 0 off, 1 Select+Start, 2 Select+R1, 3 L3+R3
+    Q_PROPERTY(int shortcut READ shortcut WRITE setShortcut NOTIFY changed)
+    /// DeckOS's accessibility service (needed for the shortcut) is turned on
+    Q_PROPERTY(bool shortcutEnabled READ shortcutEnabled NOTIFY changed)
+    /// performance overlay corner: 0 top left, 1 top right, 2 bottom left, 3 bottom right
+    Q_PROPERTY(int hudPosition READ hudPosition WRITE setHudPosition NOTIFY changed)
+    Q_PROPERTY(bool showFps READ showFps WRITE setShowFps NOTIFY changed)
+    /// AYN / Retroid's PServer is there (modes, underclocking, frame rate)
+    Q_PROPERTY(bool privileged READ privileged NOTIFY changed)
+    /// name of the imported ClusterTune profile used as "Custom" underclock ("" = none)
+    Q_PROPERTY(QString customUnderclock READ customUnderclock NOTIFY changed)
+
 public:
     InGame(model::ApiObject* api, RaMatcher* ra, QObject* parent = nullptr);
 
@@ -46,6 +63,26 @@ public:
     bool keepLoaded() const;
     void setKeepLoaded(bool on);
     bool playing() const { return m_playing; }
+    int overlayScale() const;
+    void setOverlayScale(int percent);
+    bool keepRunning() const;
+    void setKeepRunning(bool on);
+    int shortcut() const;
+    void setShortcut(int combo);
+    bool shortcutEnabled() const;
+    int hudPosition() const;
+    void setHudPosition(int pos);
+    bool showFps() const;
+    void setShowFps(bool on);
+    bool privileged() const;
+    QString customUnderclock() const;
+
+    /// Android's accessibility settings, to turn on the shortcut service
+    Q_INVOKABLE void openAccessibilitySettings();
+    /// model, chip, PServer, vendor settings and sensors - for checking a new handheld
+    Q_INVOKABLE QString deviceInfo() const;
+    /// reads a ClusterTune export file and keeps its first profile as "Custom"; "" or an error message
+    Q_INVOKABLE QString importClusterTune(const QString& path);
 
     /// opens Android's "Display over other apps" screen for DeckOS
     Q_INVOKABLE void requestOverlayPermission();
@@ -72,6 +109,11 @@ private:
     int m_pc_hud = 0;
     bool m_pc_notification = true;
     bool m_pc_keep_loaded = true;
+    int m_pc_scale = 125;
+    bool m_pc_keep_running = false;
+    int m_pc_shortcut = 2;
+    int m_pc_hud_pos = 0;
+    bool m_pc_fps = true;
 
     void onAppState(Qt::ApplicationState state);
     void endSession();

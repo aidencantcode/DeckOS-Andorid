@@ -91,6 +91,18 @@
             android:name="com.deckos.ingame.SessionService"
             android:exported="false" />
 
+        <!-- DECKOS: the controller shortcut for Quick Access (key events only, no screen content) -->
+        <service
+            android:name="com.deckos.ingame.ShortcutService"
+            android:label="@string/deckos_shortcut_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/deckos_accessibility" />
+        </service>
+
         <provider
             android:name="org.pegasus_frontend.android.LaunchFileProvider"
             android:authorities="${applicationId}.files"
@@ -116,6 +128,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- DECKOS: Quick Settings (brightness, Wi-Fi state, Bluetooth on/off and paired devices) -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
 
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />

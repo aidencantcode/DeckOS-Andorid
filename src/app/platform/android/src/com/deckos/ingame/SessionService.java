@@ -37,6 +37,8 @@ public class SessionService extends Service {
     private HudView hud;
     private WindowManager wm;
     private int shownTitleHash = 0;
+    private int hudScale = 0, hudPos = -1;      // what the HUD window was made with
+    static final String ACTION_OPEN = "com.deckos.ingame.OPEN_QUICK_ACCESS";
 
     static void start(Context ctx) {
         Intent intent = new Intent(ctx, SessionService.class);
@@ -87,6 +89,8 @@ public class SessionService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         startForeground(NOTIFICATION_ID, buildNotification());
         apply();
+        if (intent != null && ACTION_OPEN.equals(intent.getAction()))
+            Session.openQuickAccess(this); // the notification was tapped
         return START_NOT_STICKY;
     }
 
@@ -94,6 +98,7 @@ public class SessionService extends Service {
     public void onDestroy() {
         sInstance = null;
         statsHandler.removeCallbacksAndMessages(null);
+        statsHandler.post(() -> DeviceControl.fpsTick(this, false)); // stops the frame counter loop
         statsThread.quitSafely();
         removeHud();
         stopForeground(true);
@@ -107,15 +112,24 @@ public class SessionService extends Service {
     private final Runnable sampler = new Runnable() {
         @Override
         public void run() {
+            String profile = "";
+            float fps = Float.NaN;
             try {
                 last = stats.sample();
+                // the frame counter loop runs only while the HUD shows it
+                boolean wantFps = hud != null && Session.showFps();
+                DeviceControl.fpsTick(SessionService.this, wantFps);
+                if (wantFps) fps = DeviceControl.fps();
+                if (hud != null && Session.hudLevel() >= 3) profile = profileLine();
             }
             catch (Exception e) {
                 Log.w(Session.TAG, "stats: " + e);
             }
+            final String p = profile;
+            final float f = fps;
             main.post(() -> {
                 if (hud != null)
-                    hud.update(last, Session.startedAt);
+                    hud.update(last, Session.startedAt, f, p);
             });
             statsHandler.postDelayed(this, 1000);
         }
@@ -128,17 +142,30 @@ public class SessionService extends Service {
             startForeground(NOTIFICATION_ID, buildNotification());
         }
         int level = Session.hudLevel();
+        if (hud != null && (hudScale != Session.overlayScale() || hudPos != Session.hudPosition()))
+            removeHud(); // size or corner changed: made again below
         if (level > 0 && Session.overlayAllowed())
             showHud(level);
         else
             removeHud();
     }
 
+    /// "High Performance · Fan Smart · CPU Medium" for the HUD (AYN / Retroid only; empty elsewhere)
+    private String profileLine() {
+        StringBuilder b = new StringBuilder();
+        String perf = DeviceControl.perfName(this), fan = DeviceControl.fanName(this), uc = DeviceControl.underclockName();
+        if (!perf.isEmpty()) b.append(perf);
+        if (!fan.isEmpty()) b.append(b.length() > 0 ? " · " : "").append("Fan ").append(fan);
+        if (!uc.isEmpty()) b.append(b.length() > 0 ? " · " : "").append("CPU ").append(uc);
+        return b.toString();
+    }
+
     private Notification buildNotification() {
-        Intent open = new Intent(this, QuickAccessActivity.class);
-        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        // through this service, which opens Quick Access as an activity or, with "Keep game running", as
+        // an overlay window (no activity, so the game isn't paused)
+        Intent open = new Intent(this, SessionService.class).setAction(ACTION_OPEN);
         int piFlags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
-        PendingIntent pi = PendingIntent.getActivity(this, 0, open, piFlags);
+        PendingIntent pi = PendingIntent.getService(this, 0, open, piFlags);
 
         boolean game = Session.hasGame();
         return new NotificationCompat.Builder(this, Session.CHANNEL)
@@ -162,9 +189,11 @@ public class SessionService extends Service {
 
     private void showHud(int level) {
         if (hud == null) {
-            float u = getResources().getDisplayMetrics().heightPixels / 800f; // Steam Deck pixels
-            if (getResources().getDisplayMetrics().widthPixels < getResources().getDisplayMetrics().heightPixels)
-                u = getResources().getDisplayMetrics().widthPixels / 800f;
+            hudScale = Session.overlayScale();
+            hudPos = Session.hudPosition();
+            // Steam Deck pixels, times the overlay size setting
+            float u = Math.min(getResources().getDisplayMetrics().heightPixels, getResources().getDisplayMetrics().widthPixels) / 800f
+                      * hudScale / 100f;
             hud = new HudView(this, u);
             int type = Build.VERSION.SDK_INT >= 26
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -174,7 +203,7 @@ public class SessionService extends Service {
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                     | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT);
-            lp.gravity = Gravity.TOP | Gravity.START;
+            lp.gravity = (hudPos >= 2 ? Gravity.BOTTOM : Gravity.TOP) | (hudPos % 2 == 1 ? Gravity.END : Gravity.START);
             lp.x = Math.round(8 * u);
             lp.y = Math.round(8 * u);
             lp.alpha = 0.8f; // Android 12+ passes touches through overlays only up to 80% opacity

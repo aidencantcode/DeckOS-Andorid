@@ -1,5 +1,6 @@
 // DeckOS - in-game layer
 // Steam's "Performance Overlay Level" slider: OFF 1 2 3 4. D-pad left/right (or a tap) changes it.
+// Also used with other labels: performance mode, fan, underclock, overlay scale.
 
 package com.deckos.ingame;
 
@@ -17,16 +18,22 @@ import android.view.View;
 final class LevelSlider extends View {
     interface Listener { void onLevel(int level); }
 
-    private static final String[] LABELS = { "OFF", "1", "2", "3", "4" };
+    private static final String[] LEVELS = { "OFF", "1", "2", "3", "4" };
+    private final String[] LABELS;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final float u;
     private int level;
     private final Listener listener;
 
     LevelSlider(Context ctx, float u, int level, Listener listener) {
+        this(ctx, u, LEVELS, level, listener);
+    }
+
+    LevelSlider(Context ctx, float u, String[] labels, int level, Listener listener) {
         super(ctx);
         this.u = u;
-        this.level = level;
+        this.LABELS = labels;
+        this.level = Math.max(-1, Math.min(labels.length - 1, level));
         this.listener = listener;
         setFocusable(true);
         setClickable(true);
@@ -34,6 +41,7 @@ final class LevelSlider extends View {
     }
 
     private void set(int value) {
+        if (!isEnabled()) return;
         value = Math.max(0, Math.min(LABELS.length - 1, value));
         if (value == level)
             return;
@@ -80,7 +88,7 @@ final class LevelSlider extends View {
         float left = r, right = getWidth() - r;
         float cy = 14 * u;
         float step = (right - left) / (LABELS.length - 1);
-        float knobX = left + step * level;
+        float knobX = left + step * Math.max(0, level); // level -1: unknown (no knob)
 
         // track: blue up to the knob, dark after it
         paint.setStyle(Paint.Style.FILL);
@@ -106,6 +114,7 @@ final class LevelSlider extends View {
             paint.setColor(Color.argb(90, 255, 255, 255));
             c.drawCircle(knobX, cy, r + 5 * u, paint);
         }
+        if (level < 0) return;
         paint.setColor(Color.WHITE);
         c.drawCircle(knobX, cy, r, paint);
     }
