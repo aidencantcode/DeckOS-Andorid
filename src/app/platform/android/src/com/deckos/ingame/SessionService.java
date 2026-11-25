@@ -218,7 +218,7 @@ public class SessionService extends Service {
             }
         }
         hud.setLevel(level);
-        hud.update(last, Session.startedAt);
+        hud.update(last, Session.startedAt, Float.NaN, ""); // the sampler fills in FPS and the profile next second
     }
 
     private void removeHud() {

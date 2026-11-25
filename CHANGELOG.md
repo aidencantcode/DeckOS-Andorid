@@ -3,6 +3,92 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**Stable Alpha work.** This build makes the library fast, makes coming back from a game instant, and makes the in-game layer usable. Highlights:
+- **Library:** Home and Library stay loaded behind the game page, so going back is instant and lands on the same game.
+- **Leaving a game:** DeckOS stays loaded while you play, so you return to exactly where you were, and play time is real.
+- **Game page:** Activity feed, trailers, and PLAY TIME next to LAST PLAYED.
+- **RetroAchievements:** the sign-in page tells you whether it worked.
+- **Quick Access:** can keep the game running, opens with a controller shortcut, can be resized, and has real quick settings.
+- **AYN / Retroid:** performance mode, fan and underclock controls, plus a frame rate on the overlay.
+
+### What changed
+- **Faster navigation:** going back from a game page to the Library or Home no longer rebuilds them (1 ms instead of a full reload). Focus and scroll position are kept.
+- **Back from a game:** on Android, DeckOS no longer unloads and reloads its whole interface at every launch.
+  - You come back to the game page you left, at once, and the launch animation rewinds.
+  - Play time is now counted until you're back in DeckOS. Before, every session was saved as ~0 seconds.
+  - To turn this off: Settings → Overlay → *Keep DeckOS loaded while playing* (frees memory for the game).
+- **Game page:**
+  - Games you never played show "Never" instead of "Just now", on Home too.
+  - PLAY TIME (hours and minutes) sits next to LAST PLAYED.
+  - The Play button is narrower on the near-square screen so both fit.
+- **Activity tab:**
+  - Your recently unlocked achievements, newest first. **Y** switches between a list (like the in-game overlay's) and a grid of badges.
+  - The game's screenshots, newest first: RetroArch's (named after the ROM, next to it or in its screenshots folder), then scraped ones.
+- **Trailers:** after 3 seconds on a game page, its video fades in behind the logo.
+  - Settings → General → *Trailers*: off / muted / with sound, plus the delay.
+  - It plays videos the game already has (`media/<game>/video.mp4`). Scraping videos needs a ScreenScraper account (see notes).
+- **RetroAchievements:**
+  - The loading icon is a Steam-style spinner.
+  - When you're logged out, the Achievements tab shows one **Log in to RetroAchievements** button. It opens DeckOS's sign-in page; the old BigScreenFE popup and keyboard are gone.
+  - **Sign in** checks your account with RetroAchievements. You see a spinner, then "✓ Logged in as …" or why it failed (wrong key, unknown user, offline), and it returns where you came from.
+- **Re-scrape…** (Settings → Library) lets you pick collections, or everything.
+- **Quick Access menu (over games):**
+  - **Keep game running:** the menu opens over the game without pausing it. It's in the menu's new **Overlay** tab and in Settings → **Overlay** (the renamed In-Game page); both show the same settings.
+  - **Controller shortcut:** Select+R1 by default (or Select+Start, L3+R3) opens the menu over any game. Turn on *DeckOS controller shortcut* in Android's Accessibility settings first (Settings → Overlay has a button). It only watches controller buttons.
+  - **Size:** the menu and the performance overlay can be 75–200%. The default is now 125%. The slider in the menu resizes it as you move it.
+  - **Quick Settings:**
+    - A brightness slider.
+    - Wi-Fi and Bluetooth switches that work in place.
+    - A Wi-Fi drawer listing nearby networks; open networks connect directly, and ones that need a password open Android's Wi-Fi panel.
+    - A Bluetooth drawer listing paired devices.
+  - **Performance tab, under the overlay slider:**
+    - *Performance Mode* (Standard / Performance / High).
+    - *Fan* (Quiet / Smart / Sport / Max).
+    - *Underclock* (Stock / Small / Medium / Large / Custom), using ClusterTune's presets.
+    - Custom is the first profile of a ClusterTune export you import in Settings → Overlay.
+  - **Performance overlay:**
+    - Shows the **frame rate** (FPS and frame time) on all levels.
+    - Levels 3–4 also show the active mode, fan and underclock.
+    - You can choose which corner it sits in.
+- **Settings → Overlay → Device info:** lists model, chip, the AYN/Retroid system service, vendor settings and sensors, with a Copy button.
+
+### Notes
+- **AYN / Retroid controls** use the firmware's built-in command service (PServer), the same way ClusterTune does. ClusterTune itself can't be controlled by other apps, so DeckOS applies the same CPU limits directly.
+  - The mode/fan values come from AYN devices and need confirming on yours (see checklist).
+  - **Max** fan currently means the vendor's *Custom* fan mode. Making it full speed needs one more setting name from your Device info.
+- **Trailer scraping:** the only free source of game videos is ScreenScraper, which needs an account (and developer credentials for DeckOS). Until then, trailers play only for games that already have a video file.
+- **Untested on hardware:** this whole build is checked on PC and compiled by CI. The Android parts (overlay window, shortcut, PServer, Wi-Fi/Bluetooth) haven't run on a device yet.
+
+### Test checklist (Odin 3 Max first, then the Retroid Pocket Classic)
+1. **Library speed:**
+   - Open the Library, open a game and press B: you're back on the same tile with no reload.
+   - Do the same from Home.
+2. **Play time:**
+   - Launch a game, play for 2 minutes, then return to DeckOS (Home button, or Quick Access → Return to DeckOS).
+   - You should land on the same game page. LAST PLAYED says "2 minutes ago" (it counts from the launch) and PLAY TIME says "2 min".
+   - A game you never played says "Never".
+3. **Sign-in:**
+   - Settings → Profile → RetroAchievements → Sign in: a spinner, then "✓ Logged in as <you>", then back on Profile.
+   - With a wrong key you get a clear error.
+4. **Activity tab:** on a game with unlocked achievements, they show with dates. Press Y for grid view and again for the list.
+5. **Device info first:** Settings → Overlay → **Device info** → *Copy to clipboard*, and send me the text from both handhelds. It tells me:
+   - whether PServer is there;
+   - the mode and fan setting names;
+   - which sensors work.
+6. **Controller shortcut:**
+   - Settings → Overlay → *Turn on the controller shortcut*. In Android's Accessibility list, turn on **DeckOS controller shortcut**.
+   - In a game, hold **Select** and press **R1**: the menu opens. Press the shortcut again (or B) to close it.
+7. **Keep game running:** turn it on in the menu's Overlay tab, then open the menu during a game. The game keeps running behind it (watch the music or an animation); B returns.
+8. **Size:** Overlay tab → *Menu and overlay size*. Moving the slider resizes the menu immediately. The performance overlay follows next time it's drawn.
+9. **Quick Settings:**
+   - The brightness slider changes the screen (the first time it may ask for "Modify system settings").
+   - Wi-Fi and Bluetooth switches turn them off and on.
+   - *Networks* lists nearby Wi-Fi; picking a password network opens Android's panel.
+10. **Performance tab:**
+    - Move *Performance Mode* and check the device's own quick setting changed too.
+    - Do the same with *Fan*.
+    - Set *Underclock* to Large: the overlay's CPU MHz should drop under load. Set it back to Stock.
+11. **Frame rate:** overlay level 1 shows FPS in a game. If it shows "-", tell me (and include Device info).
 
 ## 0.0.10 — 2026-11-25
 **The in-game layer: play time, a Steam-style overlay and a performance HUD.** While you play, DeckOS shows a notification with the game and a live play timer. Tap it for a Steam Deck-style Quick Access menu over the game, with performance info, your RetroAchievements and an overlay level slider. 0.0.9 never got an APK, so this build also carries all of 0.0.9 (ROM-hash achievements, the new keyboard, the boot and menu fixes); its checklist is below.

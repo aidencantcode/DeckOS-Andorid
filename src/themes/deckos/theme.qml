@@ -324,8 +324,8 @@ Rectangle {
 
 // DECKOS: the page host. StMini had one Loader that destroyed and rebuilt the page on every navigation.
 // Home (3.8k lines of QML) and Library (3.3k) took long enough to build on Android that coming back from
-// a game page stalled and redrew the whole library. Home and Library now stay alive, hidden, while the
-// game page and its sub-pages (artwork picker, Properties) are open, and come back as they were. Every
+// a game page stalled and redrew the whole library. Home and Library now stay alive (hidden) once built
+// and come back as they were; opening Settings drops them (some options are read at build time). Every
 // other page is still built on demand. The id and `.item` are kept because pages use pageLoader.item.
 FocusScope {
     id: pageLoader
@@ -340,12 +340,13 @@ FocusScope {
     enabled: !welcome.visible // DECKOS: the first-start card keeps the keys
 
     property Item item: null
-    property Item kept: null      // Home or Library, hidden behind the game page
-    property int keptIndex: -1
     signal loaded()
 
+    // Home and Library, once built, stay alive (hidden) until Settings is opened - a few of its
+    // options are only read when a page is built
     readonly property var keepable: [0, 1]
-    readonly property var keepWhileOn: [8, 12, 14] // game page, SteamGridDB picker, Properties
+    readonly property var dropCacheOn: [6]
+    property var cached: ({}) // page index -> Item
     property var components: ({})
 
     function componentFor(index) {
@@ -358,12 +359,14 @@ FocusScope {
         return c
     }
 
-    function dropKept() {
-        if (!kept) return
-        kept.visible = false
-        kept.destroy()
-        kept = null
-        keptIndex = -1
+    function dropCache() {
+        for (var k in cached) {
+            if (cached[k] && cached[k] !== item) {
+                cached[k].visible = false
+                cached[k].destroy()
+            }
+        }
+        cached = {}
     }
 
     // fromIndex: the page being left; props: initial properties for the new page
@@ -372,11 +375,22 @@ FocusScope {
         item = null
         var started = Date.now()
 
-        if (kept && keptIndex === index) { // back to the page that was kept: no rebuild
-            if (old) { old.visible = false; old.destroy() }
-            item = kept
-            kept = null
-            keptIndex = -1
+        if (old) {
+            if (cached[fromIndex] === old) { // Home / Library: hide, keep for next time
+                old.visible = false
+                old.enabled = false
+                old.focus = false
+            } else {
+                old.visible = false
+                old.destroy()
+            }
+        }
+        if (dropCacheOn.indexOf(index) !== -1)
+            dropCache()
+
+        var again = cached[index]
+        if (again) { // shown before: no rebuild, as it was left (focus, tab, scroll position)
+            item = again
             item.enabled = true
             item.visible = true
             item.focus = true
@@ -387,19 +401,6 @@ FocusScope {
             return
         }
 
-        if (old && keepWhileOn.indexOf(index) !== -1 && keepable.indexOf(fromIndex) !== -1) {
-            dropKept()
-            kept = old
-            keptIndex = fromIndex
-            kept.visible = false
-            kept.enabled = false
-            kept.focus = false
-            old = null
-        } else if (keepWhileOn.indexOf(index) === -1) {
-            dropKept()
-        }
-        if (old) { old.visible = false; old.destroy() }
-
         var c = componentFor(index)
         if (c.status !== Component.Ready) {
             console.warn("DeckOS: page " + index + " failed to load: " + c.errorString())
@@ -409,6 +410,8 @@ FocusScope {
         initial.theme = root // at creation, so the page's bindings never see it undefined
         item = c.createObject(pageLoader, initial)
         if (!item) return
+        if (keepable.indexOf(index) !== -1)
+            cached[index] = item
         // note: StMini's Loader assigned `theme` after loading; as an initial property, the pages'
         // onThemeChanged handlers now run during creation, before Component.onCompleted
         item.forceActiveFocus()

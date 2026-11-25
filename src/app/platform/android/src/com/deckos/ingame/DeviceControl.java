@@ -68,8 +68,10 @@ final class DeviceControl {
 
     static String socModel() {
         String v = "";
-        if (Build.VERSION.SDK_INT >= 31)
-            v = Build.SOC_MODEL;
+        if (Build.VERSION.SDK_INT >= 31) { // Build.SOC_MODEL, not in the SDK DeckOS compiles against
+            try { Object f = Build.class.getField("SOC_MODEL").get(null); v = f == null ? "" : f.toString(); }
+            catch (Exception ignored) {}
+        }
         if (v == null || v.isEmpty() || "unknown".equalsIgnoreCase(v))
             v = sysProp("ro.soc.model");
         if (v.isEmpty())
