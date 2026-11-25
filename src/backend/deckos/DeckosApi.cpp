@@ -4,6 +4,7 @@
 #include "DeckosApi.h"
 
 #include "GameOverrides.h"
+#include "RaMatcher.h"
 #include "RomLibrary.h"
 #include "Scraper.h"
 #include "Catalog.h"
@@ -19,6 +20,7 @@ DeckosApi::DeckosApi(model::ApiObject* api, QObject* parent)
     : QObject(parent)
     , m_scraper(new Scraper(api, this))
     , m_library(new RomLibrary(this))
+    , m_ra(new RaMatcher(this))
 {
     // a scan that changed system files reloads the library (from the cache for everything else)
     connect(m_library, &RomLibrary::scanFinished, this, [this](int, int changed) {
@@ -30,6 +32,11 @@ DeckosApi::DeckosApi(model::ApiObject* api, QObject* parent)
 QObject* DeckosApi::libraryObj() const
 {
     return m_library;
+}
+
+QObject* DeckosApi::raObj() const
+{
+    return m_ra;
 }
 
 QObject* DeckosApi::scraperObj() const

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 project(pegasus-frontend
     DESCRIPTION "Cross platform, customizable graphical frontend for launching games"
     HOMEPAGE_URL "https://pegasus-frontend.org/"
-    LANGUAGES CXX
+    LANGUAGES C CXX
 )
 
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" "${PROJECT_SOURCE_DIR}/cmake")
@@ -36,6 +36,7 @@ if(PEGASUS_ENABLE_APNG)
     add_subdirectory(thirdparty/apng)
 endif()
 add_subdirectory(thirdparty/SortFilterProxyModel)
+add_subdirectory(thirdparty/rcheevos) # DECKOS: RetroAchievements ROM hashing
 add_subdirectory(assets)
 add_subdirectory(src)
 

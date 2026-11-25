@@ -181,6 +181,8 @@ MenuScreen {
                             "The system and emulator catalog (folder names, file types, emulator launch "
                                 + "arguments) is converted from NeoStation, copyright © 2025-2026 Miguel Soto "
                                 + "(github.com/misobadev/neostation-frontend), licensed under the GNU GPL v3.",
+                            "RetroAchievements games are matched by ROM hash with rcheevos, copyright © 2018 "
+                                + "RetroAchievements.org (github.com/RetroAchievements/rcheevos), MIT License.",
                             "Game info and artwork are looked up on TheGamesDB, SteamGridDB and libretro-thumbnails "
                                 + "with your own keys; they belong to their respective owners.",
                             "Android builds include OpenSSL. This product includes software developed by the "

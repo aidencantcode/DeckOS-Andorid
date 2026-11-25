@@ -6,6 +6,8 @@ target_sources(pegasus-backend PRIVATE
     DeckosApi.h
     GameOverrides.cpp
     GameOverrides.h
+    RaMatcher.cpp
+    RaMatcher.h
     RomLibrary.cpp
     RomLibrary.h
     Scraper.cpp

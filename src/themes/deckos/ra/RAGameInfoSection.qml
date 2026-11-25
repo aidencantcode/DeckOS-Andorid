@@ -397,6 +397,7 @@ FocusScope {
         root._noAchievementsYet = false;
         root._errorMsg = ""; root._debugLog = "";
         root._searching = false; root._loading = false;
+        root._matchMethod = ""; root._hashNote = ""; root._hashGame = null;
 
         _log("=== load() ===");
 
@@ -439,10 +440,46 @@ FocusScope {
 
         if (directId !== "") {
             _log("Using direct RA ID from extraData: " + directId);
+            root._matchMethod = "id";
             root._raGameId = directId;
             _fetchProgress(directId);
+        } else if (root._deckosRa) {
+            // DECKOS: exact match by ROM hash first (deckos.ra, rcheevos); the title search below is the fallback
+            root._searching = true;
+            root._hashColShort = colShort;
+            root._hashGame = game;
+            _log("Hashing the ROM...");
+            root._deckosRa.identify(game, root._apiKey);
         } else {
             _searchForGame(colShort);
+        }
+    }
+
+    // DECKOS: ROM hash matching (src/backend/deckos/RaMatcher.cpp)
+    readonly property var _deckosRa: (typeof deckos !== "undefined" && deckos) ? deckos.ra : null
+    property string _matchMethod: ""   // "hash" (exact dump), "title" (best guess), "id" (from metadata)
+    property string _hashNote: ""
+    property string _hashColShort: ""
+    property var _hashGame: null
+    Connections {
+        target: root._deckosRa
+        function onIdentified(hashedGame, gameId, title, method, detail) {
+            if (hashedGame !== root.game || hashedGame !== root._hashGame) return;
+            root._hashGame = null;
+            _log("ROM hash lookup: " + method + " id=" + gameId + " (" + detail + ")");
+            if (method === "hash" && gameId > 0) {
+                root._matchMethod = "hash";
+                root._searching = false;
+                root._raGameId = String(gameId);
+                _fetchProgress(root._raGameId);
+                return;
+            }
+            root._matchMethod = "title";
+            root._hashNote = method === "unknown"
+                ? "RetroAchievements doesn't recognize this ROM's dump, so achievements may not unlock in the emulator."
+                : "";
+            root._searching = false;
+            _searchForGame(root._hashColShort);
         }
     }
 
@@ -887,6 +924,22 @@ FocusScope {
                     anchors.verticalCenter: parent.verticalCenter
                     Behavior on color { ColorAnimation { duration: 300 } }
                 }
+                // DECKOS: how the game was found
+                Text {
+                    visible: root._matchMethod === "hash" || root._matchMethod === "title"
+                    text: root._matchMethod === "hash" ? "· ✓ ROM verified" : "· Matched by title"
+                    font.pixelSize: vpx(18); font.family: global.fonts.sans
+                    color: root._matchMethod === "hash" ? "#59bf40" : _textDim
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+            Text {
+                visible: root._hashNote !== "" && root._raNumAch > 0
+                width: parent.width
+                text: root._hashNote
+                wrapMode: Text.WordWrap
+                font.pixelSize: vpx(15); font.family: global.fonts.sans
+                color: "#e0a040"
             }
 
             Item {

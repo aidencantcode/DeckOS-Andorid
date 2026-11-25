@@ -13,11 +13,14 @@ namespace deckos {
 
 class Scraper;
 class RomLibrary;
+class RaMatcher;
 
 class DeckosApi : public QObject {
     Q_OBJECT
     Q_PROPERTY(QObject* scraper READ scraperObj CONSTANT)
     Q_PROPERTY(QObject* library READ libraryObj CONSTANT)
+    /// RetroAchievements game matching by ROM hash (RaMatcher.h)
+    Q_PROPERTY(QObject* ra READ raObj CONSTANT)
 
 public:
     explicit DeckosApi(model::ApiObject* api, QObject* parent = nullptr);
@@ -45,6 +48,7 @@ public:
     Scraper* scraper() const { return m_scraper; }
     QObject* scraperObj() const;
     QObject* libraryObj() const;
+    QObject* raObj() const;
 
     void onLibraryReady();
 
@@ -54,6 +58,7 @@ signals:
 private:
     Scraper* const m_scraper;
     RomLibrary* const m_library;
+    RaMatcher* const m_ra;
     bool m_started = false;
 };
 
