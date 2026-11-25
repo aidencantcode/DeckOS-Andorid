@@ -347,6 +347,46 @@ FocusScope {
                 playing: visible && status === AnimatedImage.Ready && (api.memory.has("animatedCovers") ? api.memory.get("animatedCovers") : false)
             }
 
+            // DECKOS: trailer - after a few seconds on the page the hero cross-fades into the game's video
+            // (Pegasus `video` asset: media/<game>/video.*); the logo stays on top. Settings > General.
+            Video {
+                id: trailer
+                x: zone1.x
+                y: zone1.y
+                width: zone1.width
+                height: zone1.height
+                readonly property string clipUrl: (theme.currentGame && theme.currentGame.assets)
+                                               ? (theme.currentGame.assets.video || "") : ""
+                readonly property bool wanted: theme.trailerMode > 0 && clipUrl !== "" && !root.isLaunching
+                                               && !theme.highContrastGameMenu && root.visible
+                                               && Qt.application.state === Qt.ApplicationActive
+                fillMode: VideoOutput.PreserveAspectCrop
+                muted: theme.trailerMode !== 2
+                volume: 0.7
+                loops: MediaPlayer.Infinite
+                opacity: 0
+                visible: opacity > 0
+                Behavior on opacity { NumberAnimation { duration: 900; easing.type: Easing.InOutQuad } }
+
+                onWantedChanged: {
+                    if (wanted) return
+                    opacity = 0
+                    pause()
+                }
+                // the first frames are on screen: fade in
+                onPositionChanged: if (wanted && position > 150 && opacity === 0) opacity = 1
+                onClipUrlChanged: { opacity = 0; stop(); source = "" }
+
+                Timer {
+                    interval: Math.max(1, theme.trailerDelay) * 1000
+                    running: trailer.wanted && trailer.opacity === 0
+                    onTriggered: {
+                        if (trailer.source.toString() !== trailer.clipUrl) trailer.source = trailer.clipUrl
+                        trailer.play()
+                    }
+                }
+            }
+
             Rectangle {
                 id: launchOverlay
                 anchors.fill: parent

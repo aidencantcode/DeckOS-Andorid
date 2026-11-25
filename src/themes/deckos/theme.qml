@@ -142,6 +142,12 @@ property bool highContrastBottomBar: api.memory.has("highContrastBottomBar") ? a
     property bool roundedCovers: api.memory.has("roundedCovers") ? api.memory.get("roundedCovers") : false
     onRoundedCoversChanged: api.memory.set("roundedCovers", roundedCovers)
     
+    // DECKOS: game page trailer: 0 off, 1 muted, 2 with sound; seconds before it fades in
+    property int trailerMode: api.memory.has("trailerMode") ? api.memory.get("trailerMode") : 1
+    property int trailerDelay: api.memory.has("trailerDelay") ? api.memory.get("trailerDelay") : 3
+    onTrailerModeChanged: api.memory.set("trailerMode", trailerMode)
+    onTrailerDelayChanged: api.memory.set("trailerDelay", trailerDelay)
+
     property bool gameLaunchingAnimation: api.memory.has("gameLaunchingAnimation") ? api.memory.get("gameLaunchingAnimation") : true
 onGameLaunchingAnimationChanged: api.memory.set("gameLaunchingAnimation", gameLaunchingAnimation)
 

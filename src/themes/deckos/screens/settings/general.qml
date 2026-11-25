@@ -25,6 +25,14 @@ DeckSettingsPage {
             if (hideDelays[i].value === Internal.settings.hideDelayAfterLaunch) return i
         return 0
     }
+    readonly property var trailerModes: ["Off", "Muted", "With sound"]
+    readonly property var trailerDelays: [2, 3, 5, 8]
+    function cycleTrailerDelay(step) {
+        if (!th) return
+        var i = trailerDelays.indexOf(th.trailerDelay)
+        var n = trailerDelays.length
+        th.trailerDelay = trailerDelays[((i < 0 ? 1 : i) + step + n) % n]
+    }
     function cycleLocale(step) {
         var n = localeList.count
         if (n < 2) return
@@ -51,10 +59,24 @@ DeckSettingsPage {
                  desc: "Show the pointer and react to clicks and taps",
                  value: function () { return Internal.settings.mouseSupport },
                  toggle: function () { Internal.settings.mouseSupport = !Internal.settings.mouseSupport } })
-        r.push({ type: "choice", label: "Hide DeckOS after launching a game",
-                 desc: "When the game takes over the screen",
-                 value: function () { return generalPage.hideDelays[generalPage.hideDelayIndex()].label },
-                 next: function () { generalPage.cycleHideDelay(1) }, prev: function () { generalPage.cycleHideDelay(-1) } })
+        // DECKOS: Android keeps DeckOS loaded while playing instead (Settings > In-Game); PC only
+        if (!isAndroid)
+            r.push({ type: "choice", label: "Hide DeckOS after launching a game",
+                     desc: "When the game takes over the screen",
+                     value: function () { return generalPage.hideDelays[generalPage.hideDelayIndex()].label },
+                     next: function () { generalPage.cycleHideDelay(1) }, prev: function () { generalPage.cycleHideDelay(-1) } })
+
+        // DECKOS: the game page's trailer (the game's video behind its logo)
+        r.push({ type: "section", label: "Game page" })
+        r.push({ type: "choice", label: "Trailers",
+                 desc: "The game's video fades in behind its logo after a few seconds",
+                 value: function () { return th ? generalPage.trailerModes[th.trailerMode] : "Muted" },
+                 next: function () { if (th) th.trailerMode = (th.trailerMode + 1) % 3 },
+                 prev: function () { if (th) th.trailerMode = (th.trailerMode + 2) % 3 } })
+        r.push({ type: "choice", label: "Trailer delay",
+                 enabled: function () { return !!th && th.trailerMode > 0 },
+                 value: function () { return th ? th.trailerDelay + " seconds" : "3 seconds" },
+                 next: function () { generalPage.cycleTrailerDelay(1) }, prev: function () { generalPage.cycleTrailerDelay(-1) } })
         return r
     }
     rows: buildRows()
