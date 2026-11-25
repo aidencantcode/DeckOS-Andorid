@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.0.8 — 2026-11-25
 **Launch with… for single games.** A game's Properties → Details now has a *Launch* section: pick another emulator for just that game, or view and edit its full launch command.
 
 ### Test checklist
