@@ -37,6 +37,7 @@ if(PEGASUS_ENABLE_APNG)
 endif()
 add_subdirectory(thirdparty/SortFilterProxyModel)
 add_subdirectory(thirdparty/rcheevos) # DECKOS: RetroAchievements ROM hashing
+add_subdirectory(thirdparty/miniz) # DECKOS: zipped ROMs
 add_subdirectory(assets)
 add_subdirectory(src)
 

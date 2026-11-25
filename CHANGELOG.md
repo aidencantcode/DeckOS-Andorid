@@ -5,6 +5,8 @@ One entry per build the owner tests. Newest first.
 ## Unreleased
 
 ## 0.0.9 — 2026-11-25
+> **Not published:** the Android build failed (Qt's zip reader is missing from the Android Qt). Everything below ships in the next build.
+
 **Achievements found by ROM, a real keyboard, and fixes.** The Achievements tab now identifies a game by its ROM's hash, the same check RetroArch does, instead of guessing from the title. Every text box uses the big Steam-style keyboard with a Paste key. The boot animation plays to the end, and pressing MENU quickly no longer breaks the side menu.
 
 ### Test checklist

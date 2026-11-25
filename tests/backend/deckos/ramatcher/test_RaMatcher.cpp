@@ -9,7 +9,8 @@
 #include <QCryptographicHash>
 #include <QFile>
 #include <QTemporaryDir>
-#include <QtGui/private/qzipwriter_p.h>
+
+#include "miniz/miniz.h"
 
 
 namespace {
@@ -70,10 +71,19 @@ void test_RaMatcher::zipped_rom_hashes_like_the_rom()
     QTemporaryDir dir;
     const QString path = dir.filePath(QStringLiteral("Game (USA).zip"));
     {
-        QZipWriter zip(path);
-        zip.addFile(QStringLiteral("readme.txt"), QByteArray("hello"));
-        zip.addFile(QStringLiteral("Game (USA).nes"), ines_rom());
-        zip.close();
+        const QByteArray readme("hello");
+        const QByteArray rom = ines_rom();
+        mz_zip_archive zip;
+        mz_zip_zero_struct(&zip);
+        QVERIFY(mz_zip_writer_init_heap(&zip, 0, 0));
+        QVERIFY(mz_zip_writer_add_mem(&zip, "readme.txt", readme.constData(), static_cast<size_t>(readme.size()), MZ_DEFAULT_COMPRESSION));
+        QVERIFY(mz_zip_writer_add_mem(&zip, "Game (USA).nes", rom.constData(), static_cast<size_t>(rom.size()), MZ_DEFAULT_COMPRESSION));
+        void* buffer = nullptr;
+        size_t size = 0;
+        QVERIFY(mz_zip_writer_finalize_heap_archive(&zip, &buffer, &size));
+        write(path, QByteArray(static_cast<const char*>(buffer), static_cast<int>(size)));
+        mz_free(buffer); // finalize_heap_archive hands the buffer over
+        mz_zip_writer_end(&zip);
     }
     QCOMPARE(deckos::ra_hash_file(path, 7), md5(payload()));
 }

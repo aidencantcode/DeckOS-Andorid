@@ -1,5 +1,5 @@
 TARGET = test_RaMatcher
 SOURCES = $${TARGET}.cpp
-QT += gui-private
+DEFINES *= MINIZ_NO_STDIO MINIZ_NO_TIME MINIZ_NO_ZLIB_COMPATIBLE_NAMES
 
 include($${TOP_SRCDIR}/tests/cxxtest_common.pri)

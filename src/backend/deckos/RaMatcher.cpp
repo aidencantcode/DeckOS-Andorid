@@ -27,8 +27,10 @@
 #include <QTimer>
 #include <QUrl>
 #include <QUrlQuery>
-#include <QtGui/private/qzipreader_p.h>
 
+#include "miniz/miniz.h"
+
+#include <climits>
 #include <cstdio>
 #include <memory>
 
@@ -36,7 +38,7 @@
 namespace {
 const QString LOGTAG = QStringLiteral("RetroAchievements");
 
-constexpr int PAGE_SIZE = 500;                      // games per API_GetGameList page
+constexpr int LIST_PAGE_SIZE = 500;                 // games per API_GetGameList page (PAGE_SIZE is a system macro on Android)
 constexpr qint64 LIST_MAX_AGE_S = 7 * 24 * 3600;    // download a console's hash list again after a week
 constexpr qint64 LIST_RETRY_AGE_S = 24 * 3600;      // ...or after a day, when a hash isn't in it
 constexpr qint64 MAX_ZIPPED_ROM = 160 * 1024 * 1024; // the game inside a zip is unpacked in memory
@@ -95,6 +97,16 @@ int generate(char hash[33], int console_id, const QString& name, const QByteArra
     const int ok = rc_hash_generate(hash, static_cast<uint32_t>(console_id), &it);
     rc_hash_destroy_iterator(&it);
     return ok;
+}
+
+// miniz reads zips through QFile (Unicode paths, same on every platform)
+size_t zip_read(void* opaque, mz_uint64 offset, void* buffer, size_t requested)
+{
+    auto file = static_cast<QFile*>(opaque);
+    if (!file->seek(static_cast<qint64>(offset)))
+        return 0;
+    const qint64 got = file->read(static_cast<char*>(buffer), static_cast<qint64>(requested));
+    return got > 0 ? static_cast<size_t>(got) : 0;
 }
 
 // systems whose zip files are the game itself for RA (arcade sets are hashed by name, DOS/Arduboy
@@ -196,28 +208,47 @@ QString ra_hash_file(const QString& path, int console_id, QString* error)
         why = QStringLiteral("7z archives can't be checked yet - unpack the game or use .zip");
     }
     else if (ext == QLatin1String("zip") && !zip_is_the_game(console_id)) {
-        QZipReader zip(path);
-        if (!zip.isReadable()) {
+        QFile file(path);
+        mz_zip_archive zip;
+        mz_zip_zero_struct(&zip);
+        zip.m_pRead = zip_read;
+        zip.m_pIO_opaque = &file;
+        if (!file.open(QIODevice::ReadOnly) || !mz_zip_reader_init(&zip, static_cast<mz_uint64>(file.size()), 0)) {
             why = QStringLiteral("the zip file can't be opened");
         }
         else {
             // the game is the biggest file in the zip (others are readmes and such)
-            QZipReader::FileInfo best;
-            for (const QZipReader::FileInfo& entry : zip.fileInfoList()) {
-                if (entry.isFile && entry.size > best.size)
-                    best = entry;
+            mz_uint best = UINT_MAX;
+            mz_uint64 best_size = 0;
+            QString best_name;
+            const mz_uint count = mz_zip_reader_get_num_files(&zip);
+            for (mz_uint i = 0; i < count; i++) {
+                mz_zip_archive_file_stat stat;
+                if (!mz_zip_reader_file_stat(&zip, i, &stat) || stat.m_is_directory)
+                    continue;
+                if (best == UINT_MAX || stat.m_uncomp_size > best_size) {
+                    best = i;
+                    best_size = stat.m_uncomp_size;
+                    best_name = QString::fromUtf8(stat.m_filename);
+                }
             }
-            if (!best.isFile)
+            if (best == UINT_MAX)
                 why = QStringLiteral("the zip file is empty");
-            else if (best.size > MAX_ZIPPED_ROM)
+            else if (best_size > static_cast<mz_uint64>(MAX_ZIPPED_ROM))
                 why = QStringLiteral("the game inside the zip is too big to check - unpack it");
             else {
-                const QByteArray data = zip.fileData(best.filePath);
-                if (data.isEmpty())
+                size_t size = 0;
+                void* raw = mz_zip_reader_extract_to_heap(&zip, best, &size, 0);
+                if (!raw || size == 0) {
                     why = QStringLiteral("the game inside the zip can't be unpacked");
-                else
-                    ok = generate(hash, console_id, QFileInfo(best.filePath).fileName(), &data, &why);
+                }
+                else {
+                    const QByteArray data = QByteArray::fromRawData(static_cast<const char*>(raw), static_cast<int>(size));
+                    ok = generate(hash, console_id, QFileInfo(best_name).fileName(), &data, &why);
+                }
+                mz_free(raw);
             }
+            mz_zip_reader_end(&zip);
         }
     }
     else {
@@ -395,7 +426,7 @@ void RaMatcher::downloadPage(int console, const QString& key, int offset,
     query.addQueryItem(QStringLiteral("f"), QStringLiteral("1")); // only games that have achievements
     query.addQueryItem(QStringLiteral("h"), QStringLiteral("1")); // with the hashes of their dumps
     query.addQueryItem(QStringLiteral("o"), QString::number(offset));
-    query.addQueryItem(QStringLiteral("c"), QString::number(PAGE_SIZE));
+    query.addQueryItem(QStringLiteral("c"), QString::number(LIST_PAGE_SIZE));
     query.addQueryItem(QStringLiteral("y"), key);
     QUrl url(QStringLiteral("https://retroachievements.org/API/API_GetGameList.php"));
     url.setQuery(query);
@@ -425,8 +456,8 @@ void RaMatcher::downloadPage(int console, const QString& key, int offset,
             for (const QJsonValue& hash : game.value(QStringLiteral("Hashes")).toArray())
                 games->insert(hash.toString().toLower(), { id, title });
         }
-        if (page.size() >= PAGE_SIZE && offset < 100000) {
-            downloadPage(console, key, offset + PAGE_SIZE, games);
+        if (page.size() >= LIST_PAGE_SIZE && offset < 100000) {
+            downloadPage(console, key, offset + LIST_PAGE_SIZE, games);
             return;
         }
         listDownloaded(console, games.get());

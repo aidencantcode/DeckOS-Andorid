@@ -111,9 +111,8 @@ Format: `## YYYY-MM-DD — Title` · **Decision** · **Why** · **Alternatives c
   - The RA tab matched games by fuzzy title. That can show the wrong set (hacks, regional versions, similar names), and it can't tell whether the emulator will actually unlock anything.
   - Now RetroArch's method is used: the ROM is hashed with **rcheevos** (the RA team's reference library, MIT) and looked up in RA's per-console hash list.
   - **rcheevos is vendored, not a submodule:** only the hashing files from v12.5.0, unmodified, in `thirdparty/rcheevos` (about 260 KB). This avoids pulling its whole repo and test data into every CI checkout; updating means copying the same files again. Built as C with `RC_NO_THREADS` (the hashing code takes no locks).
-  - **Zips:** for cartridge systems, the largest file inside the zip is hashed, as RetroArch does. Arcade, DOS and Arduboy zips go to rcheevos as-is (arcade sets are hashed by name). This uses Qt's private `QZipReader` (`gui-private`).
-    - Checked that the Android Qt (upstream's `qt51510_android` package) and the Linux CI Qt ship `qzipreader_p.h` and `qt_lib_gui_private.pri`.
-    - Alternatives were miniz (one more library) or a hand-written inflate.
+  - **Zips:** for cartridge systems, the largest file inside the zip is hashed, as RetroArch does. Arcade, DOS and Arduboy zips go to rcheevos as-is (arcade sets are hashed by name). Zips are read with **miniz** 3.0.2 (MIT, vendored unmodified in `thirdparty/miniz`), through `QFile`.
+    - **Correction:** 0.0.9 first used Qt's private `QZipReader`. Its header ships in the Android and Linux Qt builds, but the class is compiled out there (it belongs to the disabled ODF-writer feature), so both CI builds failed and 0.0.9 has no APK. Lesson: a private header being present doesn't prove the feature is built — compile against the real target before relying on it.
   - **Not hashed:** CHD (needs a libchdr-backed reader for rcheevos — possible later) and 7z. Both fall back to the title match.
   - **RA API use:** `API_GetGameList` with `f=1&h=1`, 500 per page (checked live 2026-11-25).
     - Each console's list is cached for 7 days, then fetched again; it's also fetched again after a day when a hash isn't in it, since a set may have been added.

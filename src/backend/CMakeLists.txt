@@ -53,7 +53,7 @@ target_link_libraries(pegasus-backend PUBLIC
     Qt::Svg
     SortFilterProxyModel
     rcheevos # DECKOS
-    Qt::GuiPrivate # DECKOS: QZipReader, for hashing zipped ROMs
+    miniz # DECKOS: zipped ROMs
 )
 
 include(PegasusCommonProps)
