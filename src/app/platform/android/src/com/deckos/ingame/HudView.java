@@ -147,7 +147,7 @@ final class HudView extends View {
             if (!Float.isNaN(fps)) { l.add(new Cell("FPS", "", ENGINE, true)); l.add(new Cell(num(fps), "", 0, false)); }
             l.add(new Cell("BATT", "", BATT, true));
             l.add(new Cell(num(s.battPct), "%", 0, false));
-            l.add(new Cell(playTime(sessionStart), "", SESSION, false));
+            if (sessionStart > 0) l.add(new Cell(playTime(sessionStart), "", SESSION, false));
             lines.add(l);
         }
         else if (level == 2) {
@@ -164,7 +164,7 @@ final class HudView extends View {
             l.add(new Cell(num(s.cpuTempC), "\u00b0C", 0, false));
             l.add(new Cell("RAM", "", RAM, true));
             l.add(new Cell(gib(s.ramUsedMb), "GiB", 0, false));
-            l.add(new Cell(playTime(sessionStart), "", SESSION, true));
+            if (sessionStart > 0) l.add(new Cell(playTime(sessionStart), "", SESSION, true));
             lines.add(l);
         }
         else if (level >= 3) {
@@ -194,8 +194,9 @@ final class HudView extends View {
             if (s.fanRpm >= 0)
                 lines.add(row(new Cell("FAN", "", FAN, true), new Cell("", "", 0, false), new Cell("", "", 0, false),
                               new Cell(String.valueOf(s.fanRpm), "RPM", 0, false)));
-            lines.add(row(new Cell("SESSION", "", SESSION, true), new Cell("", "", 0, false), new Cell("", "", 0, false),
-                          new Cell(playTime(sessionStart), "", 0, false)));
+            if (sessionStart > 0) // 0: no game (DeckOS was only left)
+                lines.add(row(new Cell("SESSION", "", SESSION, true), new Cell("", "", 0, false), new Cell("", "", 0, false),
+                              new Cell(playTime(sessionStart), "", 0, false)));
         }
         measureColumns();
         requestLayout();

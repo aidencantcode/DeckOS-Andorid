@@ -38,7 +38,7 @@ Pick what matches the machine Claude Code runs on; record the exact versions in 
 - **Local Android check (before pushing Android changes):** `tools\check-android.ps1`.
   - `-JavaOnly`: javac over every Android source against Android 11, Qt's classes and AndroidX, in about 2 s.
   - No switch: also the whole app's arm64 C++ with NDK r21e, incrementally.
-  - `-Apk`: also an unsigned APK. Never hand it out; releases come from GitHub.
+  - `-Apk`: also an unsigned debug APK, `..\build-android\installdir\build\outputs\apk\debug\installdir-debug.apk`. Never hand it out; releases come from GitHub. Qt 5.15.2's own Gradle (5.6.4) can't run on JDK 17, so the script moves the wrapper to Gradle 7.3.3, adds the `androidNdkVersion` that Qt 5.15.2 doesn't write, and runs Gradle again with its daemon off (a leftover daemon kept the script's output open).
   - It uses the official Qt 5.15.2 for Android, not CI's Pegasus-built 5.15.10, and builds in `..\build-android`.
   - Toolchain, all in `..\toolchain` and never committed:
     - `jdk-17` (Temurin);

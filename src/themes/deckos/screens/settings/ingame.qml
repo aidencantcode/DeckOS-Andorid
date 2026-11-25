@@ -79,9 +79,16 @@ DeckSettingsPage {
                  value: function () { return ig && !ig.notificationBlocked && android ? "✓" : "" },
                  enabled: function () { return android && ig.notificationBlocked },
                  activate: function () { if (ig) ig.openNotificationSettings() } })
-        r.push({ type: "info", label: "Play time",
-                 desc: "Counts only while the game is in front",
-                 value: function () { return "" } })
+        r.push({ type: "button", label: "Play time",
+                 desc: function () {
+                     if (!android) return "Counts only while the game DeckOS opened is in front (Android)"
+                     if (ig.usageAccess) return "Counts only while the game DeckOS opened is in front"
+                     if (ig.privileged) return "Needs usage access - DeckOS gives it itself at the next launch, or now"
+                     return "Needs usage access: Android › Usage access › DeckOS"
+                 },
+                 value: function () { return ig && ig.usageAccess ? "✓" : "" },
+                 enabled: function () { return android && !ig.usageAccess },
+                 activate: function () { if (ig) ig.allowUsageAccess() } })
         r.push({ type: "choice", label: "Controller shortcut",
                  desc: function () {
                      if (!android) return "Android only"
@@ -96,7 +103,7 @@ DeckSettingsPage {
         r.push({ type: "button", label: "Turn on the controller shortcut",
                  desc: function () {
                      if (ig && ig.shortcutRunning) return "Running"
-                     if (ig && ig.privileged) return "DeckOS turns it on itself (AYN / Retroid)"
+                     if (ig && ig.privileged) return "DeckOS turns it on itself (AYN / Retroid, or root)"
                      if (ig && ig.shortcutEnabled) return "Blocked: App info › ⋮ › Allow restricted settings, then again"
                      return "Android › Accessibility › DeckOS controller shortcut"
                  },

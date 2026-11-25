@@ -795,7 +795,7 @@ final class QuickAccessPanel extends FrameLayout {
                 sliderCard("Fan", null, fan);
             }
             if (!write)
-                note("Switching needs the AYN / Retroid system service (PServer), which wasn't found. The quick settings of the device still work.", Ui.DIM);
+                note("Switching needs the AYN / Retroid system service (PServer) or root, and neither was found. The quick settings of the device still work.", Ui.DIM);
         }
         // underclock profiles from DeckOS › Settings › Underclocking (ClusterTune built in)
         if (Underclock.available()) {
@@ -1139,7 +1139,12 @@ final class QuickAccessPanel extends FrameLayout {
         String left = snap.battMinutesLeft >= 0
             ? (snap.charging ? "  ·  full in " : "  ·  ") + HudView.hoursMinutes(snap.battMinutesLeft) + (snap.charging ? "" : " of battery left")
             : "";
-        playText.setText((Session.hasGame() ? "Playing for " : "Running for ") + playTime() + left);
+        if (!Session.hasGame())
+            playText.setText("No game running" + left);
+        else if (Session.gameClosed)
+            playText.setText("Game closed · played " + playTime() + left);
+        else
+            playText.setText((Session.gameFocused() ? "Playing for " : "Paused at ") + playTime() + left);
 
         if (battBigText != null) {
             battBigText.setText(HudView.num(snap.battPct) + "%");
@@ -1165,8 +1170,8 @@ final class QuickAccessPanel extends FrameLayout {
     }
 
     private String playTime() {
-        // in a game: the time it was actually in front (Session); otherwise how long DeckOS has been away
-        long ms = Session.hasGame() ? Session.playedMs() : System.currentTimeMillis() - Session.startedAt;
+        // the time the game was actually in front (Session)
+        long ms = Session.playedMs();
         long s = Math.max(0, ms / 1000);
         long h = s / 3600, m = (s / 60) % 60;
         return h > 0 ? h + "h " + m + "m" : m + "m " + (s % 60) + "s";

@@ -241,7 +241,9 @@ final class DeviceControl {
          .append(Build.MODEL).append(" (").append(Build.DEVICE).append(")\n");
         s.append("Android ").append(Build.VERSION.RELEASE).append(" (SDK ").append(Build.VERSION.SDK_INT).append(")\n");
         s.append("SoC: ").append(socModel()).append("  hardware: ").append(Build.HARDWARE).append("\n");
-        s.append("PServer: ").append(Privileged.available() ? "yes" : "no").append("\n");
+        s.append("PServer: ").append(Privileged.pserver() ? "yes" : "no")
+         .append("  root (su): ").append(Privileged.root() ? "yes" : "no")
+         .append("  usage access: ").append(Foreground.usageAllowed(ctx) ? "yes" : "no").append("\n");
         s.append("Vendor modes: performance_mode=").append(readSystemInt(ctx, KEY_PERF, -1))
          .append(" fan_mode=").append(readSystemInt(ctx, KEY_FAN, -1)).append("\n");
 

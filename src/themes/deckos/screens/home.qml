@@ -2845,7 +2845,7 @@ Keys.onPressed: {
             height: Math.min(106, menuPanel.height * 0.085) /* DECKOS: was 106 */
             
             // СВОЙСТВО ДЛЯ ПРОВЕРКИ ФОКУСА
-            property bool isFocused: activeFocus
+            property bool isFocused: leftBar.isOpen && leftBar.currentIndex === buttonIndex // DECKOS: the selected button, not Qt focus (which can drift)
             
             onIsFocusedChanged: {
                 if (isFocused) {
@@ -3749,7 +3749,8 @@ Timer {
     running: false
     repeat: false
     onTriggered: {
-    if (!root.closeMenuVisible && root.focusZone === 1) {
+    // DECKOS: not while the Steam menu is open - it took the focus from the open menu
+    if (!root.closeMenuVisible && !leftBar.isOpen && !optionsMenuVisible && root.focusZone === 1) {
         gameList.forceActiveFocus()
         if (gameList.count > 0) {
             gameList.currentIndex = gameList.currentIndex // перезапуск выделения

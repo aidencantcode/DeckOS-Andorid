@@ -144,6 +144,8 @@ try {
         cmd /c "make.exe install INSTALL_ROOT=`"$buildDir\installdir`" > install.log 2>&1"
         if ($LASTEXITCODE -ne 0) { Get-Content install.log -Tail 20; throw "make install failed" }
         $settings = Get-ChildItem $buildDir -Recurse -Filter 'android-*-deployment-settings.json' | Select-Object -First 1
+        # a Gradle daemon left behind by androiddeployqt keeps this script's output pipe open
+        $env:GRADLE_OPTS = '-Dorg.gradle.daemon=false'
         cmd /c "androiddeployqt.exe --input `"$($settings.FullName)`" --output `"$buildDir\installdir`" --android-platform android-30 --jdk `"$jdk`" --gradle > deploy.log 2>&1"
         $apkCode = $LASTEXITCODE
         # Qt 5.15.2's Gradle wrapper (5.6.4) runs neither on JDK 17 nor with DeckOS's Android Gradle
@@ -152,7 +154,15 @@ try {
         $wrapper = Join-Path $buildDir 'installdir\gradle\wrapper\gradle-wrapper.properties'
         if ($apkCode -ne 0 -and (Test-Path $wrapper)) {
             (Get-Content $wrapper) -replace 'gradle-[0-9.]+-(bin|all)\.zip', 'gradle-7.3.3-bin.zip' | Set-Content $wrapper -Encoding Ascii
-            cmd /c "cd /d `"$buildDir\installdir`" && gradlew.bat --no-daemon assembleDebug > `"$buildDir\gradle.log`" 2>&1"
+            # Qt 5.15.2 also leaves out androidNdkVersion, which DeckOS's build.gradle reads
+            $props = Join-Path $buildDir 'installdir\gradle.properties'
+            if (-not (Select-String -Path $props -Pattern '^androidNdkVersion=' -Quiet)) {
+                Add-Content $props ("androidNdkVersion=" + (Split-Path $ndk -Leaf)) -Encoding Ascii
+            }
+            $env:JAVA_HOME = $jdk
+            Push-Location (Join-Path $buildDir 'installdir')
+            try { cmd /c ".\gradlew.bat --no-daemon assembleDebug > ..\gradle.log 2>&1" }
+            finally { Pop-Location }
             $apkCode = $LASTEXITCODE
             if ($apkCode -ne 0) { Get-Content (Join-Path $buildDir 'gradle.log') -Tail 30 }
         }

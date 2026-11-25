@@ -9,8 +9,11 @@
 // back through files DeckOS creates in its code cache folder (the privileged shell writes into them, so
 // they stay DeckOS's and readable), as ClusterTune does with its host launcher.
 // Longer work goes into a script in that folder, run with `cd <dir> && sh <script>`.
-// A transaction that may have run is never retried. Devices without PServer: available() is false and
-// every caller falls back (features hidden, or Android's own settings opened).
+// A transaction that may have run is never retried.
+// Rooted devices without PServer (Magisk, KernelSU): the same commands go through one long-lived `su`
+// shell, each in its own background subshell (fire-and-forget, like PServer). The root manager asks
+// once; denied, DeckOS stops trying until it restarts. Neither: available() is false and every caller
+// falls back (features hidden, or Android's own settings opened).
 
 package com.deckos.ingame;
 
@@ -43,8 +46,13 @@ final class Privileged {
         }
     }
 
-    /// PServer is there and alive (cached once found)
+    /// PServer or root is there (cached once found)
     static boolean available() {
+        return pserver() || root();
+    }
+
+    /// PServer is there and alive
+    static boolean pserver() {
         if (sAvailable != null && sAvailable)
             return true;
         IBinder b = service();
@@ -56,6 +64,8 @@ final class Privileged {
     static boolean run(String command) {
         if (command == null || command.isEmpty() || command.indexOf('\0') >= 0)
             return false;
+        if (!pserver())
+            return runRoot(command);
         if (command.getBytes(StandardCharsets.UTF_8).length > MAX_COMMAND_BYTES) {
             Log.w(Session.TAG, "privileged command too long");
             return false;
@@ -78,6 +88,71 @@ final class Privileged {
         finally {
             reply.recycle();
             request.recycle();
+        }
+    }
+
+    // --- root (no PServer) -----------------------------------------------------------------------------
+
+    private static Boolean sSuPresent;
+    private static boolean sSuDenied;
+    private static int sSuFailures;
+    private static java.lang.Process sSu;
+    private static java.io.OutputStream sSuIn;
+
+    /// a `su` binary is there and wasn't refused
+    static boolean root() {
+        if (sSuDenied)
+            return false;
+        if (sSuPresent == null) {
+            java.util.List<String> dirs = new java.util.ArrayList<>(java.util.Arrays.asList(
+                "/system/bin", "/system/xbin", "/sbin", "/su/bin", "/debug_ramdisk", "/data/adb/ksu/bin"));
+            String path = System.getenv("PATH");
+            if (path != null)
+                dirs.addAll(java.util.Arrays.asList(path.split(":")));
+            boolean found = false;
+            for (String d : dirs)
+                if (!d.isEmpty() && new File(d, "su").exists()) { found = true; break; }
+            sSuPresent = found;
+        }
+        return sSuPresent;
+    }
+
+    private static synchronized boolean runRoot(String command) {
+        if (!root())
+            return false;
+        try {
+            if (sSu != null) {
+                try {
+                    sSu.exitValue(); // ended: refused, or the root manager stopped it
+                    sSu = null;
+                    if (++sSuFailures >= 2) { sSuDenied = true; Log.w(Session.TAG, "root refused"); return false; }
+                }
+                catch (IllegalThreadStateException running) { /* still there */ }
+            }
+            if (sSu == null) {
+                final java.lang.Process p = new ProcessBuilder("su").redirectErrorStream(true).start();
+                Thread drain = new Thread(() -> {
+                    try (java.io.InputStream in = p.getInputStream()) {
+                        byte[] buf = new byte[4096];
+                        while (in.read(buf) >= 0) { /* nothing to read: output goes to files */ }
+                    }
+                    catch (Exception ignored) {}
+                }, "deckos-su");
+                drain.setDaemon(true);
+                drain.start();
+                sSu = p;
+                sSuIn = p.getOutputStream();
+            }
+            // its own background subshell: a long or looping command doesn't hold up the next one
+            sSuIn.write(("( " + command + " ) </dev/null >/dev/null 2>&1 &\n").getBytes(StandardCharsets.UTF_8));
+            sSuIn.flush();
+            return true;
+        }
+        catch (Exception e) {
+            Log.w(Session.TAG, "su: " + e);
+            sSu = null;
+            if (++sSuFailures >= 2) sSuDenied = true;
+            return false;
         }
     }
 

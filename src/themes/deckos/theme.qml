@@ -284,6 +284,7 @@ function toggleLeftBar(component) {
         sLeftClose.play();
         component.isOpen = false;
         component.focus = false;
+        if (root.openLeftBar === component) root.openLeftBar = null; // DECKOS: see focusWatch
         
         // ЗАПУСКАЕМ ТАЙМЕР ЧЕРЕЗ 300мс
         var hideTimer = Qt.createQmlObject('import QtQuick 2.15; Timer { interval: 400; running: true }', component, "hideTimer");
@@ -302,6 +303,7 @@ function toggleLeftBar(component) {
         component.focus = true;
         component.isOpen = true;
         component.updateFocus();
+        root.openLeftBar = component; // DECKOS: see focusWatch
         // DECKOS: a close just before (double press) leaves the page's focusTimer (50-100 ms) running,
         // which then pulls focus out of the open menu; take it back once that has fired
         var refocusTimer = Qt.createQmlObject('import QtQuick 2.15; Timer { interval: 150; running: true }', component, "refocusTimer");
@@ -531,6 +533,44 @@ Connections {
     function onStateChanged() {
         if (Qt.application.state === Qt.ApplicationActive && pageLoader.item && typeof pageLoader.item.resumeFocus === "function")
             Qt.callLater(pageLoader.item.resumeFocus)
+    }
+}
+
+// DECKOS: the controller's focus can drift from what the screen shows (Android resuming DeckOS, an old
+// page timer firing while the Steam menu opens): with the menu open the keys belong to it, and with no
+// item focused at all the page takes the focus back. Checked a few times a second while DeckOS is in front.
+property var openLeftBar: null // the page's Steam menu while it's open (toggleLeftBar)
+
+function isInside(item, ancestor) {
+    for (var it = item; it; it = it.parent)
+        if (it === ancestor) return true
+    return false
+}
+
+Timer {
+    id: focusWatch
+    interval: 300
+    repeat: true
+    running: Qt.application.state === Qt.ApplicationActive
+    onTriggered: {
+        var win = root.Window.window
+        if (!win || welcome.visible || root.isTransitioning) return
+        var f = win.activeFocusItem
+        var bar = root.openLeftBar
+        if (bar && bar.isOpen && bar.visible) {
+            if (f === bar || !root.isInside(f, bar)) {
+                console.info("DeckOS: focus back to the Steam menu")
+                bar.forceActiveFocus()
+                if (typeof bar.updateFocus === "function") bar.updateFocus()
+            }
+            return
+        }
+        var page = pageLoader.item
+        if (page && page.visible && (!f || f === win.contentItem || f === root || f === pageLoader)) {
+            console.info("DeckOS: focus back to the page")
+            if (typeof page.resumeFocus === "function") page.resumeFocus()
+            else page.forceActiveFocus()
+        }
     }
 }
 

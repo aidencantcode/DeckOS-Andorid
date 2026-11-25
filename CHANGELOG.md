@@ -4,6 +4,28 @@ One entry per build the owner tests. Newest first.
 
 ## Unreleased
 
+## 0.0.15 — 2026-11-26
+**Fixes from your report on the Steam menu's highlight and on play time.**
+- **Play time counts only while the app DeckOS opened is in front.**
+  - DeckOS now records the exact app Android opens for a launch. Before, it guessed it from the launch command, and when the guess failed it took whatever app came to the front next.
+  - It sees which app is in front through Android's **usage access**: every app switch, with its exact time, including the screen turning off. On AYN / Retroid, DeckOS gives itself that access through the system service at the first launch. It's shown and can be given by hand under Settings › Overlay › *Play time*.
+  - The home screen, other apps, Android's settings, file pickers and permission screens never count, and are never taken for the game.
+  - Without a game (you only left DeckOS), the notification, Quick Access and the performance overlay no longer show a timer. Quick Access says "No game running".
+  - Quick Access shows "Paused at …" while the game isn't in front and "Game closed" once its process has ended.
+- **Steam menu: the highlight always shows the selected button.** It used to follow Qt's keyboard focus, which could drift elsewhere while the menu stayed on the selected button. Now it follows the selection itself.
+- **The controller's focus is checked a few times a second.** With the Steam menu open, the keys always go to it. If nothing on the page has the focus (after the boot screen, or coming back to DeckOS), the page takes it back. Home's own focus timer no longer pulls the focus out of an open menu.
+- **Root:** on devices without the AYN / Retroid system service, DeckOS can now use root (Magisk, KernelSU) for the same things: modes, underclocking, the frame rate, usage access and the controller shortcut. Your handhelds have the system service, so they won't show a Magisk prompt. Settings › Overlay › Device info now shows the system service, root and usage access.
+
+**Notes**
+- Nothing here has been checked on a handheld yet; the Android code compiles locally (`tools\check-android.ps1`, which can now also build an APK locally).
+
+**Test checklist**
+1. Settings › Overlay › *Play time* shows ✓. If it doesn't, launch a game once, or press it.
+2. Launch a game and play 2 minutes. Press the Android Home button and wait 2 minutes, then open the game again from recent apps and play 1 minute. The notification said "Paused, the game isn't in front" while you were away. Back in DeckOS, the game's play time grew by about 3 minutes, not 5.
+3. Leave DeckOS without starting a game (Home button). The notification shows no running timer, and Quick Access says "No game running".
+4. Open the Steam menu on Home, Library and a game page; move up and down. The selected button is always highlighted. Press the menu button twice quickly, then once more: the menu opens with Home highlighted.
+5. Leave DeckOS from Home and come back: the game row still has its highlight.
+
 ## 0.0.14 — 2026-11-25
 **Fixes from your 0.0.13 report (Retroid Pocket Classic).**
 - **Underclocking presets on every chip.** ClusterTune only has presets for the Odin 3's and the Odin 2 / Thor's chips, so your Retroid's list held only Stock, and left / right kept applying it. Chips without ClusterTune presets now get DeckOS's own *Small / Medium / Large Underclock*: about 85 / 70 / 55 % of each cluster's top clock, on the chip's own steps. They're marked "DeckOS preset" and appear in Quick Access's slider too.

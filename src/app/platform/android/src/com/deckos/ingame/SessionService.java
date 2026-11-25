@@ -132,7 +132,7 @@ public class SessionService extends Service {
                 if (wantFps) fps = DeviceControl.fps();
                 if (hud != null && Session.hudLevel() >= 3) profile = profileLine();
                 ticks++;
-                if (ticks % 5 == 0) checkForeground();
+                if (ticks % 2 == 0) checkForeground();
                 if (ticks % 10 == 0) main.post(SessionService.this::ensureNotification);
             }
             catch (Exception e) {
@@ -142,35 +142,42 @@ public class SessionService extends Service {
             final float f = fps;
             main.post(() -> {
                 if (hud != null)
-                    hud.update(last, Session.playStart(), f, p);
+                    hud.update(last, Session.hasGame() ? Session.playStart() : 0, f, p);
             });
             statsHandler.postDelayed(this, 1000);
         }
     };
 
-    /// Without the accessibility service (which reports it at once), which app is in front and whether
-    /// the emulator still runs come from PServer every 5 s: the output of the previous round is read,
-    /// then the next one starts. Neither: play time counts until DeckOS is back, as before.
+    /// Every 2 s: which app is in front (Foreground's usage stats, exact). Without them and without the
+    /// accessibility service (which reports it at once), from PServer / root every 6 s; that also tells
+    /// whether the emulator's process still runs. None: play time counts until DeckOS is back.
     private void checkForeground() {
-        if (!Session.hasGame() || ShortcutService.instance() != null || !Privileged.available())
+        if (!Session.hasGame())
+            return;
+        boolean usage = Foreground.poll(this, main);
+        if (ticks % 6 != 0 || !Privileged.available())
+            return;
+        boolean wantFront = !usage && ShortcutService.instance() == null;
+        String pkg = Session.gamePackage;
+        if (!wantFront && pkg.isEmpty())
             return;
         if (fgPending != null) {
             String out = Privileged.readText(new java.io.File(fgPending));
             fgPending = null;
             if (out != null && !out.isEmpty()) {
                 java.util.regex.Matcher m = FG_ACTIVITY.matcher(out);
-                final String pkg = m.find() ? m.group(1) : null;
+                final String front = wantFront && m.find() ? m.group(1) : null;
                 // "pid=" with no number: the emulator's process has ended
                 final boolean gone = out.contains("pid=") && !PID.matcher(out).find();
                 main.post(() -> {
                     if (gone) Session.onGameProcessGone();
-                    else if (pkg != null) Session.onForegroundPackage(pkg);
+                    else if (front != null) Session.onForegroundPackage(front);
                 });
             }
         }
         java.io.File f = Privileged.outputFile(this, "foreground.txt");
-        String pkg = Session.gamePackage.isEmpty() ? "" : Session.gamePackage;
-        String body = "{ dumpsys activity activities 2>/dev/null | grep -m1 -E 'topResumedActivity|mResumedActivity|ResumedActivity:';"
+        String body = "{"
+                    + (wantFront ? " dumpsys activity activities 2>/dev/null | grep -m1 -E 'topResumedActivity|mResumedActivity|ResumedActivity:';" : "")
                     + (pkg.isEmpty() ? "" : " echo \"pid=$(pidof " + Privileged.quote(pkg) + ")\";")
                     + " } > " + Privileged.quote(f.getAbsolutePath()) + " 2>/dev/null";
         if (Privileged.runScript(this, "foreground.sh", body))
@@ -233,9 +240,10 @@ public class SessionService extends Service {
         Intent repost = new Intent(this, SessionService.class).setAction(ACTION_REPOST);
         PendingIntent deleted = PendingIntent.getService(this, 1, repost, piFlags);
 
-        // the timer is the time actually spent in the game; it stops while another app is in front
+        // the timer is the time actually spent in the game; it stops while another app is in front, and
+        // there's none without a game (DeckOS was only left)
         boolean game = Session.hasGame();
-        boolean counting = !game || Session.gameFocused();
+        boolean counting = game && !Session.gameClosed && Session.gameFocused();
         String played = HudView.hoursMinutes(Session.playedMs() / 60000) + " played";
         String text = !game ? "Tap for the quick access menu"
                     : Session.gameClosed ? "Closed · " + played
@@ -246,7 +254,7 @@ public class SessionService extends Service {
             .setContentTitle(game ? Session.title : "DeckOS")
             .setContentText(text)
             .setSubText(game && !Session.system.isEmpty() ? Session.system : null)
-            .setWhen(game ? Session.playStart() : Session.startedAt)
+            .setWhen(Session.playStart())
             .setShowWhen(counting)
             .setUsesChronometer(counting)
             .setOngoing(true)
@@ -292,7 +300,7 @@ public class SessionService extends Service {
             }
         }
         hud.setLevel(level);
-        hud.update(last, Session.playStart(), Float.NaN, ""); // the sampler fills in FPS and the profile next second
+        hud.update(last, Session.hasGame() ? Session.playStart() : 0, Float.NaN, ""); // the sampler fills in FPS and the profile next second
     }
 
     private void removeHud() {

@@ -1090,7 +1090,7 @@ Rectangle {
                 width: menuPanel.width
                 height: Math.min(106, menuPanel.height * 0.085) /* DECKOS: was 106 */
                 
-                property bool isFocused: activeFocus
+                property bool isFocused: leftBar.isOpen && leftBar.currentIndex === buttonIndex // DECKOS: the selected button, not Qt focus (which can drift)
                 onIsFocusedChanged: { if (isFocused) { bgColor = "#27303A"; textColor = "white" } else { bgColor = "transparent"; textColor = "#AAA" } }
                 
                 property color bgColor: "transparent"

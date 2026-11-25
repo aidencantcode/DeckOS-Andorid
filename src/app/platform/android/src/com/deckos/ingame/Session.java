@@ -89,16 +89,36 @@ public final class Session {
             raKey = o.optString("raKey", "");
             profileName = o.optString("profileName", "");
             profilePicture = o.optString("profilePicture", "");
-            gamePackage = o.optString("package", "");
-            raGameId = 0;
             startedAt = System.currentTimeMillis();
+            // the app the launch's intent opens (MainActivity, onGameIntent) beats the command's text
+            gamePackage = startedAt - sIntentAt < 5000 && !sIntentPackage.isEmpty() ? sIntentPackage : o.optString("package", "");
+            raGameId = 0;
             resetPlayTime();
             sGameLaunched = true;
+            Foreground.startSession(startedAt);
+            if (sApp != null && !Foreground.usageAllowed(sApp) && Foreground.grantUsage(sApp))
+                Log.i(TAG, "usage access requested through PServer / root (play time)");
         }
         catch (Exception e) {
             Log.w(TAG, "setNowPlaying: " + e);
         }
         SessionService.refresh();
+    }
+
+    private static volatile String sIntentPackage = "";
+    private static volatile long sIntentAt = 0;
+
+    /// MainActivity, as it starts a game ("am start ..."): the app Android opens for that intent is the
+    /// game's - exact, where the launch command's text can only be guessed from
+    public static void onGameIntent(Context ctx, Intent intent) {
+        String pkg = Foreground.packageOf(ctx, intent);
+        sIntentPackage = pkg;
+        sIntentAt = System.currentTimeMillis();
+        if (pkg.isEmpty())
+            return;
+        if (sGameLaunched && sIntentAt - startedAt < 5000)
+            gamePackage = pkg; // setNowPlaying came first (the usual order)
+        Log.i(TAG, "game app: " + pkg);
     }
 
     /// the RetroAchievements game of what's playing (found by ROM hash, a moment after the launch)
@@ -358,11 +378,11 @@ public final class Session {
 
 
     // --- play time: only while the game is in front -------------------------------------------------
-    // Which app is in front comes from DeckOS's accessibility service (window changes, at once) or,
-    // without it, from PServer every few seconds (SessionService). With neither, the game counts as in
-    // front until DeckOS comes back, as before.
+    // The game is the app DeckOS opened (onGameIntent). Which app is in front: see Foreground (usage
+    // stats, else the accessibility service, else PServer / root every few seconds). With none of them,
+    // the game counts as in front until DeckOS comes back, as before.
 
-    /// the emulator's package (from the launch command, or the first app in front after the launch)
+    /// the emulator's package (the app the launch opened, else the first app in front after it)
     static volatile String gamePackage = "";
     /// the emulator's process is gone (PServer can tell)
     static volatile boolean gameClosed = false;
@@ -375,6 +395,22 @@ public final class Session {
         sFocused = true;
         sFocusedSince = System.currentTimeMillis();
         gameClosed = false;
+        sResumedPkg = "";
+        sResumedClass = "";
+    }
+
+    /// Settings > Overlay > Play time: DeckOS may read which app is in front (usage access)
+    public static boolean usageAccessAllowed() {
+        return sApp != null && Foreground.usageAllowed(sApp);
+    }
+
+    /// gives usage access through PServer / root; false if it can't (the caller opens the settings)
+    public static boolean allowUsageAccess() {
+        return sApp != null && Foreground.grantUsage(sApp);
+    }
+
+    public static void openUsageAccessSettings() {
+        Foreground.openUsageSettings();
     }
 
     static synchronized long playedMs() {
@@ -391,14 +427,21 @@ public final class Session {
     }
 
     static void setGameFocused(boolean focused) {
+        setGameFocused(focused, System.currentTimeMillis());
+    }
+
+    /// `at`: when it happened (the usage stats are read a moment later)
+    static void setGameFocused(boolean focused, long at) {
         synchronized (Session.class) {
             if (focused == sFocused)
                 return;
             long now = System.currentTimeMillis();
-            if (sFocused)
-                sPlayedMs += Math.max(0, now - sFocusedSince);
+            if (sFocused) {
+                at = Math.max(sFocusedSince, Math.min(at, now));
+                sPlayedMs += at - sFocusedSince;
+            }
             else
-                sFocusedSince = now;
+                sFocusedSince = Math.min(Math.max(at, startedAt), now);
             sFocused = focused;
         }
         Log.i(TAG, focused ? "game in front: play time counting" : "game not in front: play time paused");
@@ -411,18 +454,56 @@ public final class Session {
         return startedAt > 0 ? playedMs() / 1000 : -1;
     }
 
-    /// an app came to the front while a game is running (accessibility event or PServer poll)
+    /// an app came to the front while a game is running (accessibility event or PServer poll; the usage
+    /// stats go through onActivityChange)
     static void onForegroundPackage(String pkg) {
+        if (sApp != null && Foreground.usageActive(sApp))
+            return; // the usage stats know better (exact times)
+        onForegroundPackage(pkg, System.currentTimeMillis());
+    }
+
+    private static void onForegroundPackage(String pkg, long at) {
         if (sApp == null || !sGameLaunched || frontendInFront || pkg == null || pkg.isEmpty())
             return;
         if (ignoredPackages().contains(pkg))
             return; // DeckOS's own windows, the status bar and shade, keyboards
-        if (gamePackage.isEmpty() && !pkg.equals(homePackage())) {
-            gamePackage = pkg; // the launch command didn't name it: the first app in front after the launch
+        if (gamePackage.isEmpty() && !pkg.equals(homePackage()) && !SYSTEM_SCREENS.contains(pkg)) {
+            gamePackage = pkg; // the launch didn't name it ("Open with"): the first app in front after it
             Log.i(TAG, "game package: " + pkg);
         }
-        setGameFocused(pkg.equals(gamePackage));
+        if (pkg.equals(gamePackage))
+            gameClosed = false; // started again (from Android's recent apps)
+        setGameFocused(pkg.equals(gamePackage), at);
     }
+
+    private static volatile String sResumedPkg = "", sResumedClass = "";
+
+    /// Foreground's usage stats: an activity resumed / paused / stopped, or the screen went off
+    static void onActivityChange(int type, String pkg, String cls, long at) {
+        if (sApp == null || !sGameLaunched || frontendInFront || (pkg != null && ignoredPackages().contains(pkg)))
+            return;
+        String c = cls == null ? "" : cls;
+        if (type == Foreground.RESUMED) {
+            sResumedPkg = pkg == null ? "" : pkg;
+            sResumedClass = c;
+            onForegroundPackage(pkg, at);
+        }
+        else if (type == Foreground.SCREEN_OFF)
+            setGameFocused(false, at);
+        else if (pkg != null && pkg.equals(sResumedPkg) && (c.isEmpty() || sResumedClass.isEmpty() || c.equals(sResumedClass))) {
+            // the activity in front paused or stopped (not an older one of the same app stopping late)
+            sResumedPkg = "";
+            sResumedClass = "";
+            setGameFocused(false, at);
+        }
+    }
+
+    /// apps an emulator may open for a moment (permissions, folder picker, settings): never taken for
+    /// the game, and the game doesn't count while they're in front
+    private static final java.util.Set<String> SYSTEM_SCREENS = new java.util.HashSet<>(java.util.Arrays.asList(
+        "com.android.settings", "com.android.documentsui", "com.google.android.documentsui",
+        "com.android.permissioncontroller", "com.google.android.permissioncontroller",
+        "com.android.packageinstaller", "com.google.android.packageinstaller", "com.android.intentresolver"));
 
     /// PServer saw the emulator's process end
     static void onGameProcessGone() {

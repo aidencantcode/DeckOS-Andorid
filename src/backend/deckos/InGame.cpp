@@ -189,6 +189,7 @@ bool InGame::shortcutRunning() const { DECKOS_GET(jni_bool("shortcutServiceRunni
 int InGame::hudPosition() const { DECKOS_GET(jni_int("hudPosition"), m_pc_hud_pos); }
 bool InGame::showFps() const { DECKOS_GET(jni_bool("showFps"), m_pc_fps); }
 bool InGame::privileged() const { DECKOS_GET(jni_bool("privilegedAvailable"), false); }
+bool InGame::usageAccess() const { DECKOS_GET(jni_bool("usageAccessAllowed"), false); }
 bool InGame::notificationBlocked() const { DECKOS_GET(jni_bool("notificationsBlocked"), false); }
 bool InGame::launchCover() const { DECKOS_GET(jni_bool("launchCover"), m_pc_cover); }
 int InGame::launchCoverSeconds() const { DECKOS_GET(jni_int("launchCoverSeconds"), m_pc_cover_seconds); }
@@ -279,6 +280,15 @@ void InGame::enableShortcut()
 #endif
 }
 
+void InGame::allowUsageAccess()
+{
+#ifdef Q_OS_ANDROID
+    if (!jni_bool("allowUsageAccess"))
+        QAndroidJniObject::callStaticMethod<void>(JNI_SESSION, "openUsageAccessSettings", "()V");
+    QTimer::singleShot(6000, this, &InGame::changed); // Java looks again at most every 5 s
+#endif
+}
+
 void InGame::openAccessibilitySettings()
 {
 #ifdef Q_OS_ANDROID
@@ -306,6 +316,8 @@ void InGame::beginSession()
 
 void InGame::onAppState(Qt::ApplicationState state)
 {
+    if (state == Qt::ApplicationActive)
+        emit changed(); // back from Android's settings: permissions may have changed
     if (!m_playing)
         return;
     if (state != Qt::ApplicationActive) {

@@ -50,8 +50,10 @@ class InGame : public QObject {
     /// performance overlay corner: 0 top left, 1 top right, 2 bottom left, 3 bottom right
     Q_PROPERTY(int hudPosition READ hudPosition WRITE setHudPosition NOTIFY changed)
     Q_PROPERTY(bool showFps READ showFps WRITE setShowFps NOTIFY changed)
-    /// AYN / Retroid's PServer is there (modes, underclocking, frame rate)
+    /// AYN / Retroid's PServer, or root, is there (modes, underclocking, frame rate)
     Q_PROPERTY(bool privileged READ privileged NOTIFY changed)
+    /// play time can tell which app is in front exactly: Android's usage access is given
+    Q_PROPERTY(bool usageAccess READ usageAccess NOTIFY changed)
     /// the launch cover: the launch screen stays over the game while it loads, hiding the emulator's own
     /// loading screens (Android; Java LaunchCover)
     Q_PROPERTY(bool launchCover READ launchCover WRITE setLaunchCover NOTIFY changed)
@@ -87,6 +89,7 @@ public:
     bool showFps() const;
     void setShowFps(bool on);
     bool privileged() const;
+    bool usageAccess() const;
     bool launchCover() const;
     void setLaunchCover(bool on);
     int launchCoverSeconds() const;
@@ -97,8 +100,10 @@ public:
     Q_INVOKABLE void openNotificationSettings();
     /// Android's accessibility settings, to turn on the shortcut service
     Q_INVOKABLE void openAccessibilitySettings();
-    /// turns the shortcut service on directly (AYN / Retroid PServer), else opens those settings
+    /// turns the shortcut service on directly (AYN / Retroid PServer, root), else opens those settings
     Q_INVOKABLE void enableShortcut();
+    /// gives DeckOS usage access directly (PServer, root), else opens Android's usage access screen
+    Q_INVOKABLE void allowUsageAccess();
     /// model, chip, PServer, vendor settings and sensors - for checking a new handheld
     Q_INVOKABLE QString deviceInfo() const;
 

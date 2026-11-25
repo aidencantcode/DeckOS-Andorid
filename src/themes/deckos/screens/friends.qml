@@ -386,7 +386,7 @@ FocusScope {
             height: Math.min(106, menuPanel.height * 0.085) /* DECKOS: was 106 */
             
             // СВОЙСТВО ДЛЯ ПРОВЕРКИ ФОКУСА
-            property bool isFocused: activeFocus
+            property bool isFocused: leftBar.isOpen && leftBar.currentIndex === buttonIndex // DECKOS: the selected button, not Qt focus (which can drift)
             
             onIsFocusedChanged: {
                 if (isFocused) {
