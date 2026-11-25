@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.0.13 — 2026-11-25
 **ClusterTune built in.** Underclocking is now its own settings tab, **Settings › Underclocking**, with ClusterTune's tuner ported into DeckOS (MIT, by Aurelio Bernal). The separate app isn't needed any more.
 - **Applied profile:** switch profiles right on the page. The page shows the chip and every CPU cluster's and the GPU's current limit next to its stock limit.
 - **ClusterTune's presets** for the chip (Small / Medium / Large on the Snapdragon 8 Elite and 8 Gen 2). Like in ClusterTune, they can be edited or deleted, and *Restore ClusterTune presets* puts them back.
