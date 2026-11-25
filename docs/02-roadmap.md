@@ -24,6 +24,129 @@ Work top to bottom. Each phase ends with an APK the owner tests. Tick boxes as y
 
 ---
 
+## Stable Alpha — 0.1.0 (current phase)
+
+The first build that is not a pre-release (`ship.ps1 -Phase 1` → `0.1.x`; `android.yml` publishes 0.1+ as a normal release). The goal is "daily-drivable": nothing stutters, nothing is half-wired, the in-game layer works on both handhelds. Work the milestones in order; each one ships as a 0.0.x test build if it's big, so the owner can test early.
+
+**Research behind this plan (2026-11-25, details in `DECISIONS.md`):**
+- **ClusterTune has no outside API.** No exported receiver, activity extras or service. Its Quick Settings tile is bound by the system only. "Talk to the app" isn't possible without changes on its side.
+  - So DeckOS switches CPU/GPU limits itself, the way ClusterTune does: writing each CPU cluster's maximum frequency and the GPU's.
+  - It uses ClusterTune's bundled presets (MIT, credited) for the Odin 3's Snapdragon 8 Elite (`CQ8725S`) and the 8 Gen 2 (`QCS8550`). Other chips get steps derived from their frequency tables.
+  - **Custom** is the first profile of a ClusterTune export file (its Share/Export button), imported once.
+- **PServer.** AYN and Retroid firmware ship a system service, `PServerBinder`, that runs a shell command with system rights. It needs no root, Shizuku or permission, and ClusterTune uses it. DeckOS uses it for everything that needs privileges:
+  - writing frequencies and vendor modes;
+  - toggling Wi-Fi and Bluetooth;
+  - reading frame stats.
+  - It's fire-and-forget. Output comes back through a file in DeckOS's private folder.
+  - On devices without it, these controls are hidden or open Android settings.
+- **Vendor modes are `Settings.System` values.** Any app can read them (DeckOS targets SDK 30); writing them goes through PServer.
+  - `performance_mode`: 0 Standard, 1 Performance, 2 High Performance.
+  - `fan_mode`: 0 Off, 1 Quiet, 4 Smart, 5 Sport, 6 Custom.
+  - This is ClusterTune's mapping, observed on AYN devices. *Verify* on the Odin 3 and on the Retroid Pocket Classic with the new device-info dump.
+  - For the "Maximum" fan, the custom-speed key is unknown until that dump.
+- **FPS without Shizuku:** sample SurfaceFlinger's frame counter through PServer, once a second, only while the HUD shows FPS. This is a small, contained change, so Shizuku is dropped.
+- **Pausing:** the Quick Access menu is an Activity, so the game gets `onPause`, and emulators pause on that. A "Keep game running" mode shows the same menu as an overlay window instead. The game stays resumed; only window focus moves.
+- **Lag:** `theme.qml` has a single page `Loader` that destroys and rebuilds each screen on every navigation. Library is 3.3k lines of QML, the game page 3k. Rebuilding them is the "UI break" when going back from a game to the library, and part of the library-open hiccup.
+
+### A — Fluid library (optimization first)
+- [ ] Keep Home, Library and the game page alive. Hide and show them instead of rebuilding them, so going back restores focus and scroll position instantly. Other pages keep loading on demand.
+- [ ] Library open: show cached data at once. A first start, or a start with no cache, gets a Steam-style loading screen instead of a frozen UI.
+- [ ] Find what blocks the UI thread on open: image decode, model sorting, bindings. Log timings with a `--deckos-timing` flag, and fix the biggest costs:
+  - `sourceSize` and `asynchronous` on every grid image;
+  - fewer delegates built off-screen;
+  - no full-model `count` loops in bindings.
+- [ ] Budget on PC: game page ↔ library under 100 ms. On the Odin 3: no visible stall, checked by the owner.
+
+### B — Game page
+- [ ] **Last played:** "Never" for games never launched. The StMini leftover showed "Just now" when there was no date.
+  - Next to it, PLAYTIME with "3 h 12 min" (or "Never") underneath, from Pegasus's playtime stats.
+- [ ] **RetroAchievements tab:**
+  - A Steam-style spinner instead of the Pegasus loading icon.
+  - When logged out: no BigScreenFE login or keyboard. One "Log in to RetroAchievements" button opens Settings › Profile › RetroAchievements.
+- [ ] **Profile RA login:** "Checking…" with a spinner, then ✓ "Logged in as *name*" or ✕ "Login failed: *reason*" (wrong key / offline). The tab refreshes on success.
+- [ ] **Activity tab:**
+  - Recent screenshots: scraped ones, plus emulator screenshot folders (RetroArch, PPSSPP, DuckStation, AetherSX2-family; paths *verify*).
+  - Recently earned achievements.
+  - A list/grid toggle. The list looks like the overlay's achievement rows; the grid shows badges with dates.
+- [ ] **Trailer:**
+  - After ~3 s on the game page, the hero background cross-fades into the game's video. The logo and buttons stay.
+  - It stops on leaving or launching. Settings has *Play trailers* (off / muted / with sound) and the delay.
+  - Plays any video the game already has (`assets.video`, `media/<game>/video.*`).
+  - **Scraping videos needs ScreenScraper** (the only free source of game video snaps). That needs a ScreenScraper account from the owner and DeckOS developer credentials, so it's **blocked on the owner**. TheGamesDB only links YouTube, which Qt can't play, and fetching YouTube streams isn't allowed by its terms.
+
+### C — Scraping
+- [ ] **Rescrape everything →** a picker: every collection with a checkbox and a count, plus *Everything*. Only the chosen collections are rescraped; the rest are left as they are.
+
+### D — In-game layer (Quick Access + HUD)
+- [ ] **Controller shortcut:** an accessibility service watches for a button combo and opens Quick Access over any app.
+  - Choices: Select+Start, Select+R1, L3+R3. Default Select+R1.
+  - Only the second button of the combo is swallowed.
+  - The permission is asked for in Settings › In-Game.
+- [ ] **Keep game running:** an option under *Resume game*, also in settings. When on, Quick Access opens as an overlay window and the game isn't paused.
+- [ ] **Overlay settings tab:**
+  - A new rail tab in Quick Access and the same page in DeckOS Settings › In-Game (renamed "Overlay"). Both read and write the same settings, so changing one shows in the other.
+  - Contents: overlay scale, HUD level, HUD position, keep running, notification, shortcut, FPS.
+- [ ] **Overlay scale:** a slider (75–200%) that rescales the open panel live and smoothly. It also scales the HUD. The default is bigger than 0.0.10's, which the owner found too small.
+- [ ] **Quick Settings:**
+  - A brightness slider. It needs the "Modify system settings" permission, asked for once; DeckOS's own window adjusts meanwhile.
+  - Wi-Fi and Bluetooth toggles that switch directly through PServer; elsewhere they open Android's panel.
+  - **Wi-Fi drawer:**
+    - Shows the connected network and nearby networks with signal, and rescans.
+    - Picking a network: open networks and saved networks connect when the firmware allows (*verify*). A new network needing a password opens Android's Wi-Fi panel.
+  - **Bluetooth drawer:** paired devices with their connected state. Connecting or pairing new devices opens Android's Bluetooth settings.
+- [ ] **Font:** the HUD and Quick Access use the gamescope/Steam font when the owner provides the file. Until then, the Roboto/sans fallback.
+
+### E — Performance tab: device profiles (AYN / Retroid)
+Under the overlay level slider, each one is a 3–5 step slider like the overlay one, and the HUD shows what's active:
+- [ ] **Performance mode:** Standard / Performance / High Performance (vendor `performance_mode`).
+- [ ] **Fan:** Quiet / Smart / Sport / **Maximum**. Maximum switches the vendor fan to Custom and sets the highest speed. The key is confirmed from the device dump first.
+- [ ] **Underclock:** Stock / Small / Medium / Large / Custom.
+  - ClusterTune presets for the chip; Custom is the first profile of an imported ClusterTune export.
+  - Applied through PServer and restored to Stock when the game session ends, if *Reset after game* is on.
+  - If ClusterTune is installed, a note says its own app profiles may override DeckOS's.
+- [ ] **FPS** on HUD levels 1–4 via PServer, plus the active profiles ("PERF High · FAN Smart · CPU Medium").
+- [ ] **Device info dump** (Settings › System › Device info): model, SoC, PServer yes/no, vendor `Settings.System` keys with fan/perf in their name, readable sensors. The owner copies it for us, which settles the *verify* items above.
+
+### F — Stable Alpha release
+- [ ] `android.yml`: 0.1+ tags publish as a normal release; 0.0.x stays pre-release.
+- [ ] Full checklist on both handhelds (layout at 1080p and 1240×1080; controller-only; offline; first start).
+- [ ] CHANGELOG "0.1.0 — Stable Alpha" with the test checklist.
+
+## Beyond 0.1.0 — guided roadmap
+Proposed order. Each line becomes a milestone when its release starts. The owner can reorder.
+- **0.2 — Your games, your stats:**
+  - Per-game performance profiles: mode, fan and underclock remembered per game, applied at launch, restored after.
+  - Session summary toast on return ("Played 42 min · 3 achievements").
+  - A Quick Access **Screenshot** button (PServer `screencap`, saved per game; it feeds the Activity tab).
+  - Accurate play time from Android usage stats.
+  - A Home "Continue playing" card while a session is running.
+- **0.3 — Achievements everywhere:**
+  - Manual "Link RA game…".
+  - RA badges on tiles (has set / mastered).
+  - A Home "Recent achievements" shelf and an achievements hub (totals, rarest, "3 away from mastering").
+  - CHD hashing (libchdr).
+  - An unlock toast in Quick Access.
+- **0.4 — Steam:** public Steam profile (Phase 5): library, play time, achievements in the same UI.
+- **0.5 — Setup for anyone:**
+  - First-run wizard (Phase 4): storage permission, ROM folders, emulator check.
+  - A BIOS-missing warning per system.
+  - *Test launch* with a launch log.
+  - Native key/gamepad editors.
+- **0.6 — Media:**
+  - ScreenScraper (art, video snaps, manuals) once there's an account.
+  - Video download queue with a Wi-Fi-only option.
+  - Manual viewer.
+  - Home attract mode.
+- **0.7 — Polish:**
+  - Backup/restore to a zip.
+  - Low-battery toast in the overlay.
+  - Auto battery-saver profile under 15%.
+  - Localization plumbing.
+  - Original icon and sounds.
+  - In-app "What's new".
+
+---
+
 ## Phase 0 — Foundation (no visible features yet)
 - [x] Run `tools/bootstrap.sh` (or `.ps1`): clone upstream with submodules into `./deckos`, rename `origin` → `upstream`, create the owner's repo as `origin` (ask for its URL; until then work locally).
   - 2026-11-25: cloned at upstream `3702598c`, `upstream` remote set, DeckOS branch `main` created; `origin` = github.com/aidencantcode/DeckOS-Andorid (gh CLI auth, repo-local credential helper).

@@ -33,7 +33,12 @@ DeckSettingsPage {
         { type: "button", label: "RetroAchievements",
           desc: "Achievements on every game page",
           value: function () { return th && th.savedUsername !== "" ? th.savedUsername : "Not connected" },
-          activate: function () { if (th) th.openPage(13) } },
+          activate: function () {
+              if (!th) return
+              th.loginReturnPage = 6 // back to this page after signing in
+              th.pendingSettingsPage = "settings/profile.qml"
+              th.openPage(13)
+          } },
         { type: "info", label: "Steam profile",
           desc: "Show a public Steam profile's games, play time and achievements",
           value: function () { return "Coming soon" } }

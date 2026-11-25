@@ -1133,12 +1133,12 @@ Row {
         anchors.verticalCenter: parent.verticalCenter
         
         function getLastPlayedText(game) {
-            if (!game || !game.lastPlayed) {
-                return "NEVER PLAYED"
-            }
-            
-            var now = new Date()
+            // DECKOS: a never-launched game has an invalid date (truthy, NaN arithmetic): was "PLAYED JUST NOW"
+            if (!game || !game.lastPlayed || game.playCount === 0) return "NEVER PLAYED"
             var lastPlayed = new Date(game.lastPlayed)
+            if (isNaN(lastPlayed.getTime()) || lastPlayed.getFullYear() < 1980) return "NEVER PLAYED"
+
+            var now = new Date()
             var diffMs = now - lastPlayed
             var diffMins = Math.floor(diffMs / 60000)
             var diffHours = Math.floor(diffMins / 60)
@@ -1650,17 +1650,10 @@ Item {
         var game = middleSorted.get(i)
         
         if (game) {
-            // Если есть lastPlayed и он старше недели
-            if (game.lastPlayed) {
-                var lastPlayed = new Date(game.lastPlayed).getTime()
-                if (now - lastPlayed > timeThreshold) {
-                    games.push(game)
-                }
-            }
-            // Если нет lastPlayed (никогда не запускалась)
-            else if (!game.lastPlayed) {
+            // DECKOS: never played = an invalid date (NaN); StMini's check dropped exactly those games
+            var lastPlayed = game.lastPlayed ? new Date(game.lastPlayed).getTime() : NaN
+            if (isNaN(lastPlayed) || now - lastPlayed > timeThreshold)
                 games.push(game)
-            }
         }
     }
     
@@ -3666,6 +3659,15 @@ else if (api.keys.isMenu(event)) {
     nextPageIndex = index
     exitAnim.start()
 }
+
+        // DECKOS: the page host kept this page alive behind the game page and shows it again as it was
+        // (focus, scroll position), instead of rebuilding it from homeReturnContext
+        function resumePage() {
+            api.memory.set("homeReturnContext", null)
+            recommendedContainer.updateUnfilteredGames() // a game may have been played meanwhile
+            enterAnim.start()
+            focusTimer.start()
+        }
 
         Component.onCompleted: {
         NewsJS.fetchNews(function(items) {

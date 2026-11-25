@@ -8,7 +8,7 @@ the owner will make it private again when development ends (decisions 2026-11-25
 | Part | Source | Author | License |
 |---|---|---|---|
 | Everything outside `ra/` (screens, scripts, sounds, fonts, icons) except the files marked DeckOS below | StMini 0.4.22 (0.3.1 until build 0.0.3) | ScriptUT | None stated (all rights reserved by the author) |
-| `ra/RAGameInfoSection.qml`, `ra/RACredentialsPopup.qml`, `ra/VirtualKeyboard.qml`, `ra/assets/icons/*` | [BigScreenFE](https://github.com/ZagonAb/BigScreenFE) 1.1 | Gonzalo Abbate | CC BY-NC-SA 4.0 |
+| `ra/RAGameInfoSection.qml`, `ra/assets/icons/*` (its login popup and keyboard were removed in 0.1.0) | [BigScreenFE](https://github.com/ZagonAb/BigScreenFE) 1.1 | Gonzalo Abbate | CC BY-NC-SA 4.0 |
 
 StMini additionally contains third-party assets: Steam Deck UI sounds (Valve), Arial Bold (Microsoft),
 Gilroy ExtraBold (commercial font) and a Fontello icon font. None of these may be redistributed.
@@ -18,7 +18,7 @@ in this folder must be replaced with original or properly licensed work.
 
 Written for DeckOS (no third-party code): `screens/ProfileBadge.qml`, `screens/gamedata/files.qml`, `screens/gamedata/details.qml`,
 `screens/settings/library.qml`, `screens/settings/profile.qml`, `screens/settings/parts/*`, and the rebuilt
-`screens/settings/general.qml` / `screens/settings/system.qml`; `ra/RALogin.qml` wraps BigScreenFE's popup.
+`screens/settings/general.qml` / `screens/settings/system.qml`.
 
 Outside this folder, `src/frontend/assets/boot.mp4` is the Steam Deck startup animation (Valve), supplied by the
 owner and re-encoded to 1080p; it falls under the same personal-use-only terms as the Deck sounds above.

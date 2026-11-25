@@ -45,8 +45,12 @@ public:
     Q_INVOKABLE void identify(QObject* game, const QString& apiKey);
     /// The RA console id of a game's system, 0 if RetroAchievements doesn't cover it.
     Q_INVOKABLE int consoleOf(QObject* game) const;
+    /// Checks a username + Web API key with RetroAchievements; answers with accountChecked().
+    Q_INVOKABLE void verifyAccount(const QString& user, const QString& apiKey);
 
 signals:
+    /// ok: the key works for this user; user: RA's spelling of the name; message: why not, for people
+    void accountChecked(bool ok, const QString& user, const QString& picture, const QString& message);
     /// method: "hash"        RA knows this exact dump (gameId > 0, title is RA's)
     ///         "unknown"     hashed, but no RA game has this hash (another dump, a hack, no set yet)
     ///         "unsupported" can't be hashed: no local file, system not on RA, unreadable, .7z...

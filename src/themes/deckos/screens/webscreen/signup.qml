@@ -1,5 +1,6 @@
 import QtQuick 2.15
 import ".." // DECKOS: ProfileBadge
+import "../settings/parts" // DECKOS: SteamSpinner
 import QtGraphicalEffects 1.15
 import QtQuick.Layouts 1.15
 
@@ -48,18 +49,57 @@ FocusScope {
         keyboardContainer.forceActiveFocus();
     }
 
-    // Сохранение ключа и логина в память через theme.qml
+    // DECKOS: Sign in checks the account with RetroAchievements first (deckos.ra.verifyAccount) and says
+    // whether it worked; StMini saved whatever was typed without a word
+    property string checkState: "" // "", "checking", "ok", "failed"
+    property string checkMessage: ""
+    readonly property var raService: (typeof deckos !== "undefined" && deckos) ? deckos.ra : null
+
     function saveCredentials() {
-        if (theme) {
-            theme.rememberMe = rememberMeToggle.checked;
-            if (rememberMeToggle.checked) {
-                theme.savedUsername = root.usernameStr;
-                theme.savedApiKey = root.passwordStr;
-            } else {
-                theme.savedUsername = "";
-                theme.savedApiKey = "";
-            }
+        if (!theme || checkState === "checking") return
+        theme.rememberMe = rememberMeToggle.checked
+        if (!rememberMeToggle.checked) { // StMini: signing in without "Remember me" forgets the account
+            theme.savedUsername = ""
+            theme.savedApiKey = ""
+            checkState = "ok"
+            checkMessage = "Signed out of RetroAchievements"
+            leaveTimer.start()
+            return
         }
+        if (!raService) { // no backend (shouldn't happen): keep StMini's behaviour
+            theme.savedUsername = root.usernameStr
+            theme.savedApiKey = root.passwordStr
+            return
+        }
+        checkState = "checking"
+        checkMessage = "Checking with RetroAchievements…"
+        raService.verifyAccount(root.usernameStr, root.passwordStr)
+    }
+
+    Connections {
+        target: root.raService
+        function onAccountChecked(ok, user, picture, message) {
+            if (root.checkState !== "checking") return
+            if (!ok) {
+                root.checkState = "failed"
+                root.checkMessage = message
+                return
+            }
+            root.checkState = "ok"
+            root.checkMessage = "Logged in as " + user
+            theme.savedUsername = user
+            theme.savedApiKey = root.passwordStr.trim()
+            root.usernameStr = user
+            leaveTimer.start()
+        }
+    }
+    Timer { id: leaveTimer; interval: 1400; onTriggered: root.leave() }
+
+    // DECKOS: back to where the sign-in was opened from (game page, Settings > Profile) instead of Home
+    function leave() {
+        var target = theme && theme.loginReturnPage >= 0 ? theme.loginReturnPage : 0
+        if (theme) theme.loginReturnPage = -1
+        theme.openPage(target)
     }
 
     ShaderEffectSource {
@@ -99,7 +139,7 @@ FocusScope {
         else if (api.keys.isCancel(event) && !root.closeMenuVisible) {      
             if (focusZone === 1) {
                 if (typeof sBack !== "undefined") sBack.play();
-                theme.openPage(0);
+                root.leave(); // DECKOS: back where it was opened from
                 event.accepted = true;
             }
             else if (focusZone === 0) {
@@ -135,11 +175,13 @@ FocusScope {
         // Основная рабочая область (Signup)
         FocusScope {
             id: mainCanvas
-            anchors.top: topBar1.bottom
-            anchors.bottom: bottomBar1.top
+            anchors.top: parent.top // DECKOS: was topBar1/bottomBar1, ids that never existed (ReferenceError)
+            anchors.topMargin: root.topH
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: root.topH
             anchors.horizontalCenter: parent.horizontalCenter
             width: parent.width 
-            height: parent.height 
+            // height follows the anchors
             clip: true
 
             Component.onCompleted: {
@@ -622,7 +664,7 @@ FocusScope {
                                     event.accepted = true;
                                 } else if (api.keys.isAccept(event) || event.key === Qt.Key_Return) {
                                     if (typeof sBack !== "undefined") sBack.play();
-                                    theme.openPage(0);
+                                    root.leave(); // DECKOS
                                     event.accepted = true;
                                 }
                             }
@@ -638,10 +680,37 @@ FocusScope {
                                         cancelBtn.forceActiveFocus();
                                     } else {
                                         if (typeof sBack !== "undefined") sBack.play();
-                                        theme.openPage(0);
+                                        root.leave(); // DECKOS
                                     }
                                 } 
                             }
+                        }
+                    }
+
+                    // DECKOS: the result of Sign in
+                    Row {
+                        visible: root.checkState !== ""
+                        height: 48
+                        spacing: 16
+                        SteamSpinner {
+                            visible: root.checkState === "checking"
+                            size: 40
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            visible: root.checkState === "ok" || root.checkState === "failed"
+                            text: root.checkState === "ok" ? "✓" : "✕"
+                            color: root.checkState === "ok" ? "#59bf40" : "#e5534b"
+                            font.pixelSize: 38
+                            font.bold: true
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: root.checkMessage
+                            color: root.checkState === "failed" ? "#ff8a80" : "white"
+                            font.pixelSize: 26
+                            font.family: typeof bold !== 'undefined' ? bold.name : ""
+                            anchors.verticalCenter: parent.verticalCenter
                         }
                     }
                 }

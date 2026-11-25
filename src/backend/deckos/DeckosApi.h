@@ -53,6 +53,7 @@ public:
     QObject* libraryObj() const;
     QObject* raObj() const;
     QObject* ingameObj() const;
+    InGame* ingame() const { return m_ingame; }
 
     void onLibraryReady();
     /// a game is about to start (before the launcher): hands it to the in-game layer

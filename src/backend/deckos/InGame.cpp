@@ -11,8 +11,10 @@
 #include "model/gaming/GameFile.h"
 #include "model/memory/Memory.h"
 
+#include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QTimer>
 
 #ifdef Q_OS_ANDROID
 #include <QtAndroidExtras/QAndroidJniObject>
@@ -37,7 +39,16 @@ InGame::InGame(model::ApiObject* api, RaMatcher* ra, QObject* parent)
     : QObject(parent)
     , m_api(api)
     , m_ra(ra)
+    , m_no_show_timer(new QTimer(this))
 {
+    m_no_show_timer->setSingleShot(true);
+    m_no_show_timer->setInterval(15000);
+    connect(m_no_show_timer, &QTimer::timeout, this, [this]() {
+        if (m_playing && !m_left_front)
+            endSession();
+    });
+    connect(qApp, &QGuiApplication::applicationStateChanged, this, &InGame::onAppState);
+
     connect(m_ra, &RaMatcher::identified, this,
             [this](QObject* game, int gameId, const QString&, const QString&, const QString&) {
         if (!m_launched || game != m_launched)
@@ -107,6 +118,56 @@ bool InGame::overlayAllowed() const
 #else
     return false;
 #endif
+}
+
+bool InGame::keepLoaded() const
+{
+#ifdef Q_OS_ANDROID
+    return QAndroidJniObject::callStaticMethod<jboolean>(JNI_SESSION, "keepLoaded", "()Z");
+#else
+    return m_pc_keep_loaded;
+#endif
+}
+
+void InGame::setKeepLoaded(bool on)
+{
+#ifdef Q_OS_ANDROID
+    QAndroidJniObject::callStaticMethod<void>(JNI_SESSION, "setKeepLoaded", "(Z)V", static_cast<jboolean>(on));
+#else
+    m_pc_keep_loaded = on;
+#endif
+    emit changed();
+}
+
+void InGame::beginSession()
+{
+    m_left_front = QGuiApplication::applicationState() != Qt::ApplicationActive;
+    m_playing = true;
+    emit playingChanged();
+    if (!m_left_front)
+        m_no_show_timer->start();
+}
+
+void InGame::onAppState(Qt::ApplicationState state)
+{
+    if (!m_playing)
+        return;
+    if (state != Qt::ApplicationActive) {
+        m_left_front = true;
+        m_no_show_timer->stop();
+        return;
+    }
+    if (m_left_front)
+        endSession();
+}
+
+void InGame::endSession()
+{
+    m_no_show_timer->stop();
+    m_playing = false;
+    m_left_front = false;
+    emit sessionEnded();
+    emit playingChanged();
 }
 
 void InGame::requestOverlayPermission()

@@ -125,6 +125,24 @@ Format: `## YYYY-MM-DD — Title` · **Decision** · **Why** · **Alternatives c
 - **Boot animation:** the boot layer's opacity was bound to keyboard focus. The theme takes focus as soon as it loads (about 1 s in on a cache-first start), which faded the animation out early. Not visible on PC, where the video can't play. It now has its own `shown` flag, the page below is disabled while it's up, and the video is dropped only after the fade.
 - **Side menu double press:** StMini's close animation hides the panel 400 ms later without checking whether it was reopened, and each page's focus timer (50–100 ms after a close) took focus away from a reopened menu. Both are fixed in `theme.toggleLeftBar`, shared by all 14 screens.
 
+## 2026-11-25 — Stable Alpha 0.1.0 plan: PServer for device control, ClusterTune without an API
+- **ClusterTune** (github.com/AurelioB/ClusterTune, MIT, v1.3.0, read 2026-11-25) exposes nothing to other apps:
+  - Its exported components are the launcher activity (no extras), a boot receiver, and a Quick Settings tile plus tile activity that only the system can bind.
+  - Its profiles live in a private DataStore.
+  - So DeckOS can't ask it to switch profiles. Instead DeckOS writes the same limits itself: `cpufreq/policyN/scaling_max_freq` and kgsl `max_gpuclk`.
+  - It uses ClusterTune's bundled presets (credited).
+  - "Custom" = the first profile of a ClusterTune export file (`{schemaVersion, socModel, profiles:[{id,name,maxFrequencies:{policy:kHz},gpuMaxFrequencyHz}]}`).
+  - **Alternative:** ask ClusterTune's author for an intent API. That's the owner's call, and DeckOS would still need a fallback.
+- **PServer** (`ServiceManager.checkService("PServerBinder")`, transact code 0, Parcel = int32 2, command string, `"0"`, no interface token) is the AYN/Retroid firmware's command runner. ClusterTune documents the protocol from the AYN Thor.
+  - DeckOS uses it instead of Shizuku or root. It adds no permission and the user sets nothing up.
+  - Commands are kept short: a script DeckOS writes to its private folder, run with `sh`.
+  - Output comes back as a file in the same folder.
+  - Absent → the features are hidden or fall back to Android settings.
+  - **Risk:** it's an undocumented firmware interface and may change with updates. Every use is probed and fails soft.
+- **Vendor modes** are read from `Settings.System` (`performance_mode`, `fan_mode`; mapping from ClusterTune's HUD code, *verify* on both handhelds) and written with `settings put system …` through PServer.
+- **FPS:** SurfaceFlinger's frame counter, sampled through PServer only while the HUD shows FPS. Shizuku was considered and dropped: it needs a pairing step on every boot without root, and it's more code.
+- **Lag:** the theme rebuilds whole screens on each navigation (one `Loader`), so Home, Library and the game page will be kept alive. This is measured before and after.
+
 ## 2026-11-25 — Upstream bug fixed: PlaytimeStats use-after-free
 - **Found:** Linux CI (qmake job) segfaulted after `test_Playtime` had passed all 7 cases; the same code had passed one push earlier and 300 local Windows runs → timing-dependent. Cause in upstream `PlaytimeStats`: the `QtConcurrent` writer captures `this` and emits `finishedWriting()` as its last step; whoever waits for that signal (the test; in the app, shutdown right after a game session is saved) can destroy the object while the worker is still inside the emit.
 - **Fix:** writer futures are tracked in a `QFutureSynchronizer<void>`; `~PlaytimeStats()` waits for them. No deadlock risk: the writer never waits on the GUI thread. `// DECKOS:` marked; a candidate to offer upstream.

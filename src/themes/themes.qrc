@@ -134,15 +134,11 @@
         <file>deckos/javascript/RetroAchievementsApi.js</file>
         <file>deckos/javascript/news.js</file>
         <file>deckos/javascript/steamApi.js</file>
-        <file>deckos/ra/RACredentialsPopup.qml</file>
         <file>deckos/ra/RAGameInfoSection.qml</file>
-        <file>deckos/ra/RALogin.qml</file>
-        <file>deckos/ra/VirtualKeyboard.qml</file>
         <file>deckos/ra/assets/icons/NO_RA.svg</file>
         <file>deckos/ra/assets/icons/RA.svg</file>
         <file>deckos/ra/assets/icons/delete.svg</file>
         <file>deckos/ra/assets/icons/hide.svg</file>
-        <file>deckos/ra/assets/icons/icon_0.png</file>
         <file>deckos/ra/assets/icons/retroachievements.svg</file>
         <file>deckos/ra/qmldir</file>
         <file>deckos/screens/ProfileBadge.qml</file>
@@ -173,6 +169,7 @@
         <file>deckos/screens/settings/parts/DeckSettingsPage.qml</file>
         <file>deckos/screens/settings/parts/FolderPicker.qml</file>
         <file>deckos/screens/settings/parts/SteamKeyboard.qml</file>
+        <file>deckos/screens/settings/parts/SteamSpinner.qml</file>
         <file>deckos/screens/settings/parts/TextEntry.qml</file>
         <file>deckos/screens/settings/power.qml</file>
         <file>deckos/screens/settings/profile.qml</file>

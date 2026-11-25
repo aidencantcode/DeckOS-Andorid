@@ -11,6 +11,7 @@
 #include <QPointer>
 
 namespace model { class ApiObject; class GameFile; }
+class QTimer;
 
 
 namespace deckos {
@@ -27,6 +28,11 @@ class InGame : public QObject {
     Q_PROPERTY(bool notification READ notification WRITE setNotification NOTIFY changed)
     /// Android's "Display over other apps" permission, needed for the performance overlay
     Q_PROPERTY(bool overlayAllowed READ overlayAllowed NOTIFY changed)
+    /// Android: keep the interface loaded while a game runs (instant return, real play time); off frees
+    /// its memory for the game, as Pegasus did
+    Q_PROPERTY(bool keepLoaded READ keepLoaded WRITE setKeepLoaded NOTIFY changed)
+    /// a game started from DeckOS is running (Android, with keepLoaded): DeckOS is waiting for it
+    Q_PROPERTY(bool playing READ playing NOTIFY playingChanged)
 
 public:
     InGame(model::ApiObject* api, RaMatcher* ra, QObject* parent = nullptr);
@@ -37,6 +43,9 @@ public:
     bool notification() const;
     void setNotification(bool on);
     bool overlayAllowed() const;
+    bool keepLoaded() const;
+    void setKeepLoaded(bool on);
+    bool playing() const { return m_playing; }
 
     /// opens Android's "Display over other apps" screen for DeckOS
     Q_INVOKABLE void requestOverlayPermission();
@@ -44,16 +53,28 @@ public:
     Q_INVOKABLE void recheck() { emit changed(); }
 
     void onGameLaunching(const model::GameFile* file);
+    /// the game started and DeckOS stays loaded: sessionEnded() follows once DeckOS is back in front
+    void beginSession();
 
 signals:
     void changed();
+    void playingChanged();
+    /// DeckOS came back to the front after the game (or the game never covered it)
+    void sessionEnded();
 
 private:
     model::ApiObject* const m_api;
     RaMatcher* const m_ra;
     QPointer<QObject> m_launched; // the game whose RA id is being looked up
+    QTimer* const m_no_show_timer; // ends a session whose game never covered DeckOS
+    bool m_playing = false;
+    bool m_left_front = false;
     int m_pc_hud = 0;
     bool m_pc_notification = true;
+    bool m_pc_keep_loaded = true;
+
+    void onAppState(Qt::ApplicationState state);
+    void endSession();
 };
 
 } // namespace deckos

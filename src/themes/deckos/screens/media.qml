@@ -200,7 +200,9 @@ FocusScope {
         }
     }
     
-    onThemeChanged: {
+    // DECKOS: `theme` is now set while the page is being created: filter once it's complete
+    onThemeChanged: Qt.callLater(applyMediaFilter)
+    function applyMediaFilter() {
     if (!theme || theme.mediaFilterGame === "") return
     var filterTitle = theme.mediaFilterGame
     theme.mediaFilterGame = ""

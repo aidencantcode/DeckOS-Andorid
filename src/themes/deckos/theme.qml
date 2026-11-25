@@ -106,6 +106,10 @@ property string globalUserLevel: "0"
                                                : globalUserName !== "" ? globalUserName : "Player"
     readonly property string profilePictureSource: profilePicture !== "" ? profilePicture : globalUserPic
 
+    // DECKOS: where the RetroAchievements sign-in page (13) goes back to: 8 = the game page it was opened
+    // from, 6 = Settings (with pendingSettingsPage), -1 = Home
+    property int loginReturnPage: -1
+
     // DECKOS: open Settings on a given section (e.g. "settings/profile.qml"); settings.qml picks it up
     property string pendingSettingsPage: ""
     function openSettingsPage(source) {
@@ -263,6 +267,7 @@ function saveRaAccount() {
 // Дергаем API при первом запуске темы
 Component.onCompleted: {
     updateProfileData();
+    pageLoader.show(-1, currentPage) // DECKOS: first page (the page host has no source binding)
 }
 
 
@@ -311,46 +316,105 @@ Rectangle {
     z: -100 // Всегда сзади всех
 }
 
-    // Основной Loader
-Loader {
+// DECKOS: the page host. StMini had one Loader that destroyed and rebuilt the page on every navigation.
+// Home (3.8k lines of QML) and Library (3.3k) took long enough to build on Android that coming back from
+// a game page stalled and redrew the whole library. Home and Library now stay alive, hidden, while the
+// game page and its sub-pages (artwork picker, Properties) are open, and come back as they were. Every
+// other page is still built on demand. The id and `.item` are kept because pages use pageLoader.item.
+FocusScope {
     id: pageLoader
-    
-    // 1. Фиксируем логическую высоту
-height: root.canvasHeight // DECKOS: was 1080, see uiScale
 
-// 2. Рассчитываем ширину на основе реального соотношения сторон родителя (экрана)
-// Формула: (Реальная Ширина / Реальная Высота) * Логическая Высота
-width: (parent.width / parent.height) * height
-//width: height * (16/9)
+    // StMini's logical canvas: canvasHeight tall, as wide as the screen's aspect ratio, scaled to fit
+    height: root.canvasHeight // DECKOS: was 1080, see uiScale
+    width: (parent.width / parent.height) * height
+    scale: parent.height / height
+    anchors.centerIn: parent
 
-// 3. Масштабируем Loader так, чтобы его логические 1080px 
-// визуально заполнили всю высоту экрана
-scale: parent.height / height
-
-// 4. Центрируем
-anchors.centerIn: parent
-
-    
     focus: true
     enabled: !welcome.visible // DECKOS: the first-start card keeps the keys
-    source: getPageSource(currentPage)
-    asynchronous: api.memory.has("asyncLoading") ? api.memory.get("asyncLoading") : false
 
+    property Item item: null
+    property Item kept: null      // Home or Library, hidden behind the game page
+    property int keptIndex: -1
+    signal loaded()
 
-    onLoaded: {
-    if (item) {
-        item.theme = root
-        item.forceActiveFocus()
+    readonly property var keepable: [0, 1]
+    readonly property var keepWhileOn: [8, 12, 14] // game page, SteamGridDB picker, Properties
+    property var components: ({})
+
+    function componentFor(index) {
+        var url = getPageSource(index)
+        var c = components[url]
+        if (!c) {
+            c = Qt.createComponent(url)
+            components[url] = c
+        }
+        return c
     }
-}
+
+    function dropKept() {
+        if (!kept) return
+        kept.visible = false
+        kept.destroy()
+        kept = null
+        keptIndex = -1
+    }
+
+    // fromIndex: the page being left; props: initial properties for the new page
+    function show(fromIndex, index, props) {
+        var old = item
+        item = null
+        var started = Date.now()
+
+        if (kept && keptIndex === index) { // back to the page that was kept: no rebuild
+            if (old) { old.visible = false; old.destroy() }
+            item = kept
+            kept = null
+            keptIndex = -1
+            item.enabled = true
+            item.visible = true
+            item.focus = true
+            item.forceActiveFocus()
+            if (typeof item.resumePage === "function") item.resumePage()
+            console.info("DeckOS: page " + index + " shown again in " + (Date.now() - started) + " ms")
+            loaded()
+            return
+        }
+
+        if (old && keepWhileOn.indexOf(index) !== -1 && keepable.indexOf(fromIndex) !== -1) {
+            dropKept()
+            kept = old
+            keptIndex = fromIndex
+            kept.visible = false
+            kept.enabled = false
+            kept.focus = false
+            old = null
+        } else if (keepWhileOn.indexOf(index) === -1) {
+            dropKept()
+        }
+        if (old) { old.visible = false; old.destroy() }
+
+        var c = componentFor(index)
+        if (c.status !== Component.Ready) {
+            console.warn("DeckOS: page " + index + " failed to load: " + c.errorString())
+            return
+        }
+        var initial = props || {}
+        initial.theme = root // at creation, so the page's bindings never see it undefined
+        item = c.createObject(pageLoader, initial)
+        if (!item) return
+        // note: StMini's Loader assigned `theme` after loading; as an initial property, the pages'
+        // onThemeChanged handlers now run during creation, before Component.onCompleted
+        item.forceActiveFocus()
+        console.info("DeckOS: page " + index + " built in " + (Date.now() - started) + " ms")
+        loaded()
+    }
 }
 
     function finalizeNavigation(index) {
-    // DECKOS: clear the source before changing currentPage; the other order re-ran the source binding and
-    // created the next page twice on the first navigation (one copy destroyed right away)
-    pageLoader.source = "";
+    var from = root.currentPage
     root.currentPage = index;
-    pageLoader.source = getPageSource(index);
+    pageLoader.show(from, index)
     isTransitioning = false;
     
     // Если мы вернулись на предыдущую страницу (которая сохранена), очищаем контекст
@@ -373,12 +437,9 @@ function launchGameWithScreen(game) {
     
     // Пропускаем стандартную анимацию перехода
     isTransitioning = true;
+    var from = currentPage
     currentPage = 10;
-    pageLoader.source = "";
-    pageLoader.setSource(getPageSource(10), {
-        "theme": root,
-        "gameToLaunch": currentGame
-    });
+    pageLoader.show(from, 10, { "gameToLaunch": currentGame }) // DECKOS: page host
     isTransitioning = false;
 }
 
@@ -432,8 +493,9 @@ function getAssetSource(assetType, game) {
     // Звуки
     if (index === 8) {
     sAccept.play();
-    // Сохраняем текущую страницу, если это не LaunchScreen (10)
-    if (currentPage !== 10) {
+    // DECKOS: remember where the game page was opened from - not its own sub-pages (launch screen,
+    // artwork picker, RA sign-in, Properties), or B on the game page would go back into them
+    if ([10, 12, 13, 14].indexOf(currentPage) === -1) {
         api.memory.previousPage = currentPage;
     }
 }else if (index === 9) {

@@ -65,7 +65,11 @@ FocusScope {
             }
         }
     }
-    onThemeChanged: if (theme && theme.pendingSettingsPage !== "") selectSection(theme.pendingSettingsPage)
+    // DECKOS: `theme` is set while the page is being created, before the section buttons exist: wait a tick
+    onThemeChanged: Qt.callLater(openPendingSection)
+    function openPendingSection() {
+        if (theme && theme.pendingSettingsPage !== "") selectSection(theme.pendingSettingsPage)
+    }
 
 
     // ── goToZone ───────────────────────────────────────────────────────────

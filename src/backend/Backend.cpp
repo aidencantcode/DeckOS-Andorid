@@ -33,6 +33,7 @@
 #include "model/gaming/GameFile.h"
 #include "model/internal/Internal.h"
 #include "deckos/DeckosApi.h" // DECKOS
+#include "deckos/InGame.h" // DECKOS
 #include "utils/FolderListModel.h"
 #include "SortFilterProxyModel/qqmlsortfilterproxymodel.h"
 #include "SortFilterProxyModel/filters/filtersqmltypes.h"
@@ -238,6 +239,13 @@ Backend::Backend(const CliArgs& args)
     QObject::connect(m_launcher, &ProcessLauncher::processFinished,
                      [this](){ onProcessFinished(); });
 
+    // DECKOS: Android with the interface kept loaded: the game "finishes" when DeckOS is back in front
+    QObject::connect(m_deckos->ingame(), &deckos::InGame::sessionEnded, [this](){
+        Log::info(LOGMSG("Back in DeckOS after the game"));
+        m_api_public->onGameProcessFinished();
+        onProcessFinished();
+    });
+
     // Setting changes
     QObject::connect(m_api_private->settings().localesPtr(), &model::Locales::localeChanged,
                      m_api_public, &model::ApiObject::onLocaleChanged);
@@ -306,6 +314,19 @@ void Backend::onFavoritesChanged()
 
 void Backend::onProcessLaunched()
 {
+#ifdef Q_OS_ANDROID
+    // DECKOS: Pegasus destroyed the whole interface at every launch and rebuilt it straight away, while
+    // the emulator was starting, and Android's launcher returns at once, so every session was saved
+    // as ~0 s of play time. DeckOS stays loaded instead (Android doesn't draw it in the background) and
+    // the session ends when DeckOS is back in front: same page as before, real play time.
+    if (m_deckos->ingame()->keepLoaded()) {
+        Log::info(LOGMSG("Keeping DeckOS loaded while the game runs"));
+        m_api_private->gamepad().stop();
+        m_deckos->ingame()->beginSession();
+        return;
+    }
+#endif
+
     int delay_sec = AppSettings::general.hide_delay_after_launch;
     if (delay_sec != 0 && platform_requires_hiding()) {
         Log::info(LOGMSG("This platform allows only one program on the screen, hiding Pegasus immediately"));

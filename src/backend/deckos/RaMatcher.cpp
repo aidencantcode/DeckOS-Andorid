@@ -418,6 +418,54 @@ void RaMatcher::download(int console, const QString& key)
     downloadPage(console, key, 0, std::make_shared<QHash<QString, QPair<int, QString>>>());
 }
 
+void RaMatcher::verifyAccount(const QString& user_in, const QString& key_in)
+{
+    const QString user = user_in.trimmed();
+    const QString key = key_in.trimmed();
+    if (user.isEmpty() || key.isEmpty()) {
+        emit accountChecked(false, user, {}, tr("Enter your username and Web API key"));
+        return;
+    }
+
+    // API_GetUserProfile (checked 2026-11-25): 200 + {"User": ...} when the key works,
+    // 401 for a wrong key, 422 for a user that doesn't exist
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("u"), user);
+    query.addQueryItem(QStringLiteral("y"), key);
+    QUrl url(QStringLiteral("https://retroachievements.org/API/API_GetUserProfile.php"));
+    url.setQuery(query);
+
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("DeckOS (Pegasus Frontend fork)"));
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    request.setTransferTimeout(15000);
+    QNetworkReply* reply = m_net->get(request);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, user]() {
+        reply->deleteLater();
+        const int http = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QJsonObject obj = QJsonDocument::fromJson(reply->readAll()).object();
+
+        if (http == 200 && obj.contains(QLatin1String("User"))) {
+            const QString name = obj.value(QLatin1String("User")).toString(user);
+            const QString pic = obj.value(QLatin1String("UserPic")).toString();
+            emit accountChecked(true, name, pic.isEmpty() ? QString() : QStringLiteral("https://media.retroachievements.org") + pic, {});
+            return;
+        }
+        QString message;
+        if (http == 401 || http == 403)
+            message = tr("RetroAchievements didn't accept this Web API key");
+        else if (http == 404 || http == 422)
+            message = tr("There's no RetroAchievements user called %1").arg(user);
+        else if (http == 0)
+            message = tr("Couldn't reach RetroAchievements - check the connection");
+        else
+            message = tr("RetroAchievements answered with an error (HTTP %1) - try again later").arg(http);
+        Log::warning(LOGTAG, LOGMSG("RetroAchievements: account check failed (HTTP %1)").arg(http)); // never the key
+        emit accountChecked(false, user, {}, message);
+    });
+}
+
 void RaMatcher::downloadPage(int console, const QString& key, int offset,
                              std::shared_ptr<QHash<QString, QPair<int, QString>>> games)
 {

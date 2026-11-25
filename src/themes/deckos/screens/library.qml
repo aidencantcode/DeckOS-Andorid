@@ -3257,6 +3257,14 @@ Item {
     exitAnim.start()
 }
 
+    // DECKOS: the page host kept this page alive behind the game page and shows it again as it was
+    // (tab, collection, focus, scroll position), instead of rebuilding it from libraryReturnContext
+    function resumePage() {
+        api.memory.set("libraryReturnContext", null)
+        enterAnim.start()
+        focusTimer.start()
+    }
+
 
     Component.onCompleted: {
     applySortMode(sortMode)

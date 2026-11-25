@@ -187,8 +187,7 @@ FocusScope {
             return
         }
 
-        // DECKOS: the login overlay and the achievements panel handle their own keys
-        if (raLogin.visible) { event.accepted = true; return }
+        // DECKOS: the achievements panel handles its own keys
         if (focusZone === 3) {
             if (api.keys.isCancel(event) || event.key === Qt.Key_Escape) { leaveAchievements(); event.accepted = true }
             return
@@ -375,7 +374,7 @@ FocusScope {
 
                 Rectangle {
                     id: playButton
-                    width: height * 4
+                    width: height * (root.width < 1500 ? 2.8 : 4) // DECKOS: narrower on near-square screens, so PLAY TIME fits
                     height: parent.height * 0.6
                     radius: 5
                     anchors {
@@ -510,12 +509,14 @@ FocusScope {
                             font.family: bold.name
 
                             function getLastPlayedText() {
-                                if (!theme.currentGame || !theme.currentGame.lastPlayed) {
-                                    return "Never played"
-                                }
+                                // DECKOS: a game that was never launched has an invalid date, which is a
+                                // truthy Date whose arithmetic gives NaN - StMini showed "Just now" for it
+                                var g = theme.currentGame
+                                if (!g || !g.lastPlayed || g.playCount === 0) return "Never"
+                                var lastPlayed = new Date(g.lastPlayed)
+                                if (isNaN(lastPlayed.getTime()) || lastPlayed.getFullYear() < 1980) return "Never"
 
                                 var now = new Date()
-                                var lastPlayed = new Date(theme.currentGame.lastPlayed)
                                 var diffMs = now - lastPlayed
                                 var diffMins = Math.floor(diffMs / 60000)
                                 var diffHours = Math.floor(diffMins / 60)
@@ -539,6 +540,45 @@ FocusScope {
                                 } else {
                                     return "Just now"
                                 }
+                            }
+                        }
+                    }
+
+                    // DECKOS: Steam's PLAY TIME next to LAST PLAYED (Pegasus play time, in seconds)
+                    Item {
+                        id: playTimeContainer
+                        width: 300
+                        height: playButton.height
+                        visible: !isLaunching
+                        anchors {
+                            left: lastPlayedContainer.left
+                            leftMargin: Math.max(lastPlayedLabel.implicitWidth, lastPlayedValue.implicitWidth) + 70
+                            verticalCenter: playButton.verticalCenter
+                        }
+
+                        Text {
+                            id: playTimeLabel
+                            anchors { left: parent.left; top: parent.top; topMargin: 13 }
+                            text: "PLAY TIME:"
+                            color: "white"
+                            opacity: 0.5
+                            font.pixelSize: 30
+                            font.family: extrabold.name
+                        }
+                        Text {
+                            anchors { left: parent.left; top: playTimeLabel.bottom; topMargin: 7 }
+                            text: formatPlayTime(theme.currentGame ? theme.currentGame.playTime : 0)
+                            color: "white"
+                            font.pixelSize: 38
+                            font.family: bold.name
+
+                            function formatPlayTime(seconds) {
+                                if (!seconds || seconds < 60) return seconds > 0 ? "Under a minute" : "None yet"
+                                var mins = Math.floor(seconds / 60)
+                                var hours = Math.floor(mins / 60)
+                                mins = mins % 60
+                                if (hours === 0) return mins + " min"
+                                return hours + " h" + (mins > 0 ? " " + mins + " min" : "")
                             }
                         }
                     }
@@ -910,7 +950,7 @@ FocusScope {
         visible: zone3Tabs.currentIndex === root.achievementsTab
         game: theme ? theme.currentGame : null
         onTabFocusRequested: root.leaveAchievements()
-        onLoginRequested: raLogin.open()
+        onLoginRequested: { theme.loginReturnPage = 8; theme.openPage(13) } // DECKOS: our RA sign-in page
     }
 
 
@@ -2958,10 +2998,15 @@ FocusScope {
         }
     }
 
-    // DECKOS: RetroAchievements login (opened from the ACHIEVEMENTS tab)
-    RALogin {
-        id: raLogin
-        onSaved: { raSection.load(); root.enterAchievements() }
-        onClosed: root.enterAchievements()
+    // DECKOS: on Android DeckOS stays loaded while the game runs; back from it, undo the launch animation
+    // and reload what the session changed (achievements; play time and last played update by themselves)
+    Connections {
+        target: (typeof deckos !== "undefined" && deckos) ? deckos.ingame : null
+        function onPlayingChanged() {
+            if (deckos.ingame.playing) return
+            if (root.isLaunching) root.cancelLaunchAnimation()
+            raSection.load()
+        }
     }
+
 }

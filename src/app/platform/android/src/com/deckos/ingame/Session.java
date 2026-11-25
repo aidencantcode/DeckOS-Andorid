@@ -30,6 +30,7 @@ public final class Session {
     private static final String PREFS = "deckos_ingame";
     private static final String KEY_HUD = "hud_level";
     private static final String KEY_NOTIFY = "notification";
+    private static final String KEY_KEEP_LOADED = "keep_loaded";
     static final String KEY_PER_GAME = "per_game_profile";
     static final String KEY_PERF_MODE = "performance_mode";
     static final String KEY_TAB = "last_tab";
@@ -129,6 +130,16 @@ public final class Session {
     public static void setNotificationEnabled(boolean on) {
         if (sApp != null)
             prefs().edit().putBoolean(KEY_NOTIFY, on).apply();
+    }
+
+    /** Keep DeckOS's interface loaded while a game runs (see Backend::onProcessLaunched). */
+    public static boolean keepLoaded() {
+        return sApp == null || prefs().getBoolean(KEY_KEEP_LOADED, true);
+    }
+
+    public static void setKeepLoaded(boolean on) {
+        if (sApp != null)
+            prefs().edit().putBoolean(KEY_KEEP_LOADED, on).apply();
     }
 
 

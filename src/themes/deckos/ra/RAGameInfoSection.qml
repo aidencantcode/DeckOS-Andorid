@@ -8,6 +8,7 @@
 
 import QtQuick 2.15
 import QtGraphicalEffects 1.15
+import "../screens/settings/parts" // DECKOS: SteamSpinner
 
 FocusScope {
     id: root
@@ -35,7 +36,7 @@ FocusScope {
 
     signal tabFocusRequested()
     signal gameSelected(var newGame)
-    signal loginRequested()   // DECKOS: "Connect account" button (the game page opens RALogin)
+    signal loginRequested()   // DECKOS: "Log in to RetroAchievements" button (the game page opens the sign-in page)
 
     readonly property bool gridActiveFocus: {
         if (typeof _earnedListView !== "undefined" && _earnedListView.activeFocus) return true
@@ -830,7 +831,7 @@ FocusScope {
                 // DECKOS: without credentials, offer the login instead of a dead end
                 Item {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: vpx(160); height: vpx(28)
+                    width: vpx(250); height: vpx(28)
                     visible: !root._hasCredentials
                     readonly property bool _foc: activeFocus
                     focus: !root._hasCredentials
@@ -843,7 +844,7 @@ FocusScope {
                         Behavior on color { ColorAnimation { duration: 150 } }
                     }
                     Text {
-                        anchors.centerIn: parent; text: "Connect account"
+                        anchors.centerIn: parent; text: "Log in to RetroAchievements"
                         font.pixelSize: vpx(11); font.family: global.fonts.sans; font.bold: true
                         color: parent._foc ? _buttonFocusText : _textSecondary
                     }
@@ -1179,31 +1180,11 @@ FocusScope {
                 anchors.centerIn: parent
                 spacing: vpx(16)
 
-                Item {
+                // DECKOS: Steam-style spinner instead of BigScreenFE's pulsing Pegasus logo
+                SteamSpinner {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: vpx(100); height: vpx(100)
-
-                    Image {
-                        id: _loadingIconSrc
-                        anchors.fill: parent
-                        source: "assets/icons/icon_0.png"
-                        fillMode: Image.PreserveAspectFit
-                        mipmap: true; smooth: true
-                        visible: false
-                    }
-
-                    ColorOverlay {
-                        id: _loadingIconOverlay
-                        anchors.fill: parent
-                        source: _loadingIconSrc
-                        color: _iconColor
-                        Behavior on color { ColorAnimation { duration: 300 } }
-                        SequentialAnimation on scale {
-                            running: _searching || _loading; loops: Animation.Infinite
-                            NumberAnimation { to: 1.25; duration: 350; easing.type: Easing.InOutQuad }
-                            NumberAnimation { to: 0.80; duration: 350; easing.type: Easing.InOutQuad }
-                        }
-                    }
+                    size: vpx(56)
+                    running: visible && (_searching || _loading)
                 }
 
                 Text {
