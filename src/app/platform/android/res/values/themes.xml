@@ -6,4 +6,12 @@
         <item name="android:windowAllowReturnTransitionOverlap">true</item>
         <item name="android:windowAllowEnterTransitionOverlap">true</item>
     </style>
+
+    <!-- DECKOS: Quick Access overlay - transparent, so the game stays visible beside the panel -->
+    <style name="DeckOSOverlay" parent="@android:style/Theme.Translucent.NoTitleBar.Fullscreen">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
 </resources>

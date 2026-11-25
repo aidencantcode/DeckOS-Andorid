@@ -63,6 +63,22 @@ public class MainActivity extends org.qtproject.qt5.android.bindings.QtActivity 
 
         ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
         m_icon_density = am.getLauncherLargeIconDensity();
+
+        com.deckos.ingame.Session.init(this); // DECKOS: in-game notification + overlay
+    }
+
+    // DECKOS: while DeckOS is in the background (a game is running, or the user went home), its
+    // notification shows the play time and opens the Quick Access overlay; back in DeckOS it goes away
+    @Override
+    protected void onResume() {
+        super.onResume();
+        com.deckos.ingame.Session.onFrontendResumed(this);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        com.deckos.ingame.Session.onFrontendStopped(this);
     }
 
 

@@ -145,7 +145,7 @@ FocusScope {
                     Rectangle {
                         id: btnRoot
                         width: parent.width
-                        height: Math.max(58, Math.min(90, (root.height - 260) / 11)) // DECKOS: 11 sections must fit (was 90)
+                        height: Math.max(58, Math.min(90, (root.height - 260) / 12)) // DECKOS: 12 sections must fit (was 90)
 
                         property string title: ""
                         property int    buttonIndex: 0
@@ -202,6 +202,7 @@ FocusScope {
                         ["Accessibility", "¹", "settings/accessibility.qml"],
                         ["Sound",         "S", "settings/sound.qml"],
                         ["Power",         "~", "settings/power.qml"],
+                        ["In-Game",       "4", "settings/ingame.qml"], /* DECKOS: notification, overlay */
                         ["High Contrast", "●", "settings/highcontrast.qml"],
                         ["Customization", "☆", "settings/customization.qml"],
                         ["Controller",    "G", "settings/controller.qml"],

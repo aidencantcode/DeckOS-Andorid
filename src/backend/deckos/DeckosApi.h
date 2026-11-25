@@ -6,7 +6,7 @@
 #include <QObject>
 #include <QVariantMap>
 
-namespace model { class ApiObject; }
+namespace model { class ApiObject; class GameFile; }
 
 
 namespace deckos {
@@ -14,6 +14,7 @@ namespace deckos {
 class Scraper;
 class RomLibrary;
 class RaMatcher;
+class InGame;
 
 class DeckosApi : public QObject {
     Q_OBJECT
@@ -21,6 +22,8 @@ class DeckosApi : public QObject {
     Q_PROPERTY(QObject* library READ libraryObj CONSTANT)
     /// RetroAchievements game matching by ROM hash (RaMatcher.h)
     Q_PROPERTY(QObject* ra READ raObj CONSTANT)
+    /// Android in-game layer settings: performance overlay level, notification, overlay permission
+    Q_PROPERTY(QObject* ingame READ ingameObj CONSTANT)
 
 public:
     explicit DeckosApi(model::ApiObject* api, QObject* parent = nullptr);
@@ -49,8 +52,11 @@ public:
     QObject* scraperObj() const;
     QObject* libraryObj() const;
     QObject* raObj() const;
+    QObject* ingameObj() const;
 
     void onLibraryReady();
+    /// a game is about to start (before the launcher): hands it to the in-game layer
+    void onGameLaunching(const model::GameFile* file);
 
 signals:
     void libraryRefreshRequested();
@@ -59,6 +65,7 @@ private:
     Scraper* const m_scraper;
     RomLibrary* const m_library;
     RaMatcher* const m_ra;
+    InGame* const m_ingame;
     bool m_started = false;
 };
 

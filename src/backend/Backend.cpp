@@ -203,6 +203,11 @@ Backend::Backend(const CliArgs& args)
     // see the relevant classes. Depending on the settings and the platform,
     // the frontend may also be kept alive while the game runs.
 
+    // DECKOS: the in-game layer learns about the game first (connected before the launcher, so it runs
+    // before Android switches to the emulator)
+    QObject::connect(m_api_public, &model::ApiObject::launchGameFile,
+                     m_deckos, &deckos::DeckosApi::onGameLaunching);
+
     // the Api asks the Launcher to start the game
     QObject::connect(m_api_public, &model::ApiObject::launchGameFile,
                      m_launcher, &ProcessLauncher::onLaunchRequested);

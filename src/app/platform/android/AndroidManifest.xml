@@ -73,6 +73,24 @@
             <meta-data android:name="android.app.splash_screen_drawable" android:resource="@drawable/deckos_splash"/>
         </activity>
 
+        <!-- DECKOS: the Steam-style Quick Access overlay, opened from the in-game notification. Its own task
+             (taskAffinity + singleInstance) so it appears over the game instead of bringing DeckOS back. -->
+        <activity
+            android:name="com.deckos.ingame.QuickAccessActivity"
+            android:theme="@style/DeckOSOverlay"
+            android:taskAffinity="com.deckos.frontend.quickaccess"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:exported="false"
+            android:screenOrientation="userLandscape"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density" />
+
+        <!-- DECKOS: in-game session: play time notification, device stats, performance overlay -->
+        <service
+            android:name="com.deckos.ingame.SessionService"
+            android:exported="false" />
+
         <provider
             android:name="org.pegasus_frontend.android.LaunchFileProvider"
             android:authorities="${applicationId}.files"
@@ -94,6 +112,10 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- DECKOS: in-game layer (notification, performance overlay over games) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
