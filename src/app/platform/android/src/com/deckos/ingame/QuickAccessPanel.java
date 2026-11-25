@@ -81,7 +81,9 @@ final class QuickAccessPanel extends FrameLayout {
     private int panelWidth;
     private LinearLayout panel;
     private LinearLayout content;
-    private ScrollView scroll;
+    private FocusScrollView scroll;
+    private TextView exitButton, exitCancel, exitConfirm;
+    private FrameLayout exitDialog;     // the "Exit game?" confirmation, over the panel
     private final FrameLayout[] railItems = new FrameLayout[TAB_ICONS.length];
     private int tab = -1;
     private boolean closing = false;
@@ -120,6 +122,7 @@ final class QuickAccessPanel extends FrameLayout {
     /// (re)creates the whole panel at the current scale, on the given tab
     private void build(int startTab) {
         removeAllViews();
+        exitDialog = null; // removed with the rest
         DisplayMetrics dm = getResources().getDisplayMetrics();
         u = Math.min(dm.heightPixels, dm.widthPixels) / 800f * Session.overlayScale() / 100f;
         ui = new Ui(getContext(), u);
@@ -134,7 +137,7 @@ final class QuickAccessPanel extends FrameLayout {
         LinearLayout body = ui.row();
         body.setGravity(Gravity.TOP);
         body.addView(rail(), new LinearLayout.LayoutParams(ui.px(58), LinearLayout.LayoutParams.MATCH_PARENT));
-        scroll = new ScrollView(getContext());
+        scroll = new FocusScrollView(getContext());
         scroll.setFillViewport(true);
         scroll.setVerticalScrollBarEnabled(false);
         content = ui.column();
@@ -200,7 +203,36 @@ final class QuickAccessPanel extends FrameLayout {
     public boolean dispatchKeyEvent(KeyEvent e) {
         int k = e.getKeyCode();
         boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
+        if (exitDialog != null) {
+            // the confirmation holds the controller: B cancels, A presses, left / right pick
+            switch (k) {
+                case KeyEvent.KEYCODE_BUTTON_B:
+                case KeyEvent.KEYCODE_BACK:
+                case KeyEvent.KEYCODE_ESCAPE:
+                    if (down && e.getRepeatCount() == 0) closeExitDialog();
+                    return true;
+                case KeyEvent.KEYCODE_BUTTON_A:
+                case KeyEvent.KEYCODE_ENTER:
+                case KeyEvent.KEYCODE_DPAD_CENTER:
+                    if (down && e.getRepeatCount() == 0) {
+                        View f = findFocus();
+                        if (f == exitConfirm) confirmExit(); else closeExitDialog();
+                    }
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                    if (down) exitCancel.requestFocus();
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    if (down) exitConfirm.requestFocus();
+                    return true;
+                default:
+                    return true;
+            }
+        }
         switch (k) {
+            case KeyEvent.KEYCODE_BUTTON_Y:
+                if (down && e.getRepeatCount() == 0 && GameExit.possible()) askExit();
+                return true;
             case KeyEvent.KEYCODE_BUTTON_B:
             case KeyEvent.KEYCODE_BACK:
             case KeyEvent.KEYCODE_ESCAPE:
@@ -299,7 +331,62 @@ final class QuickAccessPanel extends FrameLayout {
         playText.setPadding(0, ui.px(3), 0, 0);
         texts.addView(playText);
         strip.addView(texts, Ui.weight());
+        // Exit game, like the Deck's (also Y): asks first, then closes the emulator (GameExit)
+        if (GameExit.possible()) {
+            exitButton = ui.button("Exit game", v -> askExit());
+            exitButton.setPadding(ui.px(12), ui.px(6), ui.px(12), ui.px(6));
+            strip.addView(exitButton, ui.margins(Ui.wrap(), 10, 0, 0, 0));
+        }
         return strip;
+    }
+
+    // --- exit game --------------------------------------------------------------------------------
+
+    private void askExit() {
+        if (exitDialog != null || !GameExit.possible())
+            return;
+        FrameLayout dim = new FrameLayout(getContext());
+        dim.setBackgroundColor(Color.argb(180, 0, 0, 0));
+        dim.setClickable(true); // taps don't reach the panel underneath
+        LinearLayout card = ui.column();
+        card.setBackground(Ui.rect(Ui.CARD, ui.px(6)));
+        card.setPadding(ui.px(18), ui.px(16), ui.px(18), ui.px(16));
+        TextView head = ui.text("Exit game?", 19, Ui.TEXT, true);
+        card.addView(head, ui.margins(Ui.fill(), 0, 0, 0, 8));
+        TextView msg = ui.text("\"" + Session.title + "\" will be closed. Any progress you haven't saved will be lost.", 14, Ui.TEXT2, false);
+        msg.setLineSpacing(0, 1.2f);
+        card.addView(msg, ui.margins(Ui.fill(), 0, 0, 0, 16));
+        LinearLayout buttons = ui.row();
+        exitCancel = ui.button("Cancel", v -> closeExitDialog());
+        exitConfirm = ui.button("Exit game", v -> confirmExit());
+        buttons.addView(exitCancel, ui.margins(Ui.weight(), 0, 0, 6, 0));
+        buttons.addView(exitConfirm, ui.margins(Ui.weight(), 6, 0, 0, 0));
+        card.addView(buttons, Ui.fill());
+        FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+        clp.leftMargin = clp.rightMargin = ui.px(16);
+        dim.addView(card, clp);
+        LayoutParams dlp = new LayoutParams(panelWidth, LayoutParams.MATCH_PARENT);
+        dlp.gravity = Gravity.END;
+        addView(dim, dlp);
+        exitDialog = dim;
+        exitCancel.requestFocus(); // the safe choice first
+    }
+
+    private void closeExitDialog() {
+        if (exitDialog == null)
+            return;
+        removeView(exitDialog);
+        exitDialog = null;
+        if (exitButton != null) exitButton.requestFocus();
+    }
+
+    private void confirmExit() {
+        if (exitDialog != null) {
+            removeView(exitDialog);
+            exitDialog = null;
+        }
+        pause();
+        GameExit.exit(getContext(), host::dismiss);
     }
 
     private View rail() {
@@ -338,6 +425,8 @@ final class QuickAccessPanel extends FrameLayout {
         bar.setBackgroundColor(Ui.TOP_BAR);
         bar.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
         bar.setPadding(0, 0, ui.px(14), 0);
+        if (GameExit.possible())
+            bar.addView(hint("Y", "EXIT GAME"));
         bar.addView(hint("A", "SELECT"));
         bar.addView(hint("B", "CLOSE"));
         return bar;
@@ -1057,7 +1146,9 @@ final class QuickAccessPanel extends FrameLayout {
     }
 
     private String playTime() {
-        long s = Math.max(0, (System.currentTimeMillis() - Session.startedAt) / 1000);
+        // in a game: the time it was actually in front (Session); otherwise how long DeckOS has been away
+        long ms = Session.hasGame() ? Session.playedMs() : System.currentTimeMillis() - Session.startedAt;
+        long s = Math.max(0, ms / 1000);
         long h = s / 3600, m = (s / 60) % 60;
         return h > 0 ? h + "h " + m + "m" : m + "m " + (s % 60) + "s";
     }

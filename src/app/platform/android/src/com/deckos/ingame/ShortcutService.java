@@ -3,7 +3,9 @@
 // Overlay tab: Select+Start, Select+R1 or L3+R3). An accessibility service is the only way for an app to
 // see controller buttons while another app is in front. It only filters key events: it reads no screen
 // content and keeps nothing. The first button of the combo still reaches the game; only the second one
-// (which completes the combo) is swallowed. Nothing happens while DeckOS itself is in front. Any button
+// (which completes the combo) is swallowed. Nothing happens while DeckOS itself is in front. It also hears
+// which app comes to the front (its package name, from window changes) so play time counts only while
+// the game is in front. Any button
 // also skips the launch cover (LaunchCover) once the game is starting underneath.
 
 package com.deckos.ingame;
@@ -107,8 +109,13 @@ public class ShortcutService extends AccessibilityService {
         catch (Exception ignored) {}
     }
 
+    /// which app is in front (window changes only; nothing on screen is read): play time counts only
+    /// while the game is (Session.onForegroundPackage)
     @Override
-    public void onAccessibilityEvent(AccessibilityEvent event) {}
+    public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (event != null && event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && event.getPackageName() != null)
+            Session.onForegroundPackage(event.getPackageName().toString());
+    }
 
     @Override
     public void onInterrupt() {}

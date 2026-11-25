@@ -2,5 +2,5 @@
 <!-- DeckOS strings for the Android in-game layer -->
 <resources>
     <string name="deckos_shortcut_label">DeckOS controller shortcut</string>
-    <string name="deckos_shortcut_description">Opens DeckOS\'s Quick Access menu over any game with a controller button combo (set in DeckOS: Settings, Overlay). It only watches controller buttons; it doesn\'t read what\'s on the screen.</string>
+    <string name="deckos_shortcut_description">Opens DeckOS\'s Quick Access menu over any game with a controller button combo (set in DeckOS: Settings, Overlay). It watches controller buttons, and which app is in front so play time only counts while the game is open. It doesn\'t read what\'s on the screen.</string>
 </resources>

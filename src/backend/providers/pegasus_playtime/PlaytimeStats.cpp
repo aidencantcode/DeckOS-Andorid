@@ -31,6 +31,9 @@
 #include <QSqlQuery>
 #include <QtConcurrent/QtConcurrent>
 
+#include <algorithm>
+#include <atomic> // DECKOS
+
 
 namespace {
 const QString SLUG_PREFIX = QStringLiteral("pegasus-slug:");
@@ -285,6 +288,13 @@ void PlaytimeStats::onGameLaunched(model::GameFile* const gamefile)
     m_last_launch_time = QDateTime::currentDateTimeUtc();
 }
 
+namespace { std::atomic<qint64> g_next_duration { -1 }; } // DECKOS
+
+void PlaytimeStats::setNextDuration(qint64 seconds)
+{
+    g_next_duration = seconds;
+}
+
 void PlaytimeStats::onGameFinished(model::GameFile* const gamefile)
 {
     Q_ASSERT(gamefile);
@@ -293,7 +303,11 @@ void PlaytimeStats::onGameFinished(model::GameFile* const gamefile)
     QMutexLocker lock(&m_queue_guard);
 
     const auto now = QDateTime::currentDateTimeUtc();
-    const auto duration = m_last_launch_time.secsTo(now);
+    qint64 duration = m_last_launch_time.secsTo(now);
+    // DECKOS: only the time the game was in front (Android in-game layer), never more than launch-to-return
+    const qint64 forced = g_next_duration.exchange(-1);
+    if (forced >= 0)
+        duration = std::min<qint64>(duration, forced);
 
     m_pending_tasks.emplace_back(
         gamefile,

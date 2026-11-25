@@ -524,6 +524,13 @@ if (pageLoader.item && typeof pageLoader.item.startExitAnimation === "function" 
     }
 }
 
+// DECKOS: "Exit game" in Quick Access closed the emulator - DeckOS comes back on Home (after the game
+// page has reset its launch screen)
+Connections {
+    target: (typeof deckos !== "undefined" && deckos) ? deckos.ingame : null
+    function onExitedToHome() { Qt.callLater(function () { if (root.currentPage !== 0) root.openPage(0) }) }
+}
+
 // DECKOS: first start without any game folder: point to where games are added (A), or dismiss for good (B)
 FocusScope {
     id: welcome

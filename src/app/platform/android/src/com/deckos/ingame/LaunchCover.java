@@ -6,9 +6,9 @@
 // snapshot 1:1 where DeckOS's window was and plays the logo and the spinner over it, from where
 // they were, so the hand-over can't be seen. Then the game starts underneath.
 //
-// The window takes no input: the controller goes to the game underneath. With DeckOS's accessibility
-// service on (the controller shortcut), any button skips the rest of the wait. Needs "Display over
-// other apps" or that accessibility service.
+// The window takes touches (so Android shows it fully opaque) but not the controller, which goes to the
+// game underneath. With DeckOS's accessibility service on (the controller shortcut), any button skips
+// the rest of the wait. Needs "Display over other apps" or that accessibility service.
 
 package com.deckos.ingame;
 
@@ -128,7 +128,10 @@ final class LaunchCover extends View {
                      : WindowManager.LayoutParams.TYPE_PHONE;
             WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, type,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                // touchable on purpose: Android 12+ caps a pass-through (FLAG_NOT_TOUCHABLE) app overlay at 80%
+                // opacity, which let the loading emulator show through from the start. Not focusable: the
+                // controller still goes to the game.
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                     | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
                     | WindowManager.LayoutParams.FLAG_FULLSCREEN | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT);

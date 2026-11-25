@@ -69,10 +69,11 @@ public class MainActivity extends org.qtproject.qt5.android.bindings.QtActivity 
 
     // DECKOS: while DeckOS is in the background (a game is running, or the user went home), its
     // notification shows the play time and opens the Quick Access overlay; back in DeckOS it goes away
+    // (before super: Qt hears that DeckOS is active in super.onResume and then reads the play time)
     @Override
     protected void onResume() {
-        super.onResume();
         com.deckos.ingame.Session.onFrontendResumed(this);
+        super.onResume();
     }
 
     @Override

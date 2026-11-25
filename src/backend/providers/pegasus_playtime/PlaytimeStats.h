@@ -40,6 +40,10 @@ public:
     void onGameLaunched(model::GameFile* const) final;
     void onGameFinished(model::GameFile* const) final;
 
+    /// DECKOS: the length of the session that finishes next, in seconds, when it isn't launch-to-return
+    /// (Android: only the time the game was in front, tracked by DeckOS's in-game layer)
+    static void setNextDuration(qint64 seconds);
+
 signals:
     void startedWriting();
     void finishedWriting();

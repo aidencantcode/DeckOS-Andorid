@@ -177,6 +177,25 @@ Format: `## YYYY-MM-DD — Title` · **Decision** · **Why** · **Alternatives c
   - The owner's account login (stored only in the local `secrets/api-keys.env`, never in the repo) was refused by `ssuserInfos.php`: 403 "Vérifier les identifiants utilisateurs". That is the same answer as with no login at all, so the account may not be activated yet. One request each; no retries, to avoid a lockout.
   - Trailer scraping stays blocked until both work.
 
+## 2026-11-25 — 0.0.12 report: cover opacity, play time in the game, Exit game, notification
+- **Launch cover opacity:** Android 12+ caps an app overlay window that is `FLAG_NOT_TOUCHABLE` at the maximum obscuring opacity (0.8). The cover was see-through from the start.
+  - The cover and Exit game's black window are now touchable (they block touches while up) and stay non-focusable, so the controller still reaches the game.
+  - The HUD stays pass-through at 0.8 on purpose.
+- **Play time counts only while the game is in front.**
+  - The emulator package comes from the launch command (`-n` / `--component` / `-p`, `InGame::packageFromCommand`, unit-tested). Failing that, it's the first app in front after the launch that isn't DeckOS, System UI, a keyboard or the home screen.
+  - Which app is in front:
+    - the shortcut's accessibility service, which now also gets `typeWindowStateChanged` (package names only; no window content; its Android description says so);
+    - otherwise PServer every 5 s: `dumpsys activity activities | grep ResumedActivity`, plus `pidof <package>` to tell when the emulator ends;
+    - with neither, as before: until DeckOS is back.
+  - Pegasus's PlaytimeStats takes the in-game seconds as the session length (`setNextDuration`, capped at launch-to-return). `onFrontendResumed` now runs before Qt's `onResume`, so the value is final when C++ reads it.
+  - **Alternative not taken:** UsageStatsManager. It needs a special permission and has no live events.
+- **Exit game:**
+  - `am force-stop <package>` through PServer, like the Deck ending a game: unsaved progress is lost, and the dialog says so.
+  - Without PServer: DeckOS comes to the front, then `killBackgroundProcesses` (new `KILL_BACKGROUND_PROCESSES` permission).
+  - DeckOS opens on Home through `Session.takeExitToHome` → `InGame::exitedToHome`.
+- **Notification:** Android 14+ lets users dismiss foreground-service notifications. A `deleteIntent` plus a 10 s check re-post it; Settings › Overlay detects blocked notifications. Swiping DeckOS out of recents still ends the process (Qt exits with its activity), so the notification goes too. Keeping it would need a separate process; not worth it.
+- **Quick Access scrolling:** ScrollView's own D-pad handling jumps half a page when the next focusable view is far away. `FocusScrollView` turns that and its snap-into-view off, and glides to keep the focused view inside the middle 60%.
+
 ## 2026-11-25 — ClusterTune built in: ported, not embedded
 - **Owner request:** bake ClusterTune into DeckOS as a Settings tab with its presets and custom profiles, and keep it updatable from upstream. It's a personal build, and ClusterTune is MIT, so including its code is fine with attribution: `src/backend/deckos/ClusterTune-LICENSE.txt` and the in-app "Based on ClusterTune" row.
 - **Decision:** port its core instead of embedding the app.

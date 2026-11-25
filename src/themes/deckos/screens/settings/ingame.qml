@@ -66,10 +66,22 @@ DeckSettingsPage {
         var r = []
         r.push({ type: "section", label: "Quick Access menu" })
         r.push({ type: "toggle", label: "In-game notification",
-                 desc: "Shows the game and its play time while DeckOS is in the background. Tap it for the quick access menu.",
+                 desc: function () {
+                     if (ig && ig.notificationBlocked) return "Android is blocking it - allow it with the button below"
+                     return "Shows the game and play time; tap it for Quick Access"
+                 },
                  value: function () { return ig ? ig.notification : false },
                  enabled: function () { return !!ig },
                  toggle: function () { if (ig) ig.notification = !ig.notification } })
+        r.push({ type: "button", label: "Allow DeckOS notifications",
+                 desc: function () { return ig && ig.notificationBlocked ? "Android › Notifications for DeckOS: turn them on, and the \"In-game\" category"
+                                                                         : "Allowed" },
+                 value: function () { return ig && !ig.notificationBlocked && android ? "✓" : "" },
+                 enabled: function () { return android && ig.notificationBlocked },
+                 activate: function () { if (ig) ig.openNotificationSettings() } })
+        r.push({ type: "info", label: "Play time",
+                 desc: "Counts only while the game is in front",
+                 value: function () { return "" } })
         r.push({ type: "choice", label: "Controller shortcut",
                  desc: function () {
                      if (!android) return "Android only"
@@ -81,7 +93,7 @@ DeckSettingsPage {
                  next: function () { ig.shortcut = ingamePage.cycle(ig.shortcut, 4, 1) },
                  prev: function () { ig.shortcut = ingamePage.cycle(ig.shortcut, 4, -1) } })
         r.push({ type: "button", label: "Turn on the controller shortcut",
-                 desc: "Android › Accessibility › DeckOS controller shortcut. It only watches controller buttons.",
+                 desc: "Android › Accessibility › DeckOS controller shortcut",
                  value: function () { return ig && ig.shortcutEnabled ? "✓" : "" },
                  enabled: function () { return android && !ig.shortcutEnabled },
                  activate: function () { if (ig) ig.openAccessibilitySettings() } })

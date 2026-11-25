@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- DeckOS: the controller shortcut for Quick Access (com.deckos.ingame.ShortcutService). Key events only:
-     no window content, no event types beyond the minimum. -->
+<!-- DeckOS: the controller shortcut for Quick Access (com.deckos.ingame.ShortcutService). Key events, and
+     window changes only for the package name of the app in front (play time). No window content. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeAnnouncement"
+    android:accessibilityEventTypes="typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagRequestFilterKeyEvents"
     android:canRequestFilterKeyEvents="true"
     android:canRetrieveWindowContent="false"
-    android:notificationTimeout="1000"
+    android:notificationTimeout="300"
     android:description="@string/deckos_shortcut_description" />

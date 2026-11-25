@@ -26,6 +26,8 @@ class InGame : public QObject {
     Q_PROPERTY(int hudLevel READ hudLevel WRITE setHudLevel NOTIFY changed)
     /// the "Playing ..." notification while DeckOS is in the background (opens the overlay)
     Q_PROPERTY(bool notification READ notification WRITE setNotification NOTIFY changed)
+    /// Android blocks DeckOS's notifications (or the in-game channel): the notification can't show
+    Q_PROPERTY(bool notificationBlocked READ notificationBlocked NOTIFY changed)
     /// Android's "Display over other apps" permission, needed for the performance overlay
     Q_PROPERTY(bool overlayAllowed READ overlayAllowed NOTIFY changed)
     /// Android: keep the interface loaded while a game runs (instant return, real play time); off frees
@@ -65,6 +67,7 @@ public:
     void setHudLevel(int level);
     bool notification() const;
     void setNotification(bool on);
+    bool notificationBlocked() const;
     bool overlayAllowed() const;
     bool keepLoaded() const;
     void setKeepLoaded(bool on);
@@ -87,6 +90,8 @@ public:
     void setLaunchCoverSeconds(int seconds);
     bool launchCoverPossible() const;
 
+    /// Android's notification settings for DeckOS
+    Q_INVOKABLE void openNotificationSettings();
     /// Android's accessibility settings, to turn on the shortcut service
     Q_INVOKABLE void openAccessibilitySettings();
     /// model, chip, PServer, vendor settings and sensors - for checking a new handheld
@@ -98,6 +103,13 @@ public:
     Q_INVOKABLE bool showLaunchCover(QObject* spinner, int spinnerStep, QObject* logo, int holdMs);
     /// the launch was cancelled
     Q_INVOKABLE void hideLaunchCover();
+
+    /// the emulator a launch command starts ("am start -n <package>/<activity> ...", -p / --component
+    /// too), "" if it doesn't say
+    static QString packageFromCommand(const QString& command);
+    /// Android: the seconds the game was actually in front this session (Java tracks which app is in
+    /// front), or -1 if that isn't known (PC) - then Pegasus keeps its launch-to-return time
+    qint64 playedSeconds() const;
 
     /// opens Android's "Display over other apps" screen for DeckOS
     Q_INVOKABLE void requestOverlayPermission();
@@ -113,6 +125,8 @@ signals:
     void playingChanged();
     /// DeckOS came back to the front after the game (or the game never covered it)
     void sessionEnded();
+    /// after sessionEnded: the game was closed with Quick Access's "Exit game", so Home is shown
+    void exitedToHome();
 
 private:
     model::ApiObject* const m_api;

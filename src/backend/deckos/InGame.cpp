@@ -22,6 +22,7 @@
 #include <QImage>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTimer>
 
@@ -187,6 +188,7 @@ bool InGame::shortcutEnabled() const { DECKOS_GET(jni_bool("shortcutServiceEnabl
 int InGame::hudPosition() const { DECKOS_GET(jni_int("hudPosition"), m_pc_hud_pos); }
 bool InGame::showFps() const { DECKOS_GET(jni_bool("showFps"), m_pc_fps); }
 bool InGame::privileged() const { DECKOS_GET(jni_bool("privilegedAvailable"), false); }
+bool InGame::notificationBlocked() const { DECKOS_GET(jni_bool("notificationsBlocked"), false); }
 bool InGame::launchCover() const { DECKOS_GET(jni_bool("launchCover"), m_pc_cover); }
 int InGame::launchCoverSeconds() const { DECKOS_GET(jni_int("launchCoverSeconds"), m_pc_cover_seconds); }
 bool InGame::launchCoverPossible() const { DECKOS_GET(jni_bool("launchCoverPossible"), qEnvironmentVariableIsSet("DECKOS_COVER_DUMP")); }
@@ -310,8 +312,40 @@ void InGame::endSession()
     m_no_show_timer->stop();
     m_playing = false;
     m_left_front = false;
+#ifdef Q_OS_ANDROID
+    const bool home = QAndroidJniObject::callStaticMethod<jboolean>(JNI_SESSION, "takeExitToHome", "()Z");
+#else
+    const bool home = false;
+#endif
     emit sessionEnded();
     emit playingChanged();
+    if (home)
+        emit exitedToHome();
+}
+
+QString InGame::packageFromCommand(const QString& command)
+{
+    // -n / --component take package/activity, -p / --package just the package
+    static const QRegularExpression rx(QStringLiteral(
+        "(?:^|\\s)(?:-n|--component|-p|--package)\\s+[\"']?([A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+)"));
+    const QRegularExpressionMatch m = rx.match(command);
+    return m.hasMatch() ? m.captured(1) : QString();
+}
+
+qint64 InGame::playedSeconds() const
+{
+#ifdef Q_OS_ANDROID
+    return QAndroidJniObject::callStaticMethod<jlong>(JNI_SESSION, "playedSeconds", "()J");
+#else
+    return -1;
+#endif
+}
+
+void InGame::openNotificationSettings()
+{
+#ifdef Q_OS_ANDROID
+    QAndroidJniObject::callStaticMethod<void>(JNI_SESSION, "openNotificationSettings", "()V");
+#endif
 }
 
 void InGame::requestOverlayPermission()
@@ -339,6 +373,7 @@ void InGame::onGameLaunching(const model::GameFile* file)
     info.insert(QStringLiteral("raKey"), ra_key);
     info.insert(QStringLiteral("profileName"), memory_string(m_api, QStringLiteral("profileName")));
     info.insert(QStringLiteral("profilePicture"), memory_string(m_api, QStringLiteral("profilePicture")));
+    info.insert(QStringLiteral("package"), packageFromCommand(game->launchCmd())); // play time, Exit game
 
 #ifdef Q_OS_ANDROID
     const QString json = QString::fromUtf8(QJsonDocument(info).toJson(QJsonDocument::Compact));

@@ -39,6 +39,9 @@ public class SessionService extends Service {
     private int shownTitleHash = 0;
     private int hudScale = 0, hudPos = -1;      // what the HUD window was made with
     static final String ACTION_OPEN = "com.deckos.ingame.OPEN_QUICK_ACCESS";
+    static final String ACTION_REPOST = "com.deckos.ingame.REPOST_NOTIFICATION";
+    private int ticks = 0;
+    private String fgPending = null;   // the PServer foreground check's output file, read on the next round
 
     static void start(Context ctx) {
         Intent intent = new Intent(ctx, SessionService.class);
@@ -87,9 +90,16 @@ public class SessionService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        String action = intent != null ? intent.getAction() : null;
+        if (ACTION_REPOST.equals(action)) {
+            // swiped away (Android 14+ lets users dismiss foreground service notifications): it's the way
+            // into Quick Access, so it comes back a moment later
+            main.postDelayed(() -> { if (sInstance == this) startForeground(NOTIFICATION_ID, buildNotification()); }, 1500);
+            return START_NOT_STICKY;
+        }
         startForeground(NOTIFICATION_ID, buildNotification());
         apply();
-        if (intent != null && ACTION_OPEN.equals(intent.getAction()))
+        if (ACTION_OPEN.equals(action))
             Session.openQuickAccess(this); // the notification was tapped
         return START_NOT_STICKY;
     }
@@ -121,6 +131,9 @@ public class SessionService extends Service {
                 DeviceControl.fpsTick(SessionService.this, wantFps);
                 if (wantFps) fps = DeviceControl.fps();
                 if (hud != null && Session.hudLevel() >= 3) profile = profileLine();
+                ticks++;
+                if (ticks % 5 == 0) checkForeground();
+                if (ticks % 10 == 0) main.post(SessionService.this::ensureNotification);
             }
             catch (Exception e) {
                 Log.w(Session.TAG, "stats: " + e);
@@ -129,14 +142,63 @@ public class SessionService extends Service {
             final float f = fps;
             main.post(() -> {
                 if (hud != null)
-                    hud.update(last, Session.startedAt, f, p);
+                    hud.update(last, Session.playStart(), f, p);
             });
             statsHandler.postDelayed(this, 1000);
         }
     };
 
+    /// Without the accessibility service (which reports it at once), which app is in front and whether
+    /// the emulator still runs come from PServer every 5 s: the output of the previous round is read,
+    /// then the next one starts. Neither: play time counts until DeckOS is back, as before.
+    private void checkForeground() {
+        if (!Session.hasGame() || ShortcutService.instance() != null || !Privileged.available())
+            return;
+        if (fgPending != null) {
+            String out = Privileged.readText(new java.io.File(fgPending));
+            fgPending = null;
+            if (out != null && !out.isEmpty()) {
+                java.util.regex.Matcher m = FG_ACTIVITY.matcher(out);
+                final String pkg = m.find() ? m.group(1) : null;
+                // "pid=" with no number: the emulator's process has ended
+                final boolean gone = out.contains("pid=") && !PID.matcher(out).find();
+                main.post(() -> {
+                    if (gone) Session.onGameProcessGone();
+                    else if (pkg != null) Session.onForegroundPackage(pkg);
+                });
+            }
+        }
+        java.io.File f = Privileged.outputFile(this, "foreground.txt");
+        String pkg = Session.gamePackage.isEmpty() ? "" : Session.gamePackage;
+        String body = "{ dumpsys activity activities 2>/dev/null | grep -m1 -E 'topResumedActivity|mResumedActivity|ResumedActivity:';"
+                    + (pkg.isEmpty() ? "" : " echo \"pid=$(pidof " + Privileged.quote(pkg) + ")\";")
+                    + " } > " + Privileged.quote(f.getAbsolutePath()) + " 2>/dev/null";
+        if (Privileged.runScript(this, "foreground.sh", body))
+            fgPending = f.getAbsolutePath();
+    }
+
+    // "topResumedActivity=ActivityRecord{1a2b3c u0 com.retroarch/.browser.RetroActivityFuture t12}"
+    private static final java.util.regex.Pattern FG_ACTIVITY = java.util.regex.Pattern.compile("u\\d+\\s+([A-Za-z0-9_.]+)/");
+    private static final java.util.regex.Pattern PID = java.util.regex.Pattern.compile("pid=\\d");
+
+    /// the notification is the way into Quick Access: put it back if it's gone (swiped away on Android 14+)
+    private void ensureNotification() {
+        if (Build.VERSION.SDK_INT < 23 || sInstance != this)
+            return;
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            for (android.service.notification.StatusBarNotification n : nm.getActiveNotifications())
+                if (n.getId() == NOTIFICATION_ID) return;
+            startForeground(NOTIFICATION_ID, buildNotification());
+        }
+        catch (Exception e) {
+            Log.w(Session.TAG, "notification check: " + e);
+        }
+    }
+
     private void apply() {
-        int hash = (Session.title + Session.startedAt).hashCode();
+        int hash = (Session.title + Session.startedAt + Session.gameFocused() + Session.gameClosed).hashCode();
         if (hash != shownTitleHash) {
             shownTitleHash = hash;
             startForeground(NOTIFICATION_ID, buildNotification());
@@ -167,20 +229,32 @@ public class SessionService extends Service {
         int piFlags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
         PendingIntent pi = PendingIntent.getService(this, 0, open, piFlags);
 
+        // swiped away: put back (onStartCommand)
+        Intent repost = new Intent(this, SessionService.class).setAction(ACTION_REPOST);
+        PendingIntent deleted = PendingIntent.getService(this, 1, repost, piFlags);
+
+        // the timer is the time actually spent in the game; it stops while another app is in front
         boolean game = Session.hasGame();
+        boolean counting = !game || Session.gameFocused();
+        String played = HudView.hoursMinutes(Session.playedMs() / 60000) + " played";
+        String text = !game ? "Tap for the quick access menu"
+                    : Session.gameClosed ? "Closed · " + played
+                    : counting ? "Playing - tap for the quick access menu"
+                    : "Paused, the game isn't in front · " + played;
         return new NotificationCompat.Builder(this, Session.CHANNEL)
             .setSmallIcon(R.drawable.deckos_ic_gamepad)
             .setContentTitle(game ? Session.title : "DeckOS")
-            .setContentText(game ? "Playing - tap for the quick access menu" : "Tap for the quick access menu")
+            .setContentText(text)
             .setSubText(game && !Session.system.isEmpty() ? Session.system : null)
-            .setWhen(Session.startedAt)
-            .setShowWhen(true)
-            .setUsesChronometer(true)
+            .setWhen(game ? Session.playStart() : Session.startedAt)
+            .setShowWhen(counting)
+            .setUsesChronometer(counting)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setContentIntent(pi)
+            .setDeleteIntent(deleted)
             .build();
     }
 
@@ -218,7 +292,7 @@ public class SessionService extends Service {
             }
         }
         hud.setLevel(level);
-        hud.update(last, Session.startedAt, Float.NaN, ""); // the sampler fills in FPS and the profile next second
+        hud.update(last, Session.playStart(), Float.NaN, ""); // the sampler fills in FPS and the profile next second
     }
 
     private void removeHud() {

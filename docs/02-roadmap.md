@@ -85,6 +85,9 @@ The first build that is not a pre-release (`ship.ps1 -Phase 1` → `0.1.x`; `and
   - Only the second button of the combo is swallowed.
   - The permission is asked for in Settings › In-Game.
 - [x] **Keep game running:** an option under *Resume game*, also in settings. When on, Quick Access opens as an overlay window and the game isn't paused. (0.0.11, device check pending)
+- [x] **Exit game** (Quick Access button + Y): confirmation, fade to black, `am force-stop` through PServer, then DeckOS on Home. (0.0.13, device check pending)
+- [x] **Play time = time in the game:** the emulator package comes from the launch command; which app is in front comes from the accessibility service or a PServer poll. Away time is paused, and only in-game time is saved. (0.0.13, device check pending)
+- [x] **Notification comes back** when swiped away (Android 14+); a blocked notification is shown in Settings › Overlay. Quick Access tabs scroll with the focus, without half-page jumps. (0.0.13)
 - [x] **Overlay settings tab:** (0.0.11)
   - A new rail tab in Quick Access and the same page in DeckOS Settings › In-Game (renamed "Overlay"). Both read and write the same settings, so changing one shows in the other.
   - Contents: overlay scale, HUD level, HUD position, keep running, notification, shortcut, FPS.

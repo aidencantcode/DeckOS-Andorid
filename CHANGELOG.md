@@ -16,6 +16,22 @@ One entry per build the owner tests. Newest first.
 - **Quick Access:** the underclock slider is Stock, the presets, and the profile you choose as *Custom* on the page. The performance overlay names the applied profile.
 - Settings › Overlay's old "Import ClusterTune profile" (one Custom profile) is replaced by a link to the new tab.
 
+**Fixes and additions from your 0.0.12 report**
+- **Launch cover:** it's now fully opaque until its time is up, then it fades. On Android 12+ it was capped at 80% opacity, because its window let touches through, so the loading emulator showed through from the start. The cover now takes touches; the controller still goes to the game.
+- **Play time counts only while the game is in front.**
+  - DeckOS now knows which emulator it started: it reads the package from the launch command, or takes the first app in front after the launch.
+  - Switching to another app or the home screen pauses the time, and coming back resumes it. A closed emulator stops it.
+  - Only this time is saved to the game's play time.
+  - The notification, Quick Access and the performance overlay show it. The notification says "Paused, the game isn't in front" while you're away.
+  - It sees which app is in front through the controller shortcut's accessibility service, which now also reports that (it still reads nothing on screen). Without that service, DeckOS asks the AYN / Retroid system service every 5 seconds.
+- **Exit game** in Quick Access, like the Deck: a button next to the game's name, or Y.
+  - A confirmation first: "Exit game?", with a warning that unsaved progress will be lost. Cancel is selected by default.
+  - Then the screen fades to black, the emulator is closed, and DeckOS comes back on its Home page before the black fades away.
+- **The in-game notification comes back.** Android 14 and 15 let you swipe away notifications like this one, and DeckOS only re-posted it when the game changed. It now comes back within a couple of seconds.
+  - Settings › Overlay shows when Android is blocking DeckOS's notifications, with a button that opens the right Android page.
+  - If you swipe DeckOS itself away from recent apps, Android closes it, and the notification goes with it until the next game.
+- **Quick Access tabs scroll smoothly.** Moving down no longer jumps half a page (the big gaps); the list glides to keep the selected option in view.
+
 **Notes**
 - Limits are written through the AYN / Retroid system service (PServer), the way ClusterTune does it on these handhelds. Without it, the page shows the limits but can't change them.
 - Not in yet: ClusterTune's Auto Tune, per-app profiles (DeckOS will do per-game ones), and the sleep profile. They're on the roadmap.
@@ -31,6 +47,11 @@ One entry per build the owner tests. Newest first.
 7. Restart the handheld with a profile applied: after the restart the limits come back by themselves within a few seconds.
 8. *Export profiles*, then *Import from ClusterTune…* with the same file (Downloads): it says "Imported N profiles". The file also imports into ClusterTune.
 9. Applied profile → Stock: every limit is back at the chip's own.
+10. Launch a game: the launch screen stays fully solid (no emulator showing through) for its time, then fades to the game.
+11. Turn on the controller shortcut, start a game, then press Home and wait a minute. The notification says "Paused…". Go back to the game, then return to DeckOS: the game's PLAY TIME went up only by the time you were in it.
+12. In a game, open Quick Access. Press Y (or *Exit game* at the top): the confirmation shows with Cancel selected, and B or Cancel goes back. Confirm instead: the screen fades to black, the emulator closes, and DeckOS shows Home.
+13. While playing, swipe the DeckOS notification away: it comes back a couple of seconds later.
+14. Quick Access › Performance and Overlay tabs: hold down. The list glides one option at a time with no big empty jumps.
 
 ## 0.0.12 — 2026-11-25
 **Launch cover and overlay font.** Two owner requests on top of 0.0.11:

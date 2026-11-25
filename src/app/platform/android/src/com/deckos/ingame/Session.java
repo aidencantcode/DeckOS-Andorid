@@ -77,7 +77,8 @@ public final class Session {
 
     // --- called from C++ (Qt's thread) ------------------------------------------------------------
 
-    /// JSON: title, system, cover, raUser, raKey, profileName, profilePicture
+    /// JSON: title, system, cover, raUser, raKey, profileName, profilePicture, package (the emulator's,
+    /// from the launch command; "" if it couldn't be told)
     public static void setNowPlaying(String json) {
         try {
             JSONObject o = new JSONObject(json);
@@ -88,8 +89,10 @@ public final class Session {
             raKey = o.optString("raKey", "");
             profileName = o.optString("profileName", "");
             profilePicture = o.optString("profilePicture", "");
+            gamePackage = o.optString("package", "");
             raGameId = 0;
             startedAt = System.currentTimeMillis();
+            resetPlayTime();
             sGameLaunched = true;
         }
         catch (Exception e) {
@@ -317,12 +320,176 @@ public final class Session {
         SessionService.start(activity);
     }
 
+    /// called before Qt hears that DeckOS is active again, so the session's play time is final when
+    /// C++ reads it (playedSeconds)
     public static void onFrontendResumed(Activity activity) {
         frontendInFront = true;
+        setGameFocused(false);
         QuickAccessOverlay.hide();
         LaunchCover.hide();
+        GameExit.onFrontendResumed();
         sGameLaunched = false;
         SessionService.stop(activity);
+    }
+
+
+    // --- play time: only while the game is in front -------------------------------------------------
+    // Which app is in front comes from DeckOS's accessibility service (window changes, at once) or,
+    // without it, from PServer every few seconds (SessionService). With neither, the game counts as in
+    // front until DeckOS comes back, as before.
+
+    /// the emulator's package (from the launch command, or the first app in front after the launch)
+    static volatile String gamePackage = "";
+    /// the emulator's process is gone (PServer can tell)
+    static volatile boolean gameClosed = false;
+    private static boolean sFocused = true;
+    private static long sPlayedMs = 0, sFocusedSince = 0;
+    private static java.util.Set<String> sIgnored;
+
+    private static synchronized void resetPlayTime() {
+        sPlayedMs = 0;
+        sFocused = true;
+        sFocusedSince = System.currentTimeMillis();
+        gameClosed = false;
+    }
+
+    static synchronized long playedMs() {
+        return sPlayedMs + (sFocused ? Math.max(0, System.currentTimeMillis() - sFocusedSince) : 0);
+    }
+
+    static synchronized boolean gameFocused() {
+        return sFocused;
+    }
+
+    /// for the HUD and the notification's timer: now minus the time played
+    static long playStart() {
+        return System.currentTimeMillis() - playedMs();
+    }
+
+    static void setGameFocused(boolean focused) {
+        synchronized (Session.class) {
+            if (focused == sFocused)
+                return;
+            long now = System.currentTimeMillis();
+            if (sFocused)
+                sPlayedMs += Math.max(0, now - sFocusedSince);
+            else
+                sFocusedSince = now;
+            sFocused = focused;
+        }
+        Log.i(TAG, focused ? "game in front: play time counting" : "game not in front: play time paused");
+        SessionService.refresh();
+    }
+
+    /// From C++ when the session ends: the seconds the game was actually in front, or -1 if nothing
+    /// was ever launched (then Pegasus's own launch-to-return time is kept)
+    public static long playedSeconds() {
+        return startedAt > 0 ? playedMs() / 1000 : -1;
+    }
+
+    /// an app came to the front while a game is running (accessibility event or PServer poll)
+    static void onForegroundPackage(String pkg) {
+        if (sApp == null || !sGameLaunched || frontendInFront || pkg == null || pkg.isEmpty())
+            return;
+        if (ignoredPackages().contains(pkg))
+            return; // DeckOS's own windows, the status bar and shade, keyboards
+        if (gamePackage.isEmpty() && !pkg.equals(homePackage())) {
+            gamePackage = pkg; // the launch command didn't name it: the first app in front after the launch
+            Log.i(TAG, "game package: " + pkg);
+        }
+        setGameFocused(pkg.equals(gamePackage));
+    }
+
+    /// PServer saw the emulator's process end
+    static void onGameProcessGone() {
+        if (!sGameLaunched || gameClosed)
+            return;
+        gameClosed = true;
+        setGameFocused(false);
+        SessionService.refresh();
+    }
+
+    private static synchronized java.util.Set<String> ignoredPackages() {
+        if (sIgnored == null) {
+            sIgnored = new java.util.HashSet<>();
+            sIgnored.add(sApp.getPackageName());
+            sIgnored.add("com.android.systemui");
+            sIgnored.add("android");
+            try {
+                android.view.inputmethod.InputMethodManager imm =
+                    (android.view.inputmethod.InputMethodManager) sApp.getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null)
+                    for (android.view.inputmethod.InputMethodInfo i : imm.getInputMethodList())
+                        sIgnored.add(i.getPackageName());
+            }
+            catch (Exception ignored) {}
+        }
+        return sIgnored;
+    }
+
+    private static String sHome;
+
+    /// the home screen app (never taken for the game)
+    static String homePackage() {
+        if (sHome == null) {
+            sHome = "";
+            try {
+                Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
+                android.content.pm.ResolveInfo r = sApp.getPackageManager().resolveActivity(home, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
+                if (r != null && r.activityInfo != null) sHome = r.activityInfo.packageName;
+            }
+            catch (Exception ignored) {}
+        }
+        return sHome;
+    }
+
+
+    // --- exit game (Quick Access) -------------------------------------------------------------------
+
+    private static volatile boolean sExitToHome = false;
+
+    static void requestHomeAfterExit() { sExitToHome = true; }
+
+    /// From C++ when the session ends: the game was quit from Quick Access, so DeckOS opens on Home
+    public static boolean takeExitToHome() {
+        boolean v = sExitToHome;
+        sExitToHome = false;
+        return v;
+    }
+
+
+    // --- notification state (Settings > Overlay) ----------------------------------------------------
+
+    /// Android blocks DeckOS's notifications, or the in-game channel
+    public static boolean notificationsBlocked() {
+        if (sApp == null)
+            return false;
+        try {
+            if (!androidx.core.app.NotificationManagerCompat.from(sApp).areNotificationsEnabled())
+                return true;
+            if (Build.VERSION.SDK_INT >= 26) {
+                NotificationManager nm = (NotificationManager) sApp.getSystemService(Context.NOTIFICATION_SERVICE);
+                NotificationChannel ch = nm != null ? nm.getNotificationChannel(CHANNEL) : null;
+                return ch != null && ch.getImportance() == NotificationManager.IMPORTANCE_NONE;
+            }
+        }
+        catch (Exception ignored) {}
+        return false;
+    }
+
+    /// Android's notification settings for DeckOS
+    public static void openNotificationSettings() {
+        if (sApp == null)
+            return;
+        Intent i;
+        if (Build.VERSION.SDK_INT >= 26) {
+            i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+            i.putExtra(Settings.EXTRA_APP_PACKAGE, sApp.getPackageName());
+        }
+        else {
+            i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + sApp.getPackageName()));
+        }
+        openSettings(i);
     }
 
 

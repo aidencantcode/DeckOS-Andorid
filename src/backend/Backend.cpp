@@ -34,6 +34,7 @@
 #include "model/internal/Internal.h"
 #include "deckos/DeckosApi.h" // DECKOS
 #include "deckos/InGame.h" // DECKOS
+#include "providers/pegasus_playtime/PlaytimeStats.h" // DECKOS: in-game play time
 #include "utils/FolderListModel.h"
 #include "SortFilterProxyModel/qqmlsortfilterproxymodel.h"
 #include "SortFilterProxyModel/filters/filtersqmltypes.h"
@@ -242,6 +243,12 @@ Backend::Backend(const CliArgs& args)
     // DECKOS: Android with the interface kept loaded: the game "finishes" when DeckOS is back in front
     QObject::connect(m_deckos->ingame(), &deckos::InGame::sessionEnded, [this](){
         Log::info(LOGMSG("Back in DeckOS after the game"));
+        // only the time the game was in front counts (Java tracks which app is in front)
+        const qint64 played = m_deckos->ingame()->playedSeconds();
+        if (played >= 0) {
+            Log::info(LOGMSG("Played for %1 s").arg(played));
+            providers::playtime::PlaytimeStats::setNextDuration(played);
+        }
         m_api_public->onGameProcessFinished();
         onProcessFinished();
     });

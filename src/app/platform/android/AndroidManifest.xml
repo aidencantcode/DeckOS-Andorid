@@ -144,6 +144,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <!-- DECKOS: underclocking - re-apply the profile after a restart -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- DECKOS: Quick Access "Exit game" without PServer - stop the emulator once it's in the background -->
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
 
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
