@@ -85,7 +85,8 @@ DeckSettingsPage {
         r.push({ type: "choice", label: "Controller shortcut",
                  desc: function () {
                      if (!android) return "Android only"
-                     return ig.shortcutEnabled ? "Opens the menu over any game"
+                     if (ig.shortcutRunning) return "Opens the menu over any game"
+                     return ig.shortcutEnabled ? "On, but Android hasn't started it - see below"
                                                : "Needs DeckOS's accessibility service - turn it on below"
                  },
                  value: function () { return ig ? ingamePage.shortcutNames[ig.shortcut] : "Off" },
@@ -93,10 +94,15 @@ DeckSettingsPage {
                  next: function () { ig.shortcut = ingamePage.cycle(ig.shortcut, 4, 1) },
                  prev: function () { ig.shortcut = ingamePage.cycle(ig.shortcut, 4, -1) } })
         r.push({ type: "button", label: "Turn on the controller shortcut",
-                 desc: "Android › Accessibility › DeckOS controller shortcut",
-                 value: function () { return ig && ig.shortcutEnabled ? "✓" : "" },
-                 enabled: function () { return android && !ig.shortcutEnabled },
-                 activate: function () { if (ig) ig.openAccessibilitySettings() } })
+                 desc: function () {
+                     if (ig && ig.shortcutRunning) return "Running"
+                     if (ig && ig.privileged) return "DeckOS turns it on itself (AYN / Retroid)"
+                     if (ig && ig.shortcutEnabled) return "Blocked: App info › ⋮ › Allow restricted settings, then again"
+                     return "Android › Accessibility › DeckOS controller shortcut"
+                 },
+                 value: function () { return ig && ig.shortcutRunning ? "✓" : "" },
+                 enabled: function () { return android && !ig.shortcutRunning },
+                 activate: function () { if (ig) ig.enableShortcut() } })
         r.push({ type: "toggle", label: "Keep game running",
                  desc: "The game keeps running behind the menu instead of pausing. Needs \"Display over other apps\".",
                  value: function () { return ig ? ig.keepRunning : false },

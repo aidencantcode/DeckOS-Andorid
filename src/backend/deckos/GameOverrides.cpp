@@ -252,7 +252,22 @@ void GameOverrides::apply(model::Game& game, const QJsonObject& entry, bool live
 
     const QJsonObject assets = entry.value(QStringLiteral("assets")).toObject();
     for (const AssetName& asset : ASSET_NAMES) {
-        const QString uri = assets.value(QLatin1String(asset.name)).toString();
+        const QJsonValue value = assets.value(QLatin1String(asset.name));
+        if (value.isArray()) {
+            // several files (screenshots): the scraped ones replace earlier scraped ones, after the
+            // game's own (metadata) files
+            const QString media_prefix = QUrl::fromLocalFile(mediaDir()).toString();
+            const QStringList old = game.assets().urisOf(asset.type);
+            for (const QString& uri : old)
+                if (uri.startsWith(media_prefix))
+                    game.assetsMut().remove_uri(asset.type, uri);
+            for (const QJsonValue& v : value.toArray())
+                if (!v.toString().isEmpty())
+                    game.assetsMut().add_uri(asset.type, v.toString());
+            emit game.assetsMut().changed(); // add_uri is silent; pages showing the game update
+            continue;
+        }
+        const QString uri = value.toString();
         if (!uri.isEmpty())
             game.assetsMut().set_first(asset.type, uri);
     }

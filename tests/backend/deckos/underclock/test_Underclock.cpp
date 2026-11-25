@@ -169,8 +169,17 @@ void test_Underclock::bundled_presets_fit_the_chip()
     QCOMPARE(presets.size(), 3);
     QCOMPARE(presets.first().name, QStringLiteral("Small Underclock"));
 
+    // a chip ClusterTune has nothing for (Retroid Pocket Classic...): DeckOS's three steps of its own tables
     d.soc = QStringLiteral("SM9999");
-    QVERIFY(uc::bundledFor(d).isEmpty());
+    const QVector<uc::Profile> own = uc::bundledFor(d);
+    QCOMPARE(own.size(), 3);
+    for (const uc::Profile& p : own) {
+        QVERIFY(uc::isDeckosPreset(p));
+        QVERIFY(uc::fits(p, d));
+    }
+    QCOMPARE(own[0].cpu.value(0), 2745600); // ~85 % of 3.53 GHz, snapped down to the table
+    QCOMPARE(own[1].cpu.value(0), 2227200); // ~70 %
+    QCOMPARE(own[2].cpu.value(0), 1785600); // ~55 %
 }
 
 void test_Underclock::fits_and_targets()

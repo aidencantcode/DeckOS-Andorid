@@ -185,6 +185,7 @@ int InGame::overlayScale() const { DECKOS_GET(jni_int("overlayScale"), m_pc_scal
 bool InGame::keepRunning() const { DECKOS_GET(jni_bool("keepRunning"), m_pc_keep_running); }
 int InGame::shortcut() const { DECKOS_GET(jni_int("shortcut"), m_pc_shortcut); }
 bool InGame::shortcutEnabled() const { DECKOS_GET(jni_bool("shortcutServiceEnabled"), false); }
+bool InGame::shortcutRunning() const { DECKOS_GET(jni_bool("shortcutServiceRunning"), false); }
 int InGame::hudPosition() const { DECKOS_GET(jni_int("hudPosition"), m_pc_hud_pos); }
 bool InGame::showFps() const { DECKOS_GET(jni_bool("showFps"), m_pc_fps); }
 bool InGame::privileged() const { DECKOS_GET(jni_bool("privilegedAvailable"), false); }
@@ -267,6 +268,15 @@ void InGame::setLaunchCoverSeconds(int seconds)
     m_pc_cover_seconds = seconds;
 #endif
     emit changed();
+}
+
+void InGame::enableShortcut()
+{
+#ifdef Q_OS_ANDROID
+    if (!jni_bool("enableShortcutService"))
+        openAccessibilitySettings();
+    QTimer::singleShot(1500, this, &InGame::changed); // the service starts a moment later
+#endif
 }
 
 void InGame::openAccessibilitySettings()

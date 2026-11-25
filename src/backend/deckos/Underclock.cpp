@@ -181,14 +181,16 @@ void Underclock::detectDevice()
 
 void Underclock::seedPresets()
 {
-    if (m_device.soc.isEmpty() || m_seeded.contains(m_device.soc, Qt::CaseInsensitive))
+    // "#2": 0.0.14 added DeckOS's own presets for chips ClusterTune has none for - offered once more
+    const QString key = m_device.soc + QStringLiteral("#2");
+    if (m_device.soc.isEmpty() || m_seeded.contains(key, Qt::CaseInsensitive))
         return;
     const QVector<uc::Profile> presets = uc::bundledFor(m_device);
     int at = 0;
     for (const uc::Profile& p : presets)
         if (!find(p.id))
             m_profiles.insert(at++, p);
-    m_seeded << m_device.soc;
+    m_seeded << key;
     save();
 }
 
@@ -380,6 +382,7 @@ QVariantMap Underclock::toMap(const uc::Profile* p)
         { QStringLiteral("name"), p ? p->name : QStringLiteral("Stock") },
         { QStringLiteral("stock"), !p },
         { QStringLiteral("bundled"), p && p->bundled },
+        { QStringLiteral("deckosPreset"), p && uc::isDeckosPreset(*p) },
         { QStringLiteral("cpu"), cpu },
         { QStringLiteral("gpu"), p ? p->gpu : 0 },
         { QStringLiteral("summary"), summary(p) },

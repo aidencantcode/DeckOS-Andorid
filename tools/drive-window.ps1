@@ -1,7 +1,8 @@
 # DeckOS dev tool (Windows): drives the PC build with posted key presses and saves window screenshots.
 # Example: tools/drive-window.ps1 -Exe ../windows-build/DeckOS.exe -WorkDir ../windows-build -OutDir shots -Steps "size:1920x1080","wait:6000","key:F1","shot:menu"
 # Launches an exe, posts a key script to its main window and captures screenshots.
-# Steps: "key:F1", "key:DOWN", "key:RETURN", "wait:1500", "shot:name", "tap:F1:80" (press, then wait 80 ms)
+# Steps: "key:F1", "key:DOWN", "key:RETURN", "wait:1500", "shot:name", "tap:F1:80" (press, then wait 80 ms),
+#        "min", "restore" (minimize / bring back the window, like leaving and returning on Android)
 param([string]$Exe, [string]$WorkDir, [string]$OutDir, [string[]]$Steps, [int]$StartupSeconds = 6)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
@@ -15,6 +16,8 @@ public static class W32 {
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
 }
 "@
 $keys = @{ F1 = @(0x70, 0x3B, 0); DOWN = @(0x28, 0x50, 1); UP = @(0x26, 0x48, 1); LEFT = @(0x25, 0x4B, 1); RIGHT = @(0x27, 0x4D, 1);
@@ -54,6 +57,8 @@ try {
             'key'  { Send-Key $h $arg; Start-Sleep -Milliseconds 400 }
             'tap'  { $kn, $ms = $arg -split ':', 2; Send-Key $h $kn; Start-Sleep -Milliseconds ([int]$ms) } # "tap:F1:80" = quick presses
             'wait' { Start-Sleep -Milliseconds ([int]$arg) }
+            'min'  { [void][W32]::ShowWindow($h, 6); Start-Sleep -Milliseconds 500 }                     # like Android sending DeckOS to the background
+            'restore' { [void][W32]::ShowWindow($h, 9); [void][W32]::SetForegroundWindow($h); Start-Sleep -Milliseconds 800 }
             'shot' { Save-Shot $h $arg }
             'size' {   # client area WxH
                 $wh = $arg -split 'x'; $wr = New-Object W32+RECT; $cr = New-Object W32+RECT

@@ -3,6 +3,33 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**Fixes from your 0.0.13 report (Retroid Pocket Classic).**
+- **Underclocking presets on every chip.** ClusterTune only has presets for the Odin 3's and the Odin 2 / Thor's chips, so your Retroid's list held only Stock, and left / right kept applying it. Chips without ClusterTune presets now get DeckOS's own *Small / Medium / Large Underclock*: about 85 / 70 / 55 % of each cluster's top clock, on the chip's own steps. They're marked "DeckOS preset" and appear in Quick Access's slider too.
+- **Quick Access: the blank Wi-Fi and Bluetooth rows are fixed.** Their on/off switch took the whole row's width, so the labels were squeezed to nothing. This was also the "empty gaps".
+- **Quick Access: the controller always has a visible selection.**
+  - Opened with a tap (the notification), Android was in touch mode and nothing took the focus. Now the current tab is selected at once, and a press with nothing selected lands there.
+  - The selection also has a light outline now, so it can't be missed.
+- **Controller shortcut:**
+  - *Turn on the controller shortcut* (Settings › Overlay, or Quick Access › Overlay) now turns DeckOS's accessibility service on by itself on AYN / Retroid. That also gets past Android's "restricted settings", which blocks sideloaded apps.
+  - The settings now tell "on and running" apart from "on but blocked by Android".
+- **Home: the selection highlight comes back** after leaving DeckOS and returning. Its animation is restarted and the row gets the focus again; the selected game stays the same.
+- **Screenshots:**
+  - Up to 5 per game: TheGamesDB's screenshots plus libretro's in-game snap, which was the only one fetched until now. They show in the game page's Activity tab, under the description, and in the media viewer.
+  - Games scraped before get one screenshot-only pass. It starts by itself with *Scrape new games automatically*, otherwise with *Scrape missing games*.
+  - That pass keeps a reserve of TheGamesDB's monthly lookups for new games.
+- **Trailer:** the default delay is now 2 seconds.
+
+**Notes**
+- **Trailers still need ScreenScraper.** It's the only free source of game videos; TheGamesDB only has YouTube links, which DeckOS can't play. Its API refused your account login, and DeckOS also needs its own developer credentials, which only ScreenScraper gives out (a request on their forum). Until then, a trailer plays only for games that already have a video file.
+- Nothing here has been checked on a handheld yet. The Android code is now compiled locally before every push (`tools\check-android.ps1`).
+
+**Test checklist**
+1. Retroid: Settings › Underclocking lists Stock, Small, Medium and Large Underclock ("DeckOS preset"). Applied profile → Medium: the status says it was applied, and the CPU rows show lower limits.
+2. Quick Access › Quick Settings: the Wi-Fi and Bluetooth rows show their names and switches, with no blank spaces.
+3. Open Quick Access by tapping the notification, then use the D-pad: a tab is selected straight away, with an outline. Move through tabs and options.
+4. Settings › Overlay › *Turn on the controller shortcut*: within a second or two it shows ✓ "Running". In a game, Select + R1 opens Quick Access.
+5. Home: highlight a game, press the Android Home button, come back. The game is still highlighted (the border blinks).
+6. Settings › Library › *Scrape missing games* (or wait if automatic scraping is on): games get screenshots. Check a game's Activity tab and the screenshots under its description.
 
 ## 0.0.13 — 2026-11-25
 **ClusterTune built in.** Underclocking is now its own settings tab, **Settings › Underclocking**, with ClusterTune's tuner ported into DeckOS (MIT, by Aurelio Bernal). The separate app isn't needed any more.

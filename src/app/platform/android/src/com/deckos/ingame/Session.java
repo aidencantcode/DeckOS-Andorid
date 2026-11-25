@@ -225,6 +225,30 @@ public final class Session {
         openSettings(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
     }
 
+    /// Android started it (enabled in the settings is not always running: a sideloaded app's service
+    /// can be blocked by Android 13+'s "restricted settings")
+    public static boolean shortcutServiceRunning() {
+        return ShortcutService.instance() != null;
+    }
+
+    /// "Turn on the controller shortcut": through PServer (AYN / Retroid) DeckOS adds its service to
+    /// the enabled accessibility services itself - which also gets past "restricted settings". False
+    /// if it can't (no PServer): the caller opens Android's accessibility settings instead.
+    public static boolean enableShortcutService() {
+        if (sApp == null || !Privileged.available())
+            return false;
+        String me = new android.content.ComponentName(sApp, ShortcutService.class).flattenToString();
+        String body = "svc=" + Privileged.quote(me) + "\n"
+                    + "cur=$(settings get secure enabled_accessibility_services)\n"
+                    + "case \"$cur\" in\n"
+                    + "  *\"$svc\"*) ;;\n"
+                    + "  null|'') settings put secure enabled_accessibility_services \"$svc\" ;;\n"
+                    + "  *) settings put secure enabled_accessibility_services \"$cur:$svc\" ;;\n"
+                    + "esac\n"
+                    + "settings put secure accessibility_enabled 1\n";
+        return Privileged.runScript(sApp, "shortcut.sh", body);
+    }
+
     /// performance overlay corner: 0 top left, 1 top right, 2 bottom left, 3 bottom right
     public static int hudPosition() {
         return sApp == null ? 0 : prefs().getInt(KEY_HUD_POS, 0);

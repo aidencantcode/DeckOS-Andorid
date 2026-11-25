@@ -177,6 +177,21 @@ Format: `## YYYY-MM-DD — Title` · **Decision** · **Why** · **Alternatives c
   - The owner's account login (stored only in the local `secrets/api-keys.env`, never in the repo) was refused by `ssuserInfos.php`: 403 "Vérifier les identifiants utilisateurs". That is the same answer as with no login at all, so the account may not be activated yet. One request each; no retries, to avoid a lockout.
   - Trailer scraping stays blocked until both work.
 
+## 2026-11-25 — 0.0.13 report (Retroid Pocket Classic): presets, Quick Access focus, shortcut, screenshots
+- **Underclock presets for every chip:** ClusterTune ships presets for CQ8725S and QCS8550 only. Elsewhere `bundledFor` makes DeckOS's own Small / Medium / Large: ~85 / 70 / 55 % of each cluster's top, snapped down to its table, ids `deckos_*`, tagged "DeckOS preset". The seeding key became `<soc>#2`, so devices that had already seeded zero presets get them once.
+- **Quick Access blank rows (the "gaps"):** `Ui.settingRow` re-added the toggle with WRAP_CONTENT params, and `Toggle` had no `onMeasure`. As "wrap content", a plain View takes all the width it's offered, which squeezed the labels to zero. `Toggle` now measures itself, and `settingRow` keeps a child's own size.
+- **Quick Access focus:**
+  - Opened from the notification (a tap), the window is in touch mode, where `requestFocus()` does nothing. Opening now uses `requestFocusFromTouch()`, and a D-pad or A press with nothing focused lands on the current tab.
+  - Focused items get a light 2 px outline on top of the fill.
+  - Not confirmed on the device, because there's no way to see it from here.
+- **Controller shortcut:** Android 13+ "restricted settings" can block a sideloaded app's accessibility service. On AYN / Retroid, *Turn on* adds the service to `enabled_accessibility_services` itself through PServer; the settings show enabled vs actually running.
+  - **Alternative kept in reserve:** a PServer `getevent` loop for the combo. It works without accessibility, but can't swallow the buttons.
+- **Home highlight after returning:** it didn't reproduce on PC (minimize / restore). On return to the front the theme calls the page's `resumeFocus()`; Home restarts the highlight animation (`highlightOn` off then on) and puts the focus back on its zone.
+- **Screenshots:**
+  - TheGamesDB `/v1/Games/Images?filter[type]=screenshot` (format verified 2026-11-25) plus libretro's Named_Snap, up to 5 per game, saved as a list (`assets.screenshot` may now be an array; `GameOverrides::apply` adds them all).
+  - Games scraped before get one screenshot-only pass (`shots` marker). It keeps their date and sources, and stops asking TheGamesDB below 200 monthly lookups left (938 on 2026-11-25).
+- **Local Android check:** `tools\check-android.ps1` (docs/03-dev-loop.md). Qt 5.15.2's Gradle wrapper (5.6.4) can't run on JDK 17 or with AGP 7.0.2, so for `-Apk` the script moves the generated wrapper to Gradle 7.3.3. The repo's Gradle files stay as CI needs them.
+
 ## 2026-11-25 — 0.0.12 report: cover opacity, play time in the game, Exit game, notification
 - **Launch cover opacity:** Android 12+ caps an app overlay window that is `FLAG_NOT_TOUCHABLE` at the maximum obscuring opacity (0.8). The cover was see-through from the start.
   - The cover and Exit game's black window are now touchable (they block touches while up) and stay non-focusable, so the controller still reaches the game.

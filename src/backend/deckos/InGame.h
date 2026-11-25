@@ -45,6 +45,8 @@ class InGame : public QObject {
     Q_PROPERTY(int shortcut READ shortcut WRITE setShortcut NOTIFY changed)
     /// DeckOS's accessibility service (needed for the shortcut) is turned on
     Q_PROPERTY(bool shortcutEnabled READ shortcutEnabled NOTIFY changed)
+    /// ...and Android actually started it (it can be on in the settings but blocked)
+    Q_PROPERTY(bool shortcutRunning READ shortcutRunning NOTIFY changed)
     /// performance overlay corner: 0 top left, 1 top right, 2 bottom left, 3 bottom right
     Q_PROPERTY(int hudPosition READ hudPosition WRITE setHudPosition NOTIFY changed)
     Q_PROPERTY(bool showFps READ showFps WRITE setShowFps NOTIFY changed)
@@ -79,6 +81,7 @@ public:
     int shortcut() const;
     void setShortcut(int combo);
     bool shortcutEnabled() const;
+    bool shortcutRunning() const;
     int hudPosition() const;
     void setHudPosition(int pos);
     bool showFps() const;
@@ -94,6 +97,8 @@ public:
     Q_INVOKABLE void openNotificationSettings();
     /// Android's accessibility settings, to turn on the shortcut service
     Q_INVOKABLE void openAccessibilitySettings();
+    /// turns the shortcut service on directly (AYN / Retroid PServer), else opens those settings
+    Q_INVOKABLE void enableShortcut();
     /// model, chip, PServer, vendor settings and sensors - for checking a new handheld
     Q_INVOKABLE QString deviceInfo() const;
 

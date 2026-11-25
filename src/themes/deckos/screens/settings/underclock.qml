@@ -113,7 +113,7 @@ DeckSettingsPage {
                          desc: function () {
                              var q = ucPage.prof(p.id) || p
                              var tags = []
-                             if (q.bundled) tags.push("ClusterTune preset")
+                             if (q.bundled) tags.push(q.deckosPreset ? "DeckOS preset" : "ClusterTune preset")
                              if (!q.fits) tags.push("some values aren't on this chip")
                              if (q.id !== "stock" && q.id === uc.overlayCustomId) tags.push("Quick Access \"Custom\"")
                              return q.summary + (tags.length ? " · " + tags.join(" · ") : "")
@@ -147,7 +147,7 @@ DeckSettingsPage {
                      var res = uc.exportFile()
                      ucPage.message = res.charAt(0) === "!" ? res.slice(1) : "Saved to " + res
                  } })
-        r.push({ type: "button", label: "Restore ClusterTune presets",
+        r.push({ type: "button", label: "Restore presets",
                  desc: "Puts back the chip's presets that were deleted or changed",
                  activate: function () {
                      var n = uc.restorePresets()
@@ -171,7 +171,7 @@ DeckSettingsPage {
         var r = []
         var p = prof(editingId)
         if (!p) return [{ type: "info", label: "That profile is gone" }]
-        r.push({ type: "section", label: p.bundled ? "ClusterTune preset" : "Your profile" })
+        r.push({ type: "section", label: p.bundled ? (p.deckosPreset ? "DeckOS preset" : "ClusterTune preset") : "Your profile" })
         r.push({ type: "button", label: "Apply", accent: true,
                  desc: function () {
                      if (!uc.canApply) return "Needs the AYN / Retroid system service (PServer)"
@@ -220,7 +220,7 @@ DeckSettingsPage {
         r.push({ type: "button", label: "Delete",
                  desc: function () {
                      if (ucPage.confirmDelete) return "Press A again to delete it" + (uc.activeId === ucPage.editingId ? " (the chip goes back to Stock)" : "")
-                     return p.bundled ? "\"Restore ClusterTune presets\" brings it back" : "Can't be undone"
+                     return p.bundled ? "\"Restore presets\" brings it back" : "Can't be undone"
                  },
                  value: function () { return ucPage.confirmDelete ? "Sure?" : "" },
                  activate: function () {

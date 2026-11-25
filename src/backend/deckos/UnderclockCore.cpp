@@ -278,7 +278,32 @@ QVector<Profile> bundledFor(const Device& device)
                 out.append(p);
         }
     }
+    if (out.isEmpty() && device.valid()) {
+        // DeckOS: ClusterTune has presets for two chips only (Odin 3, Odin 2 / Thor). Anywhere else
+        // (Retroid Pocket Classic...) three steps of each cluster's own table: ~85 / 70 / 55 % of its top
+        struct Step { const char* id; const char* name; double share; };
+        for (const Step& s : { Step { "deckos_small", "Small Underclock", 0.85 },
+                               Step { "deckos_medium", "Medium Underclock", 0.70 },
+                               Step { "deckos_large", "Large Underclock", 0.55 } }) {
+            Profile p;
+            p.id = QString::fromLatin1(s.id);
+            p.name = QString::fromLatin1(s.name);
+            p.bundled = true;
+            for (const Cluster& c : device.clusters) {
+                const int f = snap_down(c.freqs, static_cast<int>(c.stock * s.share));
+                if (f > 0 && f < c.stock)
+                    p.cpu.insert(c.policy, f);
+            }
+            if (!p.cpu.isEmpty() && (out.isEmpty() || p.cpu != out.last().cpu))
+                out.append(p);
+        }
+    }
     return out;
+}
+
+bool isDeckosPreset(const Profile& p)
+{
+    return p.bundled && p.id.startsWith(QLatin1String("deckos_"));
 }
 
 bool fits(const Profile& profile, const Device& device)

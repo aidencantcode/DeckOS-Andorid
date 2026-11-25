@@ -160,7 +160,9 @@ final class QuickAccessPanel extends FrameLayout {
         panel.animate().translationX(0).setDuration(170).start();
         resume();
         // in an overlay window the focus can only be taken once the panel is attached
-        post(() -> { if (findFocus() == null && tab >= 0) railItems[tab].requestFocus(); });
+        // FromTouch: opened by a tap (the notification), Android is in touch mode, where a plain
+        // requestFocus() does nothing and the controller had no highlight to start from
+        post(() -> { if (findFocus() == null && tab >= 0) railItems[tab].requestFocusFromTouch(); });
     }
 
     void resume() {
@@ -229,6 +231,11 @@ final class QuickAccessPanel extends FrameLayout {
                     return true;
             }
         }
+        // a controller press with nothing focused (after a touch): it lands on the current tab first
+        if (down && tab >= 0 && findFocus() == null && (isDpad(k) || k == KeyEvent.KEYCODE_BUTTON_A)) {
+            railItems[tab].requestFocusFromTouch();
+            return true;
+        }
         switch (k) {
             case KeyEvent.KEYCODE_BUTTON_Y:
                 if (down && e.getRepeatCount() == 0 && GameExit.possible()) askExit();
@@ -268,6 +275,11 @@ final class QuickAccessPanel extends FrameLayout {
                 break;
         }
         return super.dispatchKeyEvent(e);
+    }
+
+    private static boolean isDpad(int k) {
+        return k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN
+            || k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT;
     }
 
     private static boolean inside(View v, ViewGroup parent) {
@@ -865,9 +877,16 @@ final class QuickAccessPanel extends FrameLayout {
             Session.setShortcut(i);
         });
         sliderCard("Controller shortcut", null, shortcut);
-        if (!ShortcutService.enabled(ctx)) {
-            note("Opens this menu over any game. Needs DeckOS's accessibility service (it only watches for the shortcut).", Ui.DIM);
-            addButton("Turn on the controller shortcut", v -> launch(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        if (ShortcutService.instance() == null) {
+            note(ShortcutService.enabled(ctx)
+                     ? "Turned on in Android, but Android hasn't started it. Turn it off and on again in Accessibility (for a sideloaded app: App info › ⋮ › Allow restricted settings first)."
+                     : "Opens this menu over any game. Needs DeckOS's accessibility service (it only watches buttons and which app is in front).", Ui.DIM);
+            addButton("Turn on the controller shortcut", v -> {
+                if (Session.enableShortcutService())
+                    handler.postDelayed(() -> { if (tab == TAB_OVERLAY) rebuildKeeping("Controller shortcut"); }, 1500);
+                else
+                    launch(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+            });
         }
 
         content.addView(toggleRow("Show frame rate", Privileged.available()

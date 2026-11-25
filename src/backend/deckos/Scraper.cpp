@@ -38,6 +38,7 @@
 namespace {
 const QString LOGTAG = QStringLiteral("Scraper");
 constexpr int PAUSE_BETWEEN_GAMES_MS = 400;
+constexpr int MAX_SCREENSHOTS = 5;
 constexpr int REQUEST_TIMEOUT_MS = 20000;
 
 struct SystemInfo {
@@ -219,7 +220,10 @@ struct Scraper::Job {
     QSet<QString> needed;
     QJsonObject fields;
     QHash<QString, QList<int>> tgdb_ids;
+    int tgdb_game = 0;              // TheGamesDB's id for the game (its screenshots are a second request)
+    bool shots_only = false;        // the one-time screenshot pass for games scraped before 0.0.14
     QList<QPair<QString, QString>> downloads;
+    QSet<QString> cleared;          // asset types whose old files were removed this job
     QJsonObject saved_assets;
     QStringList sources;
     int download_index = 0;
@@ -231,8 +235,16 @@ struct Scraper::Job {
             if (d.first == name) return true;
         return false;
     }
+    int downloadCount(const QString& name) const {
+        int n = 0;
+        for (const auto& d : downloads)
+            if (d.first == name) n++;
+        return n;
+    }
+    /// one file per asset, except screenshots: up to MAX_SCREENSHOTS (in-game pictures for the game page)
     void addDownload(const QString& name, const QString& url) {
-        if (wants(name) && !url.isEmpty() && !hasDownload(name))
+        const int limit = name == QLatin1String("screenshot") ? MAX_SCREENSHOTS : 1;
+        if (wants(name) && !url.isEmpty() && downloadCount(name) < limit)
             downloads.append({ name, url });
     }
 };
@@ -491,8 +503,18 @@ int Scraper::scrapeAll(bool only_missing, const QStringList& collections)
             // Android apps and other entries without a ROM file: only on request
             if (key.startsWith(QLatin1String("uri:")))
                 continue;
-            if (store.entry(key).contains(QStringLiteral("scraped")))
+            if (store.entry(key).contains(QStringLiteral("scraped"))) {
+                // scraped before screenshots were fetched (0.0.14): one pass for those only
+                if (store.entry(key).contains(QStringLiteral("shots"))
+                    || !game->assets().urisOf(AssetType::SCREENSHOT).isEmpty())
+                    continue;
+                Job* job = makeJob(*game, false);
+                job->needed = { QStringLiteral("screenshot") };
+                job->shots_only = true;
+                enqueue(job, false);
+                queued++;
                 continue;
+            }
         }
         Job* job = makeJob(*game, !only_missing);
         if (job->needed.isEmpty()) {
@@ -554,8 +576,13 @@ void Scraper::finishJob(bool ok, const QString& message)
         QJsonObject fields = job->fields;
         if (!job->saved_assets.isEmpty())
             fields.insert(QStringLiteral("assets"), job->saved_assets);
-        fields.insert(QStringLiteral("scraped"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
-        fields.insert(QStringLiteral("sources"), job->sources.join(QStringLiteral(", ")));
+        // screenshots were looked for (found or not): the one-time pass for older scrapes skips it
+        if (job->wants(QStringLiteral("screenshot")))
+            fields.insert(QStringLiteral("shots"), true);
+        if (!job->shots_only) { // the screenshot pass keeps the original scrape's date and sources
+            fields.insert(QStringLiteral("scraped"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+            fields.insert(QStringLiteral("sources"), job->sources.join(QStringLiteral(", ")));
+        }
         GameOverrides::instance().update(job->key, fields);
         if (job->game)
             GameOverrides::apply(*job->game, GameOverrides::instance().entry(job->key), true);
@@ -609,8 +636,10 @@ void Scraper::stepTheGamesDb()
 {
     Job* const job = m_current;
     const bool useful = job->wants(QStringLiteral("description")) || job->wants(QStringLiteral("release"))
-                     || job->wants(QStringLiteral("boxFront"));
-    if (m_tgdb_key.isEmpty() || !useful || m_tgdb_allowance == 0) {
+                     || job->wants(QStringLiteral("boxFront")) || job->wants(QStringLiteral("screenshot"));
+    // the screenshot pass for already scraped games keeps a reserve of the month's lookups for new games
+    const bool reserve = job->shots_only && m_tgdb_allowance >= 0 && m_tgdb_allowance < 200;
+    if (m_tgdb_key.isEmpty() || !useful || m_tgdb_allowance == 0 || reserve) {
         stepSteamGridDbSearch();
         return;
     }
@@ -665,6 +694,7 @@ void Scraper::stepTheGamesDb()
 
         if (!best.isEmpty()) {
             job->sources << QStringLiteral("TheGamesDB");
+            job->tgdb_game = best.value(QStringLiteral("id")).toInt();
             const QString overview = best.value(QStringLiteral("overview")).toString().trimmed();
             if (job->wants(QStringLiteral("description")) && !overview.isEmpty())
                 job->fields.insert(QStringLiteral("description"), QString(overview).replace(QLatin1String("\r\n"), QLatin1String("\n")));
@@ -746,7 +776,42 @@ void Scraper::stepTheGamesDbNames(int index)
         if (!resolved.isEmpty())
             job->fields.insert(QLatin1String(list.field), resolved);
     }
-    stepSteamGridDbSearch();
+    stepTheGamesDbScreenshots();
+}
+
+/// TheGamesDB's in-game screenshots for the game page and its Activity tab (one more request, only
+/// when the game has none yet)
+void Scraper::stepTheGamesDbScreenshots()
+{
+    Job* const job = m_current;
+    if (job->tgdb_game <= 0 || !job->wants(QStringLiteral("screenshot")) || m_tgdb_allowance == 0) {
+        stepSteamGridDbSearch();
+        return;
+    }
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("apikey"), m_tgdb_key);
+    query.addQueryItem(QStringLiteral("games_id"), QString::number(job->tgdb_game));
+    query.addQueryItem(QStringLiteral("filter[type]"), QStringLiteral("screenshot"));
+    QUrl url(QStringLiteral("https://api.thegamesdb.net/v1/Games/Images"));
+    url.setQuery(query);
+    whenDone(get(url.toString()), [this](QNetworkReply* reply) {
+        Job* const job = m_current;
+        const QJsonObject root = QJsonDocument::fromJson(reply->readAll()).object();
+        if (root.contains(QStringLiteral("remaining_monthly_allowance")))
+            m_tgdb_allowance = root.value(QStringLiteral("remaining_monthly_allowance")).toInt(-1);
+        if (reply->error() == QNetworkReply::NoError) {
+            const QJsonObject data = root.value(QStringLiteral("data")).toObject();
+            const QString base = data.value(QStringLiteral("base_url")).toObject().value(QStringLiteral("large")).toString();
+            const QJsonArray images = data.value(QStringLiteral("images")).toObject()
+                .value(QString::number(job->tgdb_game)).toArray();
+            for (const QJsonValue& img : images) {
+                const QJsonObject image = img.toObject();
+                if (image.value(QStringLiteral("type")).toString() == QLatin1String("screenshot") && !base.isEmpty())
+                    job->addDownload(QStringLiteral("screenshot"), base + image.value(QStringLiteral("filename")).toString());
+            }
+        }
+        stepSteamGridDbSearch();
+    });
 }
 
 void Scraper::loadTheGamesDbNames()
@@ -904,14 +969,27 @@ void Scraper::stepDownload()
                 + safe_dir_name(job->system.isEmpty() ? QStringLiteral("other") : job->system) + QLatin1Char('/')
                 + safe_dir_name(job->rom_name.isEmpty() ? job->title : job->rom_name);
             QDir().mkpath(dir);
-            // old files of this asset go; a new name per download so image caches show the new one
-            for (const QFileInfo& old : QDir(dir).entryInfoList({ asset + QStringLiteral("-*") }, QDir::Files))
-                QFile::remove(old.absoluteFilePath());
+            // old files of this asset go (once per job: screenshots come several at a time); a new name
+            // per download so image caches show the new one
+            if (!job->cleared.contains(asset)) {
+                job->cleared.insert(asset);
+                for (const QFileInfo& old : QDir(dir).entryInfoList({ asset + QStringLiteral("-*") }, QDir::Files))
+                    QFile::remove(old.absoluteFilePath());
+            }
             const QString path = dir + QLatin1Char('/') + asset + QLatin1Char('-')
-                + QString::number(QDateTime::currentSecsSinceEpoch()) + QLatin1Char('.') + file_extension(reply);
+                + QString::number(QDateTime::currentSecsSinceEpoch()) + QLatin1Char('-') + QString::number(job->download_index)
+                + QLatin1Char('.') + file_extension(reply);
             QSaveFile file(path);
             if (file.open(QIODevice::WriteOnly) && file.write(data) == data.size() && file.commit()) {
-                job->saved_assets.insert(asset, QUrl::fromLocalFile(path).toString());
+                const QString uri = QUrl::fromLocalFile(path).toString();
+                if (asset == QLatin1String("screenshot")) { // a list (GameOverrides::apply)
+                    QJsonArray list = job->saved_assets.value(asset).toArray();
+                    list.append(uri);
+                    job->saved_assets.insert(asset, list);
+                }
+                else {
+                    job->saved_assets.insert(asset, uri);
+                }
                 if (reply->url().toString().contains(QLatin1String("libretro-thumbnails")) && !job->sources.contains(QStringLiteral("libretro")))
                     job->sources << QStringLiteral("libretro");
             }

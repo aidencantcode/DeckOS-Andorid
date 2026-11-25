@@ -66,8 +66,10 @@ Device detect(const QString& root, int gpuStockSeen = 0);
 QVector<Profile> parseShare(const QByteArray& json);
 QByteArray encodeShare(const QVector<Profile>& profiles, const QString& soc);
 
-/// ClusterTune's presets for this chip that fit the device (BundledProfileProvider)
+/// ClusterTune's presets for this chip that fit the device (BundledProfileProvider); for chips it has
+/// none for, DeckOS's own three steps (~85 / 70 / 55 % of each cluster's top, ids "deckos_...")
 QVector<Profile> bundledFor(const Device& device);
+bool isDeckosPreset(const Profile& p);
 
 /// every value is one this device has (ClusterTune's import check)
 bool fits(const Profile& profile, const Device& device);

@@ -120,6 +120,7 @@ private:
 
     void stepTheGamesDb();
     void stepTheGamesDbNames(int index);
+    void stepTheGamesDbScreenshots();
     void stepSteamGridDbSearch();
     void stepSteamGridDbAssets(int game_id, int step);
     void stepLibretro();

@@ -35,6 +35,7 @@ final class Ui {
     static final int FOCUS = Color.rgb(0x52, 0x5c, 0x6b);
     static final int BUTTON = Color.rgb(0x3d, 0x44, 0x50);
     static final int BUTTON_FOCUS = Color.rgb(0xdc, 0xde, 0xdf);
+    static final int FOCUS_RING = Color.rgb(0xe8, 0xf2, 0xff);
     static final int TEXT = Color.WHITE;
     static final int TEXT2 = Color.rgb(0xb8, 0xbc, 0xbf);
     static final int DIM = Color.rgb(0x8b, 0x92, 0x9a);
@@ -87,7 +88,10 @@ final class Ui {
     /// background that lights up while the view has controller focus
     Drawable focusable(int normal, int focused) {
         StateListDrawable s = new StateListDrawable();
-        s.addState(new int[] { android.R.attr.state_focused }, rect(focused, 3 * u));
+        // the controller's focus: the lighter fill plus a light outline, so it's never missed
+        GradientDrawable ring = rect(focused, 3 * u);
+        ring.setStroke(Math.max(2, Math.round(2 * u)), FOCUS_RING);
+        s.addState(new int[] { android.R.attr.state_focused }, ring);
         s.addState(new int[] { android.R.attr.state_pressed }, rect(focused, 3 * u));
         s.addState(new int[] {}, rect(normal, 3 * u));
         return s;
@@ -152,8 +156,11 @@ final class Ui {
         }
         r.addView(texts, weight());
         if (right != null) {
-            LinearLayout.LayoutParams lp = wrap();
+            // keep the view's own size if it has one (the toggle), else wrap it
+            LinearLayout.LayoutParams lp = right.getLayoutParams() instanceof LinearLayout.LayoutParams
+                ? new LinearLayout.LayoutParams((LinearLayout.LayoutParams) right.getLayoutParams()) : wrap();
             lp.leftMargin = px(10);
+            lp.gravity = Gravity.CENTER_VERTICAL;
             r.addView(right, lp);
         }
         return r;
@@ -181,6 +188,13 @@ final class Ui {
         }
 
         void set(boolean value) { on = value; invalidate(); }
+
+        /// always its own size: as "wrap content" a plain View takes all the room it's offered, which
+        /// squeezed the Wi-Fi / Bluetooth rows' labels away (blank rows in Quick Settings)
+        @Override
+        protected void onMeasure(int widthSpec, int heightSpec) {
+            setMeasuredDimension(Math.round(44 * u), Math.round(24 * u));
+        }
 
         @Override
         protected void onDraw(Canvas c) {

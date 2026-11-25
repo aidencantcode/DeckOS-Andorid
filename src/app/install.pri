@@ -109,15 +109,17 @@ android {
         sed -i s/@GIT_COMMIT_CNT@/$${DECKOS_VERSION_CODE}/ $$shell_path($$ANDROID_MANIFEST_OUT)  # DECKOS: versionCode from the version tag
 
     ANDROID_PACKAGE_SOURCE_DIR = $${ANDROID_CFGDIR_OUT}
+    # DECKOS: where the OpenSSL builds are (CI: /opt; tools/check-android.ps1 passes its own)
+    isEmpty(OPENSSL_ANDROID_DIR): OPENSSL_ANDROID_DIR = /opt
     ANDROID_EXTRA_LIBS += \
-        /opt/openssl-111t_android-arm/lib/libcrypto.so \
-        /opt/openssl-111t_android-arm/lib/libssl.so \
-        /opt/openssl-111t_android-arm64/lib/libcrypto.so \
-        /opt/openssl-111t_android-arm64/lib/libssl.so \
-        /opt/openssl-111t_android-x86/lib/libcrypto.so \
-        /opt/openssl-111t_android-x86/lib/libssl.so \
-        /opt/openssl-111t_android-x86_64/lib/libcrypto.so \
-        /opt/openssl-111t_android-x86_64/lib/libssl.so
+        $${OPENSSL_ANDROID_DIR}/openssl-111t_android-arm/lib/libcrypto.so \
+        $${OPENSSL_ANDROID_DIR}/openssl-111t_android-arm/lib/libssl.so \
+        $${OPENSSL_ANDROID_DIR}/openssl-111t_android-arm64/lib/libcrypto.so \
+        $${OPENSSL_ANDROID_DIR}/openssl-111t_android-arm64/lib/libssl.so \
+        $${OPENSSL_ANDROID_DIR}/openssl-111t_android-x86/lib/libcrypto.so \
+        $${OPENSSL_ANDROID_DIR}/openssl-111t_android-x86/lib/libssl.so \
+        $${OPENSSL_ANDROID_DIR}/openssl-111t_android-x86_64/lib/libcrypto.so \
+        $${OPENSSL_ANDROID_DIR}/openssl-111t_android-x86_64/lib/libssl.so
 }
 
 

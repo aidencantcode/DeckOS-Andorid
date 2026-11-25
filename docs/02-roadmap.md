@@ -88,6 +88,12 @@ The first build that is not a pre-release (`ship.ps1 -Phase 1` → `0.1.x`; `and
 - [x] **Exit game** (Quick Access button + Y): confirmation, fade to black, `am force-stop` through PServer, then DeckOS on Home. (0.0.13, device check pending)
 - [x] **Play time = time in the game:** the emulator package comes from the launch command; which app is in front comes from the accessibility service or a PServer poll. Away time is paused, and only in-game time is saved. (0.0.13, device check pending)
 - [x] **Notification comes back** when swiped away (Android 14+); a blocked notification is shown in Settings › Overlay. Quick Access tabs scroll with the focus, without half-page jumps. (0.0.13)
+- [x] **0.0.13 report fixes:** (0.0.14, device check pending)
+  - DeckOS presets for chips without ClusterTune ones.
+  - Quick Access: blank Wi-Fi / Bluetooth rows (toggle measuring), focus on open (touch mode) plus a visible outline.
+  - The shortcut service is turned on through PServer.
+  - Home highlight restored after returning.
+  - Screenshots from TheGamesDB plus libretro, with a one-time pass for games scraped earlier.
 - [x] **Overlay settings tab:** (0.0.11)
   - A new rail tab in Quick Access and the same page in DeckOS Settings › In-Game (renamed "Overlay"). Both read and write the same settings, so changing one shows in the other.
   - Contents: overlay scale, HUD level, HUD position, keep running, notification, shortcut, FPS.

@@ -58,6 +58,8 @@ property real bottomAnimOpacity: 1.0
 
     // current focus zone: 0 = top, 1 = middle, 2 = bottom
     property int focusZone: 1
+    // DECKOS: off for a moment on return to the front, which restarts the selection highlight (resumeFocus)
+    property bool highlightOn: true
     property var theme
     // для навигации по кнопкам What's New (1-4)
 property int newsListFocusHelper: 1
@@ -1025,14 +1027,14 @@ Library"
                     border.color: "grey"
                     radius: theme.roundedCovers ? 32 : 0
                     anchors.margins: -10
-                    opacity: (index === gameList.currentIndex && root.focusZone === 1) ? 1.0 : 0.0
+                    opacity: (index === gameList.currentIndex && root.focusZone === 1 && root.highlightOn) ? 1.0 : 0.0
                     visible: !leftBar.isOpen && !optionsMenuVisible && !root.closeMenuVisible && opacity > 0
                     z: 20
 
                     // ======== Анимация появления + «прыжок» ========
                     SequentialAnimation {
                         id: appearAnim
-                        running: (index === gameList.currentIndex && root.focusZone === 1)
+                        running: (index === gameList.currentIndex && root.focusZone === 1 && root.highlightOn)
                         loops: 1
 
                         // Фаза 1: растёт больше нужного
@@ -3667,6 +3669,18 @@ else if (api.keys.isMenu(event)) {
             recommendedContainer.updateUnfilteredGames() // a game may have been played meanwhile
             enterAnim.start()
             focusTimer.start()
+        }
+
+        // DECKOS: DeckOS is in front again (theme.qml): the highlight restarts and the zone has the focus
+        function resumeFocus() {
+            highlightOn = false
+            Qt.callLater(function () { highlightOn = true })
+            if (closeMenuVisible || optionsMenuVisible || leftBar.isOpen) return
+            if (focusZone === 0) topButtonsRow.forceActiveFocus()
+            else if (focusZone === 1) gameList.forceActiveFocus()
+            else if (bottomTabsRow.currentIndex === 0) newsList.forceActiveFocus()
+            else if (bottomTabsRow.currentIndex === 1) friendsList.forceActiveFocus()
+            else recommendedList.forceActiveFocus()
         }
 
         Component.onCompleted: {

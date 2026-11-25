@@ -144,7 +144,7 @@ property bool highContrastBottomBar: api.memory.has("highContrastBottomBar") ? a
     
     // DECKOS: game page trailer: 0 off, 1 muted, 2 with sound; seconds before it fades in
     property int trailerMode: api.memory.has("trailerMode") ? api.memory.get("trailerMode") : 1
-    property int trailerDelay: api.memory.has("trailerDelay") ? api.memory.get("trailerDelay") : 3
+    property int trailerDelay: api.memory.has("trailerDelay") ? api.memory.get("trailerDelay") : 2 // DECKOS: 2 s idle, then the trailer
     onTrailerModeChanged: api.memory.set("trailerMode", trailerMode)
     onTrailerDelayChanged: api.memory.set("trailerDelay", trailerDelay)
 
@@ -521,6 +521,16 @@ if (pageLoader.item && typeof pageLoader.item.startExitAnimation === "function" 
     pageLoader.item.startExitAnimation(index);
     } else {
         finalizeNavigation(index);
+    }
+}
+
+// DECKOS: back in front (Android: after Home / another app): pages put their selection highlight and
+// focus back - the highlight's animation could stay stuck after Android suspended DeckOS
+Connections {
+    target: Qt.application
+    function onStateChanged() {
+        if (Qt.application.state === Qt.ApplicationActive && pageLoader.item && typeof pageLoader.item.resumeFocus === "function")
+            Qt.callLater(pageLoader.item.resumeFocus)
     }
 }
 

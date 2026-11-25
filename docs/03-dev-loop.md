@@ -35,6 +35,16 @@ Pick what matches the machine Claude Code runs on; record the exact versions in 
 - Sign debug builds with a stable keystore from repo secrets so builds update in place. Artifact name: `DeckOS_<version>_<shortsha>_arm64.apk`.
 - Version: `versionName` = `0.<phase>.<build>`; `versionCode` monotonic from CI run number.
 - Local Android build is optional; CI is the source of truth.
+- **Local Android check (before pushing Android changes):** `tools\check-android.ps1`.
+  - `-JavaOnly`: javac over every Android source against Android 11, Qt's classes and AndroidX, in about 2 s.
+  - No switch: also the whole app's arm64 C++ with NDK r21e, incrementally.
+  - `-Apk`: also an unsigned APK. Never hand it out; releases come from GitHub.
+  - It uses the official Qt 5.15.2 for Android, not CI's Pegasus-built 5.15.10, and builds in `..\build-android`.
+  - Toolchain, all in `..\toolchain` and never committed:
+    - `jdk-17` (Temurin);
+    - `android-sdk` (platform 30, build-tools 30.0.3, NDK 21.4.7075529, platform-tools, installed with the Android CLI `cmdline-tools\latest\bin\android.exe --no-metrics sdk install …`);
+    - `Qt\5.15.2\android` (aqt);
+    - `android-libs` (AndroidX core 1.6.0 + annotation 1.2.0 from Google Maven, CI's OpenSSL tarball).
 - Install/debug from the PC if the owner connects a device: `adb install -r`, `adb logcat -s DeckOS:* Qt:* libpegasus:*` (*verify log tags*), `adb shell am start` to replicate launch intents.
 
 ## F. Handing a build to the owner
