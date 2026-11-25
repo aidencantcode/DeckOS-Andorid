@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.0.12 — 2026-11-25
 **Launch cover and overlay font.** Two owner requests on top of 0.0.11:
 - **Launch cover:** the launch screen now stays over the game while the emulator starts, then fades away to the running game. Emulator loading screens and pop-ups (Winlator's boot screen, splash screens) aren't seen any more. The Steam logo and spinner keep moving the whole time.
   - Settings › Overlay › Game launch: *Hide emulator loading screens* (on by default) and *Keep the launch screen for* 2, 3, 5, 8, 12 or 20 seconds (default 5).
