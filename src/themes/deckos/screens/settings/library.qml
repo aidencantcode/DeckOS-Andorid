@@ -29,12 +29,75 @@ DeckSettingsPage {
         Internal.settings.reloadProviders() // rescans; the interface reloads when it finishes
     }
 
+    readonly property var lib: (typeof deckos !== "undefined" && deckos) ? deckos.library : null
+
+    function romFolderRows(r) {
+        var roms = lib.romFolders
+        r.push({ type: "section", label: "ROM folders" })
+        if (roms.length === 0)
+            r.push({ type: "info", label: "No ROM folders yet",
+                     desc: "Pick the folder with your system folders (snes, gba, psx…). Nothing is written into it." })
+        for (var i = 0; i < roms.length; i++) {
+            (function (dir) {
+                r.push({
+                    type: "button", label: dir,
+                    desc: function () { return libraryPage.pendingRemove === "rom:" + dir ? "Press A again to remove this folder" : "" },
+                    value: function () { return libraryPage.pendingRemove === "rom:" + dir ? "Remove" : "" },
+                    activate: function () {
+                        if (libraryPage.pendingRemove !== "rom:" + dir) { libraryPage.pendingRemove = "rom:" + dir; return }
+                        libraryPage.pendingRemove = ""
+                        lib.removeRomFolder(dir)
+                    }
+                })
+            })(roms[i])
+        }
+        r.push({ type: "button", label: "Add a ROM folder…", accent: true,
+                 desc: "DeckOS finds the systems by folder name and picks an emulator for each",
+                 activate: function () { libraryPage.pendingRemove = ""; folderPicker.target = "rom"; folderPicker.open() } })
+        r.push({ type: "button", label: "Scan ROM folders",
+                 desc: function () { return lib.status !== "" ? lib.status : "Find new and removed games" },
+                 value: function () { return lib.scanning ? "Scanning…" : "" },
+                 enabled: function () { return lib.romFolders.length > 0 && !lib.scanning },
+                 activate: function () { lib.scan([]) } })
+        r.push({ type: "button", label: "Rescan one system…",
+                 desc: "Only that system's folder is read again",
+                 enabled: function () { return lib.systems.length > 0 && !lib.scanning },
+                 activate: function () { libraryPage.pickingSystem = true; libraryPage.activeItemIndex = 0 } })
+        r.push({ type: "toggle", label: "Look for new ROMs on start",
+                 desc: "A quick check in the background after DeckOS starts",
+                 value: function () { return lib.scanOnStart },
+                 toggle: function () { lib.scanOnStart = !lib.scanOnStart } })
+        r.push({ type: "button", label: "Emulators…",
+                 desc: "Which emulator runs each system, and its launch command",
+                 activate: function () { if (theme) theme.openSettingsPage("settings/emulators.qml") } })
+    }
+
+    // "Rescan one system": the page shows the systems instead of the settings until one is picked or B
+    property bool pickingSystem: false
+    backHandler: function () { if (!pickingSystem) return false; pickingSystem = false; return true }
+    function systemPickRows() {
+        var r = [{ type: "section", label: "Rescan which system?" }]
+        var list = lib.systems
+        for (var i = 0; i < list.length; i++) {
+            (function (sys) {
+                r.push({ type: "button", label: sys.name, desc: sys.games + (sys.games === 1 ? " game" : " games"),
+                         activate: function () { libraryPage.pickingSystem = false; lib.scan([sys.id]) } })
+            })(list[i])
+        }
+        return r
+    }
+
     function buildRows() {
         var r = []
+        if (lib && pickingSystem)
+            return systemPickRows()
+        if (lib)
+            romFolderRows(r)
         var dirs = Internal.settings.gameDirs
-        r.push({ type: "section", label: "Game folders" })
+        r.push({ type: "section", label: lib ? "Metadata folders" : "Game folders" })
         if (dirs.length === 0)
-            r.push({ type: "info", label: "No game folders yet", desc: "Add the folder that holds your games or their metadata.pegasus.txt." })
+            r.push({ type: "info", label: "No metadata folders",
+                     desc: "Only needed for folders that already have a metadata.pegasus.txt (from Pegasus or other tools)." })
         for (var i = 0; i < dirs.length; i++) {
             (function (dir) {
                 r.push({
@@ -51,7 +114,7 @@ DeckSettingsPage {
             })(dirs[i])
         }
         r.push({ type: "button", label: "Add a game folder…", accent: true,
-                 activate: function () { libraryPage.pendingRemove = ""; folderPicker.open() } })
+                 activate: function () { libraryPage.pendingRemove = ""; folderPicker.target = "game"; folderPicker.open() } })
 
         if (isAndroid) {
             r.push({ type: "button", label: "Allow access to a folder…",
@@ -166,11 +229,18 @@ DeckSettingsPage {
 
     FolderPicker {
         id: folderPicker
-        title: "Add a game folder"
-        hint: "Open folders with A and go back with B. Choose \"Use this folder\" inside the folder that holds your games."
+        property string target: "game" // "game": metadata folder, "rom": ROM folder to scan
+        title: target === "rom" ? "Add a ROM folder" : "Add a metadata folder"
+        hint: target === "rom"
+              ? "Open folders with A, go back with B. Choose \"Use this folder\" in the folder that contains your system folders (snes, gba, psx…) - or in one system folder."
+              : "Open folders with A and go back with B. Choose \"Use this folder\" in the folder that has a metadata.pegasus.txt."
         onPicked: {
-            Internal.settings.addGameDir(path)
-            libraryPage.needsReload = true
+            if (target === "rom" && libraryPage.lib) {
+                libraryPage.lib.addRomFolder(path) // scans right away
+            } else {
+                Internal.settings.addGameDir(path)
+                libraryPage.needsReload = true
+            }
             goToZone(1) // focus back to the settings screen
         }
         onClosed: goToZone(1)

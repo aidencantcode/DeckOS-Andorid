@@ -18,5 +18,7 @@
         <file>sdl2/gamecontrollerdb_205.txt</file>
         <file>sdl2/gamecontrollerdb_209.txt</file>
         <file>sdl2/gamecontrollerdb_2016.txt</file>
+        <!-- DECKOS: system/emulator catalog (tools/import-neostation-catalog.ps1) -->
+        <file alias="deckos/catalog/systems.json">../src/backend/deckos/catalog/systems.json</file>
     </qresource>
 </RCC>

@@ -17,6 +17,8 @@
 
 #include "SearchContext.h"
 
+#include "deckos/RomLibrary.h" // DECKOS
+
 #include "AppSettings.h"
 #include "Log.h"
 #include "model/gaming/Collection.h"
@@ -43,6 +45,11 @@ QStringList read_game_dirs()
         if (finfo.isDir())
             game_dirs.append(::clean_abs_path(finfo));
     });
+
+    // DECKOS: the metadata files DeckOS writes for scanned ROM folders (deckos/RomLibrary)
+    const QFileInfo deckos_library(deckos::RomLibrary::libraryDir());
+    if (deckos_library.isDir())
+        game_dirs.append(::clean_abs_path(deckos_library));
 
     game_dirs.removeDuplicates();
     return game_dirs;

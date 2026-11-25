@@ -4,6 +4,7 @@
 #include "DeckosApi.h"
 
 #include "GameOverrides.h"
+#include "RomLibrary.h"
 #include "Scraper.h"
 #include "model/gaming/Game.h"
 
@@ -15,7 +16,19 @@ namespace deckos {
 DeckosApi::DeckosApi(model::ApiObject* api, QObject* parent)
     : QObject(parent)
     , m_scraper(new Scraper(api, this))
-{}
+    , m_library(new RomLibrary(this))
+{
+    // a scan that changed system files reloads the library (from the cache for everything else)
+    connect(m_library, &RomLibrary::scanFinished, this, [this](int, int changed) {
+        if (changed > 0)
+            emit libraryRefreshRequested();
+    });
+}
+
+QObject* DeckosApi::libraryObj() const
+{
+    return m_library;
+}
 
 QObject* DeckosApi::scraperObj() const
 {
@@ -29,6 +42,13 @@ void DeckosApi::refreshLibrary()
 
 void DeckosApi::onLibraryReady()
 {
+    if (!m_started) {
+        // first load of this run: look for new or removed ROMs in the background
+        m_started = true;
+        m_library->refreshEmulators();
+        if (m_library->scanOnStart())
+            m_library->scan();
+    }
     m_scraper->onLibraryReady();
 }
 

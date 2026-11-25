@@ -145,7 +145,7 @@ FocusScope {
                     Rectangle {
                         id: btnRoot
                         width: parent.width
-                        height: Math.max(60, Math.min(90, (root.height - 260) / 10)) // DECKOS: 10 sections must fit (was 90)
+                        height: Math.max(58, Math.min(90, (root.height - 260) / 11)) // DECKOS: 11 sections must fit (was 90)
 
                         property string title: ""
                         property int    buttonIndex: 0
@@ -197,6 +197,7 @@ FocusScope {
                     var pages = [
                         ["General",       "w", "settings/general.qml"],
                         ["Library",       "L", "settings/library.qml"],
+                        ["Emulators",     "D", "settings/emulators.qml"],
                         ["Profile",       "F", "settings/profile.qml"],
                         ["Accessibility", "¹", "settings/accessibility.qml"],
                         ["Sound",         "S", "settings/sound.qml"],
@@ -368,7 +369,9 @@ FocusScope {
     }
     // ── НАЗАД / ОТМЕНА ──
     else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape) {
-        if (activeZone === 1 && page && page.hasOwnProperty("sliderActive") && page.sliderActive) {
+        if (activeZone === 1 && page && typeof page.handleBack === "function" && page.handleBack()) {
+            sBack.stop(); sBack.play() // DECKOS: the page went back within itself (sub-list)
+        } else if (activeZone === 1 && page && page.hasOwnProperty("sliderActive") && page.sliderActive) {
             if (page.hasOwnProperty("handleCancel")) page.handleCancel()
         } else if (activeZone === 1) {
             activeZone = 0

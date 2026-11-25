@@ -50,6 +50,17 @@ const QHash<QString, SystemInfo>& systems()
     static const QHash<QString, SystemInfo> map {
         { QStringLiteral("nes"), { 7, "Nintendo - Nintendo Entertainment System" } },
         { QStringLiteral("famicom"), { 7, "Nintendo - Nintendo Entertainment System" } },
+        { QStringLiteral("fc"), { 7, "Nintendo - Nintendo Entertainment System" } }, // catalog ids from here on
+        { QStringLiteral("scd"), { 21, "Sega - Mega-CD - Sega CD" } },
+        { QStringLiteral("mcd"), { 21, "Sega - Mega-CD - Sega CD" } },
+        { QStringLiteral("sat"), { 17, "Sega - Saturn" } },
+        { QStringLiteral("pce"), { 34, "NEC - PC Engine - TurboGrafx 16" } },
+        { QStringLiteral("sg1k"), { 4949, "Sega - SG-1000" } },
+        { QStringLiteral("2600"), { 22, "Atari - 2600" } },
+        { QStringLiteral("vb"), { 4918, "Nintendo - Virtual Boy" } },
+        { QStringLiteral("cps1"), { 23, "FBNeo - Arcade Games" } },
+        { QStringLiteral("cps2"), { 23, "FBNeo - Arcade Games" } },
+        { QStringLiteral("cps3"), { 23, "FBNeo - Arcade Games" } },
         { QStringLiteral("fds"), { 4936, "Nintendo - Family Computer Disk System" } },
         { QStringLiteral("snes"), { 6, "Nintendo - Super Nintendo Entertainment System" } },
         { QStringLiteral("sfc"), { 6, "Nintendo - Super Nintendo Entertainment System" } },

@@ -1,4 +1,5 @@
-TARGET = test_GameOverrides
-SOURCES = $${TARGET}.cpp
+TEMPLATE = subdirs
 
-include($${TOP_SRCDIR}/tests/cxxtest_common.pri)
+SUBDIRS += \
+    gameoverrides \
+    romlibrary \

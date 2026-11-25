@@ -152,18 +152,18 @@ onGameLaunchingAnimationChanged: api.memory.set("gameLaunchingAnimation", gameLa
         xhr.onreadystatechange = function() {
             if (xhr.readyState === XMLHttpRequest.DONE) {
                 isOnline = (xhr.status === 204 || xhr.status === 200)
-                console.log("Network check:", isOnline ? "ONLINE" : "OFFLINE", "Status:", xhr.status)
+                // DECKOS: no log line every 15 s
             }
         }
 
         xhr.onerror = function() {
             isOnline = false
-            console.log("Network check: ERROR")
+            // DECKOS: no log line every 15 s
         }
 
         xhr.ontimeout = function() {
             isOnline = false
-            console.log("Network check: TIMEOUT")
+            // DECKOS: no log line every 15 s
         }
 
         xhr.open("HEAD", "https://www.google.com/generate_204", true)
@@ -238,9 +238,9 @@ function updateProfileData() {
     if (savedUsername !== "" && savedApiKey !== "") {
         RAApi.getUserSummary(savedUsername, savedApiKey, function(data) {
             if (data) {
-                globalUserName = data.userName;
-                globalUserPic = data.userPic;
-                globalUserLevel = data.userLevel;
+                root.globalUserName = data.userName; // DECKOS: root. - unqualified writes in an XHR callback fail
+                root.globalUserPic = data.userPic;
+                root.globalUserLevel = data.userLevel;
             }
         });
     } else {

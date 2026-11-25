@@ -46,6 +46,9 @@ Item {
         var r = activeRow
         if (r && r.type === "choice" && rowEnabled(r)) { r.next(); playNav() }
     }
+    // sub-pages (e.g. one system on the Emulators page) set this: B returns true when it went back itself
+    property var backHandler: null
+    function handleBack() { return backHandler ? backHandler() === true : false }
     function handleCancel() {
         activeZone = 0 // back to the left menu, like StMini's pages
         try { sBack.stop(); sBack.play() } catch (e) {}

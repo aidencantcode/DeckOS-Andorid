@@ -31,7 +31,8 @@ endfunction()
 
 add_subdirectory(backend/api)
 add_subdirectory(backend/configfile)
-add_subdirectory(backend/deckos) # DECKOS
+add_subdirectory(backend/deckos/gameoverrides) # DECKOS
+add_subdirectory(backend/deckos/romlibrary) # DECKOS
 add_subdirectory(backend/model/collection)
 add_subdirectory(backend/model/game)
 add_subdirectory(backend/model/gameassets)

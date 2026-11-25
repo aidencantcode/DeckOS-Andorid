@@ -165,6 +165,7 @@
         <file>deckos/screens/settings/accessibility.qml</file>
         <file>deckos/screens/settings/controller.qml</file>
         <file>deckos/screens/settings/customization.qml</file>
+        <file>deckos/screens/settings/emulators.qml</file>
         <file>deckos/screens/settings/general.qml</file>
         <file>deckos/screens/settings/highcontrast.qml</file>
         <file>deckos/screens/settings/library.qml</file>

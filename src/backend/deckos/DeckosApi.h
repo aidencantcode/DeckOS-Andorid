@@ -12,10 +12,12 @@ namespace model { class ApiObject; }
 namespace deckos {
 
 class Scraper;
+class RomLibrary;
 
 class DeckosApi : public QObject {
     Q_OBJECT
     Q_PROPERTY(QObject* scraper READ scraperObj CONSTANT)
+    Q_PROPERTY(QObject* library READ libraryObj CONSTANT)
 
 public:
     explicit DeckosApi(model::ApiObject* api, QObject* parent = nullptr);
@@ -35,6 +37,7 @@ public:
 
     Scraper* scraper() const { return m_scraper; }
     QObject* scraperObj() const;
+    QObject* libraryObj() const;
 
     void onLibraryReady();
 
@@ -43,6 +46,8 @@ signals:
 
 private:
     Scraper* const m_scraper;
+    RomLibrary* const m_library;
+    bool m_started = false;
 };
 
 } // namespace deckos

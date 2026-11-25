@@ -3,6 +3,23 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**Just pick your ROM folder.** DeckOS finds your systems by folder name (snes, gba, psx, "PlayStation 2"…), lists the games, and picks an installed emulator for each system — no metadata files needed. Every launch command is visible and editable.
+
+### Test checklist (Odin 3 Max first)
+1. Settings → Library → **Add a ROM folder…** → browse to the folder that *contains* your system folders (e.g. `/storage/emulated/0/ROMs`) → **Use this folder**. A scan starts; the row under it shows "N games in M systems", and the library reloads with them.
+2. Home / Library: the new games appear with clean names ("Chrono Trigger", not "Chrono Trigger (USA)"); multi-disc games with an `.m3u` show once.
+3. **Play** a game from each system you have. Tell me which ones don't start (and which emulator it tried — Settings → Emulators shows it).
+4. Settings → **Emulators**: each system shows its emulator. Open one: installed emulators are listed first; pick another → launches use it at once. *Edit launch command…* shows the full `am start` command; *Use the emulator's own command* undoes edits.
+5. Copy a new ROM into a system folder → restart DeckOS (or Library → *Scan ROM folders*) → it appears. Library → **Rescan one system…** re-reads just that system.
+6. If you also still have old Pegasus metadata folders, they now sit under "Metadata folders"; games listed in both appear once.
+7. Settings → System → Open-source licenses: NeoStation is credited.
+
+### Under the hood
+- Catalog: 117 systems / ~1500 Android emulator entries converted from NeoStation's GPL-3.0 catalog (`tools/import-neostation-catalog.ps1` → `src/backend/deckos/catalog/systems.json`); RetroArch core names expanded to `/data/data/<package>/cores/<core>_libretro_android.so`.
+- `deckos.library` (RomLibrary): background scan, `.m3u`/`.cue`/`.gdi` parts hidden, artwork/BIOS/save folders skipped; one generated `deckos/library/<system>.metadata.pegasus.txt` per system, rewritten only when it changed (so the game index cache stays valid); installed emulators read from Android's app list.
+- Settings: ROM folders + scan + rescan one system on the Library page; new Emulators page.
+- Fixed: RA profile name/picture never loaded in StMini's profile code (unqualified writes in a callback); the theme logged a network check every 15 s.
+- 8 new unit tests (catalog aliases, core paths, scanning, playlists, titles).
 
 ## 0.0.5 — 2026-11-25
 **Faster starts and a quick Refresh.** DeckOS now starts from the saved game list and only does a full scan when a game folder actually changed.
