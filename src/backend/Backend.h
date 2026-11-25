@@ -24,6 +24,7 @@ namespace model { class Internal; }
 class FrontendLayer;
 class ProcessLauncher;
 class ProviderManager;
+namespace deckos { class DeckosApi; } // DECKOS
 class QTimer;
 
 
@@ -50,6 +51,7 @@ private:
     FrontendLayer* m_frontend;
     ProcessLauncher* m_launcher;
     ProviderManager* m_providerman;
+    deckos::DeckosApi* m_deckos; // DECKOS: `deckos` QML object (game edits, scraper)
     QTimer* m_hide_timer;
 
     void onScanRequested(bool force_refresh = false);

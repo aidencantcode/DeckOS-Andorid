@@ -29,6 +29,7 @@ add_subdirectory(parsers)
 add_subdirectory(model)
 add_subdirectory(platform)
 add_subdirectory(providers)
+add_subdirectory(deckos) # DECKOS
 add_subdirectory(types)
 add_subdirectory(utils)
 

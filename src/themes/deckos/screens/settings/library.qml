@@ -88,7 +88,70 @@ DeckSettingsPage {
                          toggle: function () { prov.setEnabled(!prov.enabled); libraryPage.needsReload = true } })
             })(providerList.objectAt(p))
         }
+
+        if (scraper) {
+            r.push({ type: "section", label: "Artwork and game info" })
+            r.push({ type: "toggle", label: "Auto-scrape new games",
+                     desc: "After the library loads, fetch artwork and descriptions for games that have none",
+                     value: function () { return scraper.autoScrape },
+                     toggle: function () { scraper.autoScrape = !scraper.autoScrape } })
+            r.push({ type: "button", label: "Scrape games with missing artwork or info",
+                     desc: function () { return scraper.running ? scraper.status : (scraper.status !== "" ? scraper.status : "Games scraped before are skipped") },
+                     value: function () { return scraper.running ? scraper.done + " / " + scraper.total : "" },
+                     enabled: function () { return !scraper.running },
+                     activate: function () { libraryPage.startScrape(true) } })
+            r.push({ type: "button", label: "Re-scrape every game",
+                     desc: function () { return libraryPage.confirmRescrape ? "Press A again: replaces scraped artwork and info for all games" : "Uses one TheGamesDB lookup per game" },
+                     enabled: function () { return !scraper.running },
+                     activate: function () {
+                         if (!libraryPage.confirmRescrape) { libraryPage.confirmRescrape = true; return }
+                         libraryPage.confirmRescrape = false
+                         libraryPage.startScrape(false)
+                     } })
+            r.push({ type: "button", label: "Stop scraping",
+                     enabled: function () { return scraper.running },
+                     activate: function () { scraper.cancel() } })
+            r.push({ type: "toggle", label: "Descriptions",
+                     desc: "Also fetch descriptions and release dates (TheGamesDB)",
+                     value: function () { return scraper.fetchDescriptions },
+                     toggle: function () { scraper.fetchDescriptions = !scraper.fetchDescriptions } })
+            r.push({ type: "toggle", label: "libretro thumbnails",
+                     desc: "Box art and screenshots by ROM file name, no key needed",
+                     value: function () { return scraper.useLibretroThumbnails },
+                     toggle: function () { scraper.useLibretroThumbnails = !scraper.useLibretroThumbnails } })
+            r.push({ type: "button", label: "SteamGridDB API key",
+                     desc: "Covers, heroes and logos. Free key: steamgriddb.com > Preferences > API",
+                     value: function () { return scraper.steamGridDbKey !== "" ? "Set" : "Not set" },
+                     activate: function () { keyEntry.target = "sgdb"; keyEntry.title = "SteamGridDB API key"; keyEntry.open(scraper.steamGridDbKey) } })
+            r.push({ type: "button", label: "TheGamesDB API key",
+                     desc: function () { return scraper.theGamesDbAllowance >= 0 ? scraper.theGamesDbAllowance + " lookups left this month" : "Descriptions, release dates and box art" },
+                     value: function () { return scraper.theGamesDbKey !== "" ? "Set" : "Not set" },
+                     activate: function () { keyEntry.target = "tgdb"; keyEntry.title = "TheGamesDB API key"; keyEntry.open(scraper.theGamesDbKey) } })
+            r.push({ type: "button", label: "Load keys from a file",
+                     desc: function () { return libraryPage.keysMessage !== "" ? libraryPage.keysMessage : "Reads " + scraper.keysFilePath() },
+                     activate: function () { libraryPage.importKeys() } })
+        }
         return r
+    }
+
+    readonly property var scraper: (typeof deckos !== "undefined" && deckos) ? deckos.scraper : null
+    property bool confirmRescrape: false
+    property string keysMessage: ""
+
+    function startScrape(onlyMissing) {
+        var n = scraper.scrapeAll(onlyMissing)
+        if (n === 0)
+            keysMessage = (scraper.steamGridDbKey === "" && scraper.theGamesDbKey === "" && !scraper.useLibretroThumbnails)
+                        ? "Add an API key first" : "Nothing to scrape"
+    }
+
+    function importKeys() {
+        var res = scraper.importKeys()
+        if (res.error) { keysMessage = res.error; return }
+        var th = (typeof theme !== "undefined" && theme) ? theme : null
+        if (th && res.raUser && res.raKey) { th.savedUsername = res.raUser; th.savedApiKey = res.raKey }
+        keysMessage = res.found === 0 ? "No keys found in " + res.path
+                    : res.found + (res.found === 1 ? " key" : " keys") + " loaded" + (res.raUser ? " (RetroAchievements account too)" : "")
     }
 
     // re-built whenever the folder list, Android grants or the reload hint change
@@ -104,5 +167,18 @@ DeckSettingsPage {
             goToZone(1) // focus back to the settings screen
         }
         onClosed: goToZone(1)
+    }
+
+    TextEntry {
+        id: keyEntry
+        property string target: ""
+        secret: true
+        maxLength: 128
+        hint: "Paste it with Y if you copied it on this device."
+        onAccepted: {
+            if (target === "sgdb") scraper.steamGridDbKey = text
+            else if (target === "tgdb") scraper.theGamesDbKey = text
+            goToZone(1)
+        }
     }
 }

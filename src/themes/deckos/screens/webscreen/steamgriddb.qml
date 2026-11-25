@@ -2011,7 +2011,7 @@ else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
                     anchors.centerIn: parent
 
                     function getBatteryIcon() {
-                        if (isNaN(api.device.batteryPercent)) return "../assets/theme-icons/battery" + getSuffix() + ".png";
+                        if (isNaN(api.device.batteryPercent)) return "../../assets/theme-icons/battery" /* DECKOS: was ../assets */ + getSuffix() + ".png";
                         const batteryPercent = api.device.batteryPercent * 100;
                         if (batteryPercent <= 20) return "../../assets/theme-icons/20" + getSuffix() + ".png";
                         else if (batteryPercent <= 40) return "../../assets/theme-icons/40" + getSuffix() + ".png";

@@ -38,6 +38,7 @@ include(model/model.pri)
 include(parsers/parsers.pri)
 include(platform/platform.pri)
 include(providers/providers.pri)
+include(deckos/deckos.pri) # DECKOS
 include(types/types.pri)
 include(utils/utils.pri)
 

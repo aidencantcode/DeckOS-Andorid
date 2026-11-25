@@ -37,8 +37,8 @@ public:
 #define GEN(qmlname, enumname) \
     const QString& qmlname() const { return getFirst(AssetType::enumname); } \
     const QStringList& qmlname##List() const { return get(AssetType::enumname); } \
-    Q_PROPERTY(QString qmlname READ qmlname CONSTANT) \
-    Q_PROPERTY(QStringList qmlname##List READ qmlname##List CONSTANT) \
+    Q_PROPERTY(QString qmlname READ qmlname NOTIFY changed) \
+    Q_PROPERTY(QStringList qmlname##List READ qmlname##List NOTIFY changed) \
 
     GEN(boxFront, BOX_FRONT)
     GEN(boxBack, BOX_BACK)
@@ -67,14 +67,21 @@ public:
 
     // deprecated fallacks
     // TODO: remove
-    Q_PROPERTY(QStringList screenshots READ screenshotList CONSTANT)
-    Q_PROPERTY(QStringList videos READ videoList CONSTANT)
+    Q_PROPERTY(QStringList screenshots READ screenshotList NOTIFY changed)
+    Q_PROPERTY(QStringList videos READ videoList NOTIFY changed)
 
 public:
     explicit Assets(QObject* parent);
 
     Assets& add_file(AssetType, QString);
     Assets& add_uri(AssetType, QString);
+    // DECKOS: put `uri` first (the one themes show), keeping the others; emits changed()
+    Assets& set_first(AssetType, QString uri);
+    Assets& remove_uri(AssetType, const QString& uri); // DECKOS: emits changed()
+    const QStringList& urisOf(AssetType type) const { return get(type); } // DECKOS
+
+signals:
+    void changed(); // DECKOS: assets replaced while running (were CONSTANT)
 
 private:
     const QStringList& get(AssetType) const;

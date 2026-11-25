@@ -13,7 +13,7 @@ Work top to bottom. Each phase ends with an APK the owner tests. Tick boxes as y
 > - [x] StMini 0.4.22 as the base, our RA tab/fixes re-applied; responsive layout verified at 1920×1080 and 1240×1080; interface scale slider works. (0.0.3)
 > - [x] Steam Deck boot animation replaces Pegasus's splash, black Android splash. (0.0.3)
 > - [x] Pegasus menu gone for the built-in theme; every Pegasus setting in Settings (General / Library / Controller / System); Profile page; profile in the side menu + top bar. (0.0.3)
-> - [ ] Scraping: auto-scrape (Settings + game Properties) incl. **descriptions**; SteamGridDB first, then ScreenScraper / TheGamesDB / IGDB / libretro-thumbnails; edit a game's name and description in Properties.
+> - [x] Scraping: auto-scrape (Settings + game Properties) incl. **descriptions**; TheGamesDB + SteamGridDB + libretro thumbnails (ScreenScraper/IGDB need credentials we lack); edit a game's name and description in Properties. (0.0.4)
 > - [ ] Big libraries: cached loading; **Refresh** (new ROMs only) and **Rescan** (selected platforms, drops deleted ROMs).
 > - [ ] "Show Boot Animation" toggle wired to the boot video; native (Steam-styled) key/gamepad editors.
 > - [ ] The remaining original QoL items below (wizard + folder scan, emulator catalog/launch editor, RetroArch, Steam profile, overlays) — study `misobadev/neostation-frontend` for launch args, scraping and RA.

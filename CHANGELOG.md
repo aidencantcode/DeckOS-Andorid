@@ -3,6 +3,29 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**Scraping: artwork, descriptions and game info for your whole library — plus rename a game and edit its description.**
+
+### Before you test: your keys
+Copy the `api-keys.env` file from the PC (`DECKOS\secrets\`) into the **`deckos` folder in the handheld's internal storage** (the folder with `lastrun.log`). Then Settings → Library → **Load keys from a file**. It loads the SteamGridDB and TheGamesDB keys and your RetroAchievements account in one go. (Or type/paste them under Settings → Library.)
+
+### Test checklist (Odin 3 Max first)
+1. **Load keys** as above → it should say "4 keys loaded (RetroAchievements account too)".
+2. Settings → Library → **Scrape games with missing artwork or info**. The row shows "3 / 40" style progress and what it is doing; you can keep using DeckOS meanwhile. Home tiles, game pages (hero + logo) and Game Info fill in as each game finishes.
+3. **Game Info** tab: description, release date, developer, publisher, genre.
+4. A game → gear button → **Properties** (works with A now) → **Details**:
+   - *Name*: rename it with the keyboard → the new name shows everywhere at once.
+   - *Description*: edit or clear (X) → shows on the game page.
+   - *Scrape this game*: re-fetches everything for just this game.
+   - *Undo all DeckOS changes* (press A twice): back to the original name/description/art.
+5. Turn on **Auto-scrape new games**: after adding a ROM folder and reloading, new games get artwork by themselves.
+6. Restart DeckOS: names, descriptions and artwork are still there; nothing is scraped twice.
+7. TheGamesDB allows ~1000 lookups a month per key — the TheGamesDB key row shows how many are left.
+
+### Under the hood
+- New DeckOS backend (`src/backend/deckos/`): the `deckos` QML object, a per-game changes store (`<deckos folder>/deckos/game_overrides.json`) applied on every library load by a new provider, and the scraper (TheGamesDB → SteamGridDB → libretro thumbnails; one game at a time; downloads to `deckos/media/`).
+- Game titles, descriptions, dates and artwork can now change while DeckOS runs (they were fixed after loading in Pegasus).
+- Fixed in StMini: Properties did nothing when chosen with a controller; a broken battery icon path in the artwork picker.
+- 7 new unit tests (199 total).
 
 ## 0.0.3 — 2026-11-25
 **StMini 0.4, the Steam Deck boot animation, and no more Pegasus screens.** The whole interface is now StMini 0.4 (much bigger: new Settings, game properties, SteamGridDB artwork picker), every Pegasus setting lives in its Settings screen, and the app starts with the Deck boot animation.

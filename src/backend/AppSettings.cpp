@@ -25,6 +25,7 @@
 #include "providers/pegasus_media/MediaProvider.h"
 #include "providers/pegasus_metadata/PegasusProvider.h"
 #include "providers/pegasus_playtime/PlaytimeStats.h"
+#include "providers/deckos_overrides/OverridesProvider.h" // DECKOS
 #ifdef WITH_COMPAT_ES2
   #include "providers/es2/Es2Provider.h"
 #endif
@@ -133,6 +134,7 @@ std::vector<std::unique_ptr<providers::Provider>> create_providers()
 #endif
         MKENTRY(favorites::Favorites)
         MKENTRY(playtime::PlaytimeStats)
+        MKENTRY(deckos_overrides::OverridesProvider) // DECKOS: edits + scraped data, applied over everything
     out.shrink_to_fit();
     return out;
 

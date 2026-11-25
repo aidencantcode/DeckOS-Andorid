@@ -208,10 +208,12 @@ FocusScope {
 
                 Component.onCompleted: {
                     var title = staticTextComponent.createObject(leftButtonColumn, { "title": "Game Title" })
-                    var btn0 = leftMenuButtonComponent.createObject(leftButtonColumn, { "title": "Shortcut",       "buttonIndex": 0,  "qmlSource": "gamedata/shortcut.qml"       })
-                    var btn1 = leftMenuButtonComponent.createObject(leftButtonColumn, { "title": "Customization", "buttonIndex": 1, "qmlSource": "gamedata/customization.qml" })
-                    var btn2 = leftMenuButtonComponent.createObject(leftButtonColumn, { "title": "Local Files",         "buttonIndex": 2, "qmlSource": "gamedata/files.qml"         })             
-                    left.buttons = [btn0, btn1, btn2]
+                    // DECKOS: "Details" (name, description, scrape) added first
+                    var btnD = leftMenuButtonComponent.createObject(leftButtonColumn, { "title": "Details",       "buttonIndex": 0, "qmlSource": "gamedata/details.qml"       })
+                    var btn0 = leftMenuButtonComponent.createObject(leftButtonColumn, { "title": "Shortcut",      "buttonIndex": 1, "qmlSource": "gamedata/shortcut.qml"      })
+                    var btn1 = leftMenuButtonComponent.createObject(leftButtonColumn, { "title": "Customization", "buttonIndex": 2, "qmlSource": "gamedata/customization.qml" })
+                    var btn2 = leftMenuButtonComponent.createObject(leftButtonColumn, { "title": "Local Files",   "buttonIndex": 3, "qmlSource": "gamedata/files.qml"         })
+                    left.buttons = [btnD, btn0, btn1, btn2]
                 }
             }
 
@@ -229,7 +231,7 @@ FocusScope {
                     id: contentLoader
                     width: parent.width
                     height: parent.height
-                    source: "gamedata/shortcut.qml"
+                    source: "gamedata/details.qml" // DECKOS: was shortcut.qml
                 }
 
                 SequentialAnimation {

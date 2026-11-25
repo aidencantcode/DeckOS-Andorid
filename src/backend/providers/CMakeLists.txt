@@ -52,6 +52,7 @@ function(pegasus_add_provider)
 endfunction()
 
 
+add_subdirectory(deckos_overrides) # DECKOS
 add_subdirectory(android_apps)
 add_subdirectory(es2)
 add_subdirectory(gog)

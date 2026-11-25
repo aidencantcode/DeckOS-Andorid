@@ -45,6 +45,7 @@ public:
     bool isLoaded() const { return m_engine; }
 
     void clearCache();
+    void setDeckosApi(QObject* api) { m_deckos = api; } // DECKOS: exposed to QML as `deckos`
 
 signals:
     void rebuildComplete();
@@ -54,4 +55,5 @@ private:
     QObject* const m_api_public;
     QObject* const m_api_private;
     QQmlApplicationEngine* m_engine;
+    QObject* m_deckos = nullptr; // DECKOS
 };

@@ -62,4 +62,27 @@ Assets& Assets::add_uri(AssetType key, QString url)
     return *this;
 }
 
+// DECKOS
+Assets& Assets::set_first(AssetType key, QString uri)
+{
+    if (uri.isEmpty())
+        return *this;
+
+    QStringList& target = m_asset_lists[key];
+    target.removeAll(uri);
+    target.prepend(std::move(uri));
+    emit changed();
+    return *this;
+}
+
+
+// DECKOS
+Assets& Assets::remove_uri(AssetType key, const QString& uri)
+{
+    QStringList& target = m_asset_lists[key];
+    if (target.removeAll(uri) > 0)
+        emit changed();
+    return *this;
+}
+
 } // namespace model

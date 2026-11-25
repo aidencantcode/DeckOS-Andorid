@@ -2702,7 +2702,7 @@ FocusScope {
                         root.toggleOptionsMenu();
                     }
                 } else if (currentButtonIndex === 2) {
-                    // Properties
+                    if (currentFocusedGame) { theme.currentGame = currentFocusedGame; api.memory.set("targetGameName", currentFocusedGame.title) } root.toggleOptionsMenu(); theme.openPage(14) // DECKOS: Properties did nothing with a controller (mouse only)
                 } else if (currentButtonIndex === 3) {
                     if (currentFocusedGame) {
                         theme.currentGame = currentFocusedGame;

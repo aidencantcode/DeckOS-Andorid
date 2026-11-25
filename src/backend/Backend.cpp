@@ -32,6 +32,7 @@
 #include "model/gaming/Assets.h"
 #include "model/gaming/GameFile.h"
 #include "model/internal/Internal.h"
+#include "deckos/DeckosApi.h" // DECKOS
 #include "utils/FolderListModel.h"
 #include "SortFilterProxyModel/qqmlsortfilterproxymodel.h"
 #include "SortFilterProxyModel/filters/filtersqmltypes.h"
@@ -158,6 +159,7 @@ Backend::~Backend()
     delete m_hide_timer;
     delete m_launcher;
     delete m_frontend;
+    delete m_deckos; // DECKOS
     delete m_providerman;
     delete m_api_private;
     delete m_api_public;
@@ -184,6 +186,8 @@ Backend::Backend(const CliArgs& args)
     m_api_public = new model::ApiObject(args);
     m_api_private = new model::Internal(args);
     m_frontend = new FrontendLayer(m_api_public, m_api_private);
+    m_deckos = new deckos::DeckosApi(m_api_public); // DECKOS
+    m_frontend->setDeckosApi(m_deckos);
     m_launcher = new ProcessLauncher();
     m_providerman = new ProviderManager();
 
@@ -253,6 +257,8 @@ Backend::Backend(const CliArgs& args)
                      [this](){ onScanFinished(); });
     QObject::connect(m_api_public, &model::ApiObject::gamedataReady,
                      m_api_private->scannerPtr(), &model::ScannerState::onUiReady);
+    QObject::connect(m_api_public, &model::ApiObject::gamedataReady, // DECKOS: auto-scrape
+                     m_deckos, &deckos::DeckosApi::onLibraryReady);
 
     // partial QML reload
     QObject::connect(&m_api_private->meta(), &model::Meta::qmlClearCacheRequested,

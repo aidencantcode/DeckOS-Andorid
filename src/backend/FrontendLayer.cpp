@@ -72,6 +72,8 @@ void FrontendLayer::rebuild()
     m_engine->rootContext()->setContextProperty(QStringLiteral("api"), m_api_public);
     m_engine->rootContext()->setContextProperty(QStringLiteral("Api"), m_api_public);
     m_engine->rootContext()->setContextProperty(QStringLiteral("Internal"), m_api_private);
+    if (m_deckos) // DECKOS
+        m_engine->rootContext()->setContextProperty(QStringLiteral("deckos"), m_deckos);
     m_engine->load(QUrl(QStringLiteral("qrc:/frontend/main.qml")));
 
     emit rebuildComplete();

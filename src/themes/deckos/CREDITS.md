@@ -16,7 +16,7 @@ Gilroy ExtraBold (commercial font) and a Fontello icon font. None of these may b
 DeckOS changes are marked with `DECKOS:` comments. Before this project could ever be published, everything
 in this folder must be replaced with original or properly licensed work.
 
-Written for DeckOS (no third-party code): `screens/ProfileBadge.qml`, `screens/gamedata/files.qml`,
+Written for DeckOS (no third-party code): `screens/ProfileBadge.qml`, `screens/gamedata/files.qml`, `screens/gamedata/details.qml`,
 `screens/settings/library.qml`, `screens/settings/profile.qml`, `screens/settings/parts/*`, and the rebuilt
 `screens/settings/general.qml` / `screens/settings/system.qml`; `ra/RALogin.qml` wraps BigScreenFE's popup.
 
