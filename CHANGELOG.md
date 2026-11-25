@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.0.11 — 2026-11-25
 **Stable Alpha work.** This build makes the library fast, makes coming back from a game instant, and makes the in-game layer usable. Highlights:
 - **Library:** Home and Library stay loaded behind the game page, so going back is instant and lands on the same game.
 - **Leaving a game:** DeckOS stays loaded while you play, so you return to exactly where you were, and play time is real.
