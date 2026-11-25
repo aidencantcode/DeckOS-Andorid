@@ -106,6 +106,26 @@ Format: `## YYYY-MM-DD — Title` · **Decision** · **Why** · **Alternatives c
 - **Emulator choice:** automatic = installed + catalog default (RetroArch core marked default) → any installed → catalog default; installed apps from Pegasus's own `MainActivity.appList()`. Per-system override and custom command in `rom_library.json`. On PC nothing is "installed", so commands are Android ones (PC is only for testing the UI).
 - **Not yet:** per-game "Launch with…", RetroArch core presence check (NeoStation's RetroArchCoreChecker), PS3 folder games, SAF-only folders (DeckOS uses All-files access paths), first-run wizard (the Library page does the job for now).
 
+## 2026-11-25 — RetroAchievements by ROM hash, one keyboard everywhere (build 0.0.9)
+- **RA matching:**
+  - The RA tab matched games by fuzzy title. That can show the wrong set (hacks, regional versions, similar names), and it can't tell whether the emulator will actually unlock anything.
+  - Now RetroArch's method is used: the ROM is hashed with **rcheevos** (the RA team's reference library, MIT) and looked up in RA's per-console hash list.
+  - **rcheevos is vendored, not a submodule:** only the hashing files from v12.5.0, unmodified, in `thirdparty/rcheevos` (about 260 KB). This avoids pulling its whole repo and test data into every CI checkout; updating means copying the same files again. Built as C with `RC_NO_THREADS` (the hashing code takes no locks).
+  - **Zips:** for cartridge systems, the largest file inside the zip is hashed, as RetroArch does. Arcade, DOS and Arduboy zips go to rcheevos as-is (arcade sets are hashed by name). This uses Qt's private `QZipReader` (`gui-private`).
+    - Checked that the Android Qt (upstream's `qt51510_android` package) and the Linux CI Qt ship `qzipreader_p.h` and `qt_lib_gui_private.pri`.
+    - Alternatives were miniz (one more library) or a hand-written inflate.
+  - **Not hashed:** CHD (needs a libchdr-backed reader for rcheevos — possible later) and 7z. Both fall back to the title match.
+  - **RA API use:** `API_GetGameList` with `f=1&h=1`, 500 per page (checked live 2026-11-25).
+    - Each console's list is cached for 7 days, then fetched again; it's also fetched again after a day when a hash isn't in it, since a set may have been added.
+    - At most one download per console per run, even after a failure. The key is never logged.
+  - Hashes are cached by path + size + mtime, so each ROM is read once.
+  - A title match is now labelled "Matched by title". When the hash was computed but RA doesn't know it, a note says achievements may not unlock.
+- **Keyboard:** the owner disliked the compact BigScreenFE keyboard, which had no paste key. StMini's full-width Customization keyboard became `SteamKeyboard.qml` and is used by every text entry, including RA login.
+  - StMini's controller table for its last row was shifted: A on "Paste" typed a space. Every key's action is now read from the key itself.
+  - Labels shrink on narrow screens.
+- **Boot animation:** the boot layer's opacity was bound to keyboard focus. The theme takes focus as soon as it loads (about 1 s in on a cache-first start), which faded the animation out early. Not visible on PC, where the video can't play. It now has its own `shown` flag, the page below is disabled while it's up, and the video is dropped only after the fade.
+- **Side menu double press:** StMini's close animation hides the panel 400 ms later without checking whether it was reopened, and each page's focus timer (50–100 ms after a close) took focus away from a reopened menu. Both are fixed in `theme.toggleLeftBar`, shared by all 14 screens.
+
 ## 2026-11-25 — Upstream bug fixed: PlaytimeStats use-after-free
 - **Found:** Linux CI (qmake job) segfaulted after `test_Playtime` had passed all 7 cases; the same code had passed one push earlier and 300 local Windows runs → timing-dependent. Cause in upstream `PlaytimeStats`: the `QtConcurrent` writer captures `this` and emits `finishedWriting()` as its last step; whoever waits for that signal (the test; in the app, shutdown right after a game session is saved) can destroy the object while the worker is still inside the emit.
 - **Fix:** writer futures are tracked in a `QFutureSynchronizer<void>`; `~PlaytimeStats()` waits for them. No deadlock risk: the writer never waits on the GUI thread. `// DECKOS:` marked; a candidate to offer upstream.

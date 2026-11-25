@@ -1889,10 +1889,9 @@ sNav.stop();
                 anchors.fill: parent
                 onClicked: {
                     if (root.closeMenuVisible) return
+                    if (!leftBar.isOpen) leftBar.currentIndex = 0 // DECKOS: see home.qml
                     leftBar.toggle()
                     if (!leftBar.isOpen) focusTimer.start()
-                    leftBar.currentIndex = 0
-                    leftBar.updateFocus()
                 }
             }
         }

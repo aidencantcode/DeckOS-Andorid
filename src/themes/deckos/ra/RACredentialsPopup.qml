@@ -71,6 +71,16 @@ FocusScope {
             _keyInput.text = _keyInput.text.slice(0, -1)
     }
 
+    // DECKOS: the Steam keyboard edits a whole field at once (cursor, paste, clear)
+    function fieldText(field) {
+        return field === "key" ? _keyInput.text : _userInput.text
+    }
+    function setFieldText(field, value) {
+        if (_testState === "testing") return
+        if (field === "key") _keyInput.text = value
+        else _userInput.text = value
+    }
+
     function focusFieldSafe(field) {
         if (field === "key") _keyFieldScope.forceActiveFocus()
             else _userFieldScope.forceActiveFocus()

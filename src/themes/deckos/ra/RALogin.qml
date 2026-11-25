@@ -1,8 +1,9 @@
 // DECKOS: RetroAchievements login overlay for the game page.
-// BigScreenFE's RACredentialsPopup + its controller VirtualKeyboard, wired the same way BigScreenFE's
-// SearchBar.qml wires them, packaged as one full-screen overlay. Credentials end up in api.memory
+// BigScreenFE's RACredentialsPopup with DeckOS's Steam keyboard (screens/settings/parts/SteamKeyboard.qml),
+// packaged as one full-screen overlay. Credentials end up in api.memory
 // ("ra_api_user" / "ra_api_key"), where RAGameInfoSection reads them.
 import QtQuick 2.15
+import "../screens/settings/parts"
 
 FocusScope {
     id: root
@@ -38,11 +39,11 @@ FocusScope {
 
         onUserInputActivated: {
             root._activeField = "user"
-            if (!root._suppressReopen) vkb.show()
+            if (!root._suppressReopen) vkb.show(popup.fieldText("user"))
         }
         onKeyInputActivated: {
             root._activeField = "key"
-            if (!root._suppressReopen) vkb.show()
+            if (!root._suppressReopen) vkb.show(popup.fieldText("key"))
         }
         onCredentialsSaved: {
             suppressTimer.stop(); root._suppressReopen = false
@@ -56,22 +57,12 @@ FocusScope {
         }
     }
 
-    VirtualKeyboard {
+    // DECKOS: the same full-size Steam keyboard as everywhere else (Paste key for the API key)
+    SteamKeyboard {
         id: vkb
-        bottomBarHeight: 0
-
-        onKeyTapped: function(ch) {
-            if (root._activeField === "user") popup.appendToUser(ch)
-            else popup.appendToKey(ch)
-            refocusTimer.start()
-        }
-        onBackspacePressed: {
-            if (root._activeField === "user") popup.backspaceUser()
-            else popup.backspaceKey()
-            refocusTimer.start()
-        }
-        onCloseRequested: {
-            refocusTimer.stop()
+        maxLength: root._activeField === "key" ? 64 : 40
+        onEdited: popup.setFieldText(root._activeField, text)
+        onAccepted: {
             root._suppressReopen = true
             suppressTimer.restart()
             hide()
@@ -79,11 +70,6 @@ FocusScope {
         }
     }
 
-    Timer {
-        id: refocusTimer
-        interval: 16
-        onTriggered: if (vkb.isVisible) vkb.forceActiveFocusOnKeyGrid()
-    }
     Timer {
         id: suppressTimer
         interval: 300

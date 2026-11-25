@@ -3,6 +3,32 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**Achievements found by ROM, a real keyboard, and fixes.** The Achievements tab now identifies a game by its ROM's hash, the same check RetroArch does, instead of guessing from the title. Every text box uses the big Steam-style keyboard with a Paste key. The boot animation plays to the end, and pressing MENU quickly no longer breaks the side menu.
+
+### Test checklist
+1. **Boot:** start DeckOS. The whole Steam Deck animation plays (about 4.5 s) and the logo fades into Home. It shouldn't vanish after a second. Any button still skips it.
+2. **Side menu:** press MENU twice quickly, a few times in a row. The menu ends up open or closed, never half-open or invisible, and the D-pad always moves inside it when it's open.
+3. **Achievements:** open a game you have RA progress for → Achievements tab. Next to the console name you'll see one of two labels:
+   - **✓ ROM verified** (green): RA knows this exact dump.
+   - **Matched by title**, with an orange note: your file isn't a dump RA knows, so the emulator may not unlock achievements for it.
+
+   Try a zipped ROM, a `.cue`/`.iso` disc game and a `.chd`. CHD and `.7z` can't be hashed yet and fall back to the title match. The first game of each console downloads RA's list for it, so it takes a moment; later games are instant.
+4. **Keyboard:** Settings → Library → SteamGridDB/TheGamesDB key, Settings → Profile → Name, a game's Properties → Details → Name/Description/Launch command, and the game page's RetroAchievements login all open the same full-width keyboard.
+   - The **Paste** key pastes the clipboard (copy your API key in a browser first).
+   - Controller: X deletes, Y types a space, L1 toggles caps, B/R1/Start finish.
+   - **Clear** empties the field; **< >** move the cursor; **Shift** gives symbols (!@#…).
+   - On the Retroid (1240×1080) every key label should be readable.
+
+### Under the hood
+- `src/backend/deckos/RaMatcher.*` exposed as `deckos.ra`:
+  - Hashes the ROM with rcheevos (v12.5.0, MIT, vendored in `thirdparty/rcheevos`, hashing part only) on a worker thread.
+  - Zipped cartridge ROMs are hashed by the game inside the zip.
+  - Hashes are cached by path + size + date.
+  - Lookups use RA's per-console hash list (`API_GetGameList` with `f=1&h=1`, paged), cached for 7 days and fetched again after a day when a hash isn't in it, at most once per console per run.
+  - 7 new unit tests.
+- Boot layer: hidden by its own `shown` flag instead of keyboard focus. The theme grabbing focus while loading used to fade it out early. The video now stays during the fade.
+- Side menu: the close animation's hide timer no longer hides a menu that was reopened meanwhile; the menu also takes focus back from the page's focus timer after a quick reopen.
+- Text entry: `SteamKeyboard.qml` replaces the small BigScreenFE keyboard everywhere. StMini's own controller table typed a space on Paste; every key's action now comes from the key itself.
 
 ## 0.0.8 — 2026-11-25
 **Launch with… for single games.** A game's Properties → Details now has a *Launch* section: pick another emulator for just that game, or view and edit its full launch command.

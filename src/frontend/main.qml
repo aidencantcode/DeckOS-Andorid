@@ -74,7 +74,7 @@ Window {
     FocusScope {
         id: content
         anchors.fill: parent
-        enabled: focus
+        enabled: focus && !splashScreen.shown // DECKOS: the hidden interface ignores buttons under the boot screen
 
         Loader {
             id: theme
@@ -216,8 +216,10 @@ Window {
     Connections {
         target: Internal.scanner
         function onRunningChanged() {
-            if (Internal.scanner.running)
+            if (Internal.scanner.running) {
+                splashScreen.shown = true;
                 splashScreen.focus = true;
+            }
         }
     }
 
@@ -226,10 +228,14 @@ Window {
     BootLayer {
         id: splashScreen
         focus: true
-        enabled: focus // receives keys only to skip the video
-        opacity: focus ? 1.0 : 0.0
+        // DECKOS: shown/hidden by `shown`, not by focus: the theme takes focus as soon as it loads (about a
+        // second in), which used to fade the boot animation out long before it ended
+        property bool shown: true
+        opacity: shown ? 1.0 : 0.0
         visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: 600; easing.type: Easing.InOutQuad } }
+        // the video is dropped only after the fade, so its last frame (the logo) fades out instead of black
+        onVisibleChanged: if (!visible) playVideo = false // once per start; later reloads show only the progress line
 
         readonly property bool dataLoading: Internal.scanner.running
         readonly property bool skinLoading: theme.status === Loader.Null || theme.status === Loader.Loading
@@ -243,10 +249,10 @@ Window {
         stage: Internal.scanner.stage
 
         function hideMaybe() {
-            if (focus && !dataLoading && !skinLoading && videoDone) {
+            if (shown && !dataLoading && !skinLoading && videoDone) {
+                shown = false;
                 content.focus = true;
                 Internal.scanner.reset();
-                playVideo = false; // once per start; later reloads show only the progress line
             }
         }
 

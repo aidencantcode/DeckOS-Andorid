@@ -277,7 +277,9 @@ function toggleLeftBar(component) {
         // ЗАПУСКАЕМ ТАЙМЕР ЧЕРЕЗ 300мс
         var hideTimer = Qt.createQmlObject('import QtQuick 2.15; Timer { interval: 400; running: true }', component, "hideTimer");
         hideTimer.triggered.connect(function() {
-            component.visible = false;
+            // DECKOS: reopened during the close animation (MENU pressed twice quickly): stay visible.
+            // Hiding it anyway left the menu "open" but invisible, so the next press closed it again.
+            if (!component.isOpen) component.visible = false;
             hideTimer.destroy();
         });
         
@@ -289,6 +291,16 @@ function toggleLeftBar(component) {
         component.focus = true;
         component.isOpen = true;
         component.updateFocus();
+        // DECKOS: a close just before (double press) leaves the page's focusTimer (50-100 ms) running,
+        // which then pulls focus out of the open menu; take it back once that has fired
+        var refocusTimer = Qt.createQmlObject('import QtQuick 2.15; Timer { interval: 150; running: true }', component, "refocusTimer");
+        refocusTimer.triggered.connect(function() {
+            if (component.isOpen && !component.activeFocus) {
+                component.focus = true;
+                component.updateFocus();
+            }
+            refocusTimer.destroy();
+        });
     }
 }
 

@@ -51,8 +51,9 @@ Study `reference/stmini` (see `reference/REFERENCE_NOTES.md`) then build `src/th
 
 ## Phase 2 — RetroAchievements (spec: `06-retroachievements.md`)
 - [ ] Account setup (username + Web API key) with test/verify, stored in secret store.
-- [ ] Integrate **rcheevos** `rc_hash` in C++; console mapping; hash cache keyed by path+size+mtime.
-- [ ] Per-console hash list download + cache; local hash → GameID; fuzzy title fallback flagged "unverified"; manual "Link RA game…" search.
+- [x] Integrate **rcheevos** `rc_hash` in C++; console mapping; hash cache keyed by path+size+mtime. (0.0.9; CHD and 7z not yet)
+- [x] Per-console hash list download + cache; local hash → GameID; fuzzy title fallback flagged "Matched by title" (0.0.9).
+- [ ] Manual "Link RA game…" search.
 - [ ] Game page **Achievements** tab: summary card + full Steam-style list (unlocked/locked, hardcore/softcore, points, unlock dates, rarity %, sorting, filters).
 - [ ] Capsule badges (has set / mastered), Home "Recent achievements" shelf, profile summary in Settings → Accounts.
 - [ ] Return-from-game refresh + "unlocked N achievements" session toast.

@@ -1,7 +1,7 @@
 # DeckOS dev tool (Windows): drives the PC build with posted key presses and saves window screenshots.
 # Example: tools/drive-window.ps1 -Exe ../windows-build/DeckOS.exe -WorkDir ../windows-build -OutDir shots -Steps "size:1920x1080","wait:6000","key:F1","shot:menu"
 # Launches an exe, posts a key script to its main window and captures screenshots.
-# Steps: "key:F1", "key:DOWN", "key:RETURN", "wait:1500", "shot:name"
+# Steps: "key:F1", "key:DOWN", "key:RETURN", "wait:1500", "shot:name", "tap:F1:80" (press, then wait 80 ms)
 param([string]$Exe, [string]$WorkDir, [string]$OutDir, [string[]]$Steps, [int]$StartupSeconds = 6)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
@@ -51,6 +51,7 @@ try {
         $kind, $arg = $s -split ':', 2
         switch ($kind) {
             'key'  { Send-Key $h $arg; Start-Sleep -Milliseconds 400 }
+            'tap'  { $kn, $ms = $arg -split ':', 2; Send-Key $h $kn; Start-Sleep -Milliseconds ([int]$ms) } # "tap:F1:80" = quick presses
             'wait' { Start-Sleep -Milliseconds ([int]$arg) }
             'shot' { Save-Shot $h $arg }
             'size' {   # client area WxH

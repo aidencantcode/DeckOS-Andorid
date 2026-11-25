@@ -2598,12 +2598,13 @@ MouseArea {
     onClicked: {
         if (root.closeMenuVisible || root.optionsMenuVisible || root.newsDetailVisible) return;
         
+        // DECKOS: focus the first button only when opening; doing it on close pulled focus back into the
+        // closed menu (fast double taps then left the page without focus)
+        if (!leftBar.isOpen) leftBar.currentIndex = 0
         leftBar.toggle()
         if (leftBar.isOpen === false) {
             focusTimer.start()
         }
-        leftBar.currentIndex = 0
-        leftBar.updateFocus()
     }
 }
     }

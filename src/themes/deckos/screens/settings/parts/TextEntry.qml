@@ -1,8 +1,7 @@
-// DECKOS: full-page text entry with the controller keyboard (names, descriptions, API keys).
-// B or the keyboard's close key saves, Y pastes the clipboard, X clears. On a touch screen the
-// text box can also be tapped to type with Android's keyboard.
+// DECKOS: full-page text entry with the Steam keyboard (names, descriptions, launch commands, API keys).
+// Done / B / Start saves; the keyboard's Paste key pastes, Clear empties the box. On a touch screen
+// the text box can also be tapped to type with Android's own keyboard.
 import QtQuick 2.15
-import "../../../ra"
 
 FocusScope {
     id: entry
@@ -11,7 +10,7 @@ FocusScope {
 
     property string title: ""
     property string hint: ""
-    property string text: ""
+    property alias text: keyboard.text
     property int maxLength: 64
     property bool multiline: false
     /// API keys: show only the start and the end of what was typed
@@ -20,40 +19,21 @@ FocusScope {
     signal accepted(string text)
 
     function open(current) {
-        text = current || ""
         visible = true
-        keyboard.show()
+        keyboard.show(current || "")
     }
     function finish() {
+        if (!visible) return
         keyboard.hide()
         visible = false
-        accepted(text)
+        accepted(keyboard.text)
     }
 
     function shown() {
-        if (!secret || text.length <= 10) return text
-        return text.substring(0, 4) + "…" + text.substring(text.length - 4) + "  (" + text.length + " characters)"
-    }
-
-    TextEdit {
-        id: clipboard
-        visible: false
-        function read() { text = ""; paste(); return text }
-    }
-
-    Keys.onPressed: {
-        if (api.keys.isFilters(event)) { // Y: paste
-            event.accepted = true
-            var pasted = clipboard.read().replace(/\r/g, "")
-            if (!entry.multiline) pasted = pasted.replace(/\n/g, " ").trim()
-            entry.text = (entry.text + pasted).substring(0, entry.maxLength)
-        } else if (api.keys.isDetails(event)) { // X: clear
-            event.accepted = true
-            entry.text = ""
-        } else if (api.keys.isMenu(event)) {
-            event.accepted = true
-            entry.finish()
-        }
+        var t = keyboard.text
+        if (secret && t.length > 10)
+            return t.substring(0, 4) + "…" + t.substring(t.length - 4) + "  (" + t.length + " characters)"
+        return t.substring(0, keyboard.cursorPosition) + "|" + t.substring(keyboard.cursorPosition)
     }
 
     Rectangle { anchors.fill: parent; color: "#0F1318"; MouseArea { anchors.fill: parent } }
@@ -66,7 +46,7 @@ FocusScope {
         font.family: bold.name
         font.bold: true
         anchors.top: parent.top
-        anchors.topMargin: 70
+        anchors.topMargin: 60
         anchors.left: parent.left
         anchors.leftMargin: 50
     }
@@ -74,12 +54,14 @@ FocusScope {
     Rectangle {
         id: box
         anchors.top: titleText.bottom
-        anchors.topMargin: 30
+        anchors.topMargin: 26
         anchors.left: parent.left
         anchors.leftMargin: 50
         anchors.right: parent.right
         anchors.rightMargin: 50
-        height: entry.multiline ? Math.max(80, Math.min(parent.height * 0.3, boxText.implicitHeight + 30)) : 80
+        height: entry.multiline
+                ? Math.max(80, Math.min(keyboard.y - box.y - 110, boxText.implicitHeight + 30))
+                : 80
         radius: 5
         color: "white"
         clip: true
@@ -87,7 +69,7 @@ FocusScope {
         Text {
             id: boxText
             visible: !nativeInput.activeFocus
-            text: entry.shown() + "|"
+            text: entry.shown()
             color: "black"
             font.pixelSize: 30
             font.family: bold.name
@@ -112,19 +94,19 @@ FocusScope {
             color: "black"
             echoMode: entry.secret ? TextInput.PasswordEchoOnEdit : TextInput.Normal
             maximumLength: entry.maxLength
-            onTextEdited: entry.text = text
+            onTextEdited: { keyboard.text = text; keyboard.cursorPosition = cursorPosition }
             onAccepted: entry.finish()
         }
         MouseArea {
             anchors.fill: parent
             enabled: !nativeInput.activeFocus
-            onClicked: { nativeInput.text = entry.text; nativeInput.forceActiveFocus(); Qt.inputMethod.show() }
+            onClicked: { nativeInput.text = keyboard.text; nativeInput.forceActiveFocus(); Qt.inputMethod.show() }
         }
     }
 
     Text {
         id: hintText
-        text: entry.hint + (entry.hint !== "" ? "\n" : "") + "B saves  ·  Y pastes  ·  X clears"
+        text: entry.hint + (entry.hint !== "" ? "\n" : "") + "X deletes  ·  Y space  ·  L1 caps  ·  Paste key pastes  ·  B saves"
         color: "lightgray"
         font.pixelSize: 24
         font.family: bold.name
@@ -135,13 +117,11 @@ FocusScope {
         anchors.right: box.right
     }
 
-    VirtualKeyboard {
+    SteamKeyboard {
         id: keyboard
-        bottomBarHeight: 90
-        onKeyTapped: {
-            if (entry.text.length < entry.maxLength) entry.text += ch
-        }
-        onBackspacePressed: entry.text = entry.text.slice(0, -1)
-        onCloseRequested: entry.finish()
+        bottomMargin: 90 // above the page's button hints bar
+        maxLength: entry.maxLength
+        multiline: entry.multiline
+        onAccepted: entry.finish()
     }
 }

@@ -2,7 +2,7 @@
 // plus the accounts DeckOS can show (RetroAchievements now, a public Steam profile later).
 import QtQuick 2.15
 import "parts"
-import "../../ra"
+
 
 DeckSettingsPage {
     id: profilePage
@@ -52,79 +52,14 @@ DeckSettingsPage {
         onClosed: goToZone(1)
     }
 
-    // name entry: text box + the controller keyboard (Start or B on the keyboard closes it and saves)
-    FocusScope {
+    TextEntry {
         id: nameEntry
-        anchors.fill: parent
-        visible: false
-        property string text: ""
-
-        function open(current) {
-            text = current
-            visible = true
-            keyboard.show()
-        }
-        function finish() {
-            keyboard.hide()
-            visible = false
+        title: "Your name"
+        hint: "Shown in the side menu and the top bar."
+        maxLength: 32
+        onAccepted: {
             if (th) th.profileName = text.trim()
             goToZone(1)
-        }
-
-        Rectangle { anchors.fill: parent; color: "#0F1318"; MouseArea { anchors.fill: parent } }
-
-        Text {
-            id: entryTitle
-            text: "Your name"
-            color: "white"
-            font.pixelSize: 50
-            font.family: bold.name
-            font.bold: true
-            anchors.top: parent.top
-            anchors.topMargin: 70
-            anchors.left: parent.left
-            anchors.leftMargin: 50
-        }
-        Rectangle {
-            id: entryBox
-            anchors.top: entryTitle.bottom
-            anchors.topMargin: 30
-            anchors.left: parent.left
-            anchors.leftMargin: 50
-            anchors.right: parent.right
-            anchors.rightMargin: 50
-            height: 80
-            radius: 5
-            color: "white"
-            Text {
-                text: nameEntry.text + "|"
-                color: "black"
-                font.pixelSize: 32
-                font.family: bold.name
-                elide: Text.ElideLeft
-                anchors.left: parent.left
-                anchors.leftMargin: 20
-                anchors.right: parent.right
-                anchors.rightMargin: 20
-                anchors.verticalCenter: parent.verticalCenter
-            }
-        }
-        Text {
-            text: "Type with the keyboard below. B or the keyboard's close key saves the name."
-            color: "lightgray"
-            font.pixelSize: 24
-            font.family: bold.name
-            anchors.top: entryBox.bottom
-            anchors.topMargin: 16
-            anchors.left: entryBox.left
-        }
-
-        VirtualKeyboard {
-            id: keyboard
-            bottomBarHeight: 90
-            onKeyTapped: if (nameEntry.text.length < 32) nameEntry.text += ch
-            onBackspacePressed: nameEntry.text = nameEntry.text.slice(0, -1)
-            onCloseRequested: nameEntry.finish()
         }
     }
 }

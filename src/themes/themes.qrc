@@ -171,6 +171,7 @@
         <file>deckos/screens/settings/library.qml</file>
         <file>deckos/screens/settings/parts/DeckSettingsPage.qml</file>
         <file>deckos/screens/settings/parts/FolderPicker.qml</file>
+        <file>deckos/screens/settings/parts/SteamKeyboard.qml</file>
         <file>deckos/screens/settings/parts/TextEntry.qml</file>
         <file>deckos/screens/settings/power.qml</file>
         <file>deckos/screens/settings/profile.qml</file>
