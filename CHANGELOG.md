@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.1.0 — 2026-11-26
 **The first stable build: a normal release, no longer a pre-release.**
 - **A game keeps running behind DeckOS, like on Steam.** On your handhelds the system service (or root) can see whether the game's app is still running.
   - Back in DeckOS while the game is still open, the game page shows a green **Resume** and a blue **Stop**, and Home shows **RUNNING** under it. Once the game's app is closed, Play is green again.
