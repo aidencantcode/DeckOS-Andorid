@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.0.4 — 2026-11-25
 **Scraping: artwork, descriptions and game info for your whole library — plus rename a game and edit its description.**
 
 ### Before you test: your keys
