@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.0.14 — 2026-11-25
 **Fixes from your 0.0.13 report (Retroid Pocket Classic).**
 - **Underclocking presets on every chip.** ClusterTune only has presets for the Odin 3's and the Odin 2 / Thor's chips, so your Retroid's list held only Stock, and left / right kept applying it. Chips without ClusterTune presets now get DeckOS's own *Small / Medium / Large Underclock*: about 85 / 70 / 55 % of each cluster's top clock, on the chip's own steps. They're marked "DeckOS preset" and appear in Quick Access's slider too.
 - **Quick Access: the blank Wi-Fi and Bluetooth rows are fixed.** Their on/off switch took the whole row's width, so the labels were squeezed to nothing. This was also the "empty gaps".
