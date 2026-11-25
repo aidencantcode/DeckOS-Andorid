@@ -3,7 +3,8 @@
 // Overlay tab: Select+Start, Select+R1 or L3+R3). An accessibility service is the only way for an app to
 // see controller buttons while another app is in front. It only filters key events: it reads no screen
 // content and keeps nothing. The first button of the combo still reaches the game; only the second one
-// (which completes the combo) is swallowed. Nothing happens while DeckOS itself is in front.
+// (which completes the combo) is swallowed. Nothing happens while DeckOS itself is in front. Any button
+// also skips the launch cover (LaunchCover) once the game is starting underneath.
 
 package com.deckos.ingame;
 
@@ -22,6 +23,7 @@ import java.util.Set;
 
 public class ShortcutService extends AccessibilityService {
     private static volatile boolean sConnected = false;
+    private static volatile ShortcutService sInstance; // its overlay windows need no permission (LaunchCover)
 
     // [combo][0] = held button, [combo][1] = the button that completes it (index = Session.shortcut())
     private static final int[][] COMBOS = {
@@ -33,6 +35,8 @@ public class ShortcutService extends AccessibilityService {
 
     private final Set<Integer> held = new HashSet<>();
     private int swallowUp = 0;
+
+    static ShortcutService instance() { return sInstance; }
 
     /// the user turned the service on in Android's accessibility settings
     static boolean enabled(Context ctx) {
@@ -51,6 +55,7 @@ public class ShortcutService extends AccessibilityService {
     protected void onServiceConnected() {
         super.onServiceConnected();
         sConnected = true;
+        sInstance = this;
         if (Session.app() == null)
             Session.init(this);
     }
@@ -58,6 +63,7 @@ public class ShortcutService extends AccessibilityService {
     @Override
     public boolean onUnbind(Intent intent) {
         sConnected = false;
+        sInstance = null;
         return super.onUnbind(intent);
     }
 
@@ -71,6 +77,8 @@ public class ShortcutService extends AccessibilityService {
         }
         if (e.getAction() != KeyEvent.ACTION_DOWN)
             return false;
+        if (LaunchCover.showing())
+            LaunchCover.skip(); // a button while the game loads under the launch cover: show the game
         int combo = Session.app() != null ? Session.shortcut() : 0;
         if (e.getRepeatCount() == 0 && combo > 0 && combo < COMBOS.length && !Session.frontendInFront
             && k == COMBOS[combo][1] && held.contains(COMBOS[combo][0])) {

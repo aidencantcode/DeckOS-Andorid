@@ -154,6 +154,29 @@ Format: `## YYYY-MM-DD — Title` · **Decision** · **Why** · **Alternatives c
 - **Quick Access without pausing:** the same panel view is hosted either by the activity or by a `TYPE_APPLICATION_OVERLAY` window, or a `TYPE_ACCESSIBILITY_OVERLAY` window when the controller shortcut opens it, which needs no permission. The notification now opens it through `SessionService` (`getService` PendingIntent), so no activity is involved.
 - **Controller shortcut:** an `AccessibilityService` with `flagRequestFilterKeyEvents` is the only non-root way to see buttons while another app is in front. Only the completing button is consumed.
 
+## 2026-11-25 — Launch cover: a snapshot of the launch screen in an overlay window
+- **What:** the game page's launch screen stays over the game while the emulator starts, then fades away to the game. Emulator loading screens and pop-ups (Winlator's boot screen, splash screens) are never seen. Owner idea, 0.0.12.
+- **How:**
+  - Right before the launch, `InGame::showLaunchCover` grabs the Qt window (`QQuickWindow::grabWindow`) with the Steam logo GIF and the spinner made transparent, and hands the pixels to Java over JNI (an `int[]`, no file).
+  - `LaunchCover` shows them 1:1 in a full-screen, non-focusable, non-touchable overlay window, and plays the GIF (`android.graphics.Movie`, the only player that can start mid-loop) and the 8-dot spinner on top, from where they were. So the hand-over can't be seen.
+  - The game starts 200 ms later underneath. After the chosen time (2–20 s, default 5) the window fades out in 600 ms.
+  - It goes at once if DeckOS comes back to the front, if the launch fails (`eventLaunchError`), or if DeckOS is still in front 8 s later. With the accessibility service on, any controller button ends it early.
+  - The top and bottom bars fade before the snapshot, so no frozen clock or button hints sit over the game.
+- **Needs** "Display over other apps" or DeckOS's accessibility service (`TYPE_ACCESSIBILITY_OVERLAY`, no permission). Without either, or with the launch animation off, launching works as before (3.2 s wait, then launch).
+- **Alternatives:**
+  - Redraw the launch screen natively in Java: two copies of one design that would drift apart.
+  - Keep DeckOS's activity in front while the emulator loads behind it: Android pauses the activity behind, and many emulators stop loading when paused.
+- **Limits:** an application overlay sits under the status bar, so a status bar the emulator shows while starting may appear over the cover. The accessibility overlay doesn't have that problem. While the cover is up, touches don't reach the game (Android 12+ blocks touches through opaque overlays); the controller does.
+- **PC:** no cover. `DECKOS_COVER_DUMP=<file.png>` saves the snapshot and logs the rectangles, to test the hand-over math.
+
+## 2026-11-25 — Performance overlay font; ScreenScraper status
+- **Font:** the performance overlay (HudView) uses Unispace Regular and Bold (Ray Larabie / Typodermic, CC0 public domain, version 5.000). The owner supplied it for the Steam Deck overlay look. It is in `src/app/platform/android/assets/fonts/`; Android's own font is the fallback. Quick Access keeps the system font.
+- **ScreenScraper (verified 2026-11-25):**
+  - Every API call needs DeckOS developer credentials. `jeuInfos.php` without them: 403 "Erreur de login : Vérifier vos identifiants développeur !".
+  - Only ScreenScraper can issue them (a request on their forum). Borrowing another project's credentials would break their terms.
+  - The owner's account login (stored only in the local `secrets/api-keys.env`, never in the repo) was refused by `ssuserInfos.php`: 403 "Vérifier les identifiants utilisateurs". That is the same answer as with no login at all, so the account may not be activated yet. One request each; no retries, to avoid a lockout.
+  - Trailer scraping stays blocked until both work.
+
 ## 2026-11-25 — Upstream bug fixed: PlaytimeStats use-after-free
 - **Found:** Linux CI (qmake job) segfaulted after `test_Playtime` had passed all 7 cases; the same code had passed one push earlier and 300 local Windows runs → timing-dependent. Cause in upstream `PlaytimeStats`: the `QtConcurrent` writer captures `this` and emits `finishedWriting()` as its last step; whoever waits for that signal (the test; in the app, shutdown right after a game session is saved) can destroy the object while the worker is still inside the emit.
 - **Fix:** writer futures are tracked in a `QFutureSynchronizer<void>`; `~PlaytimeStats()` waits for them. No deadlock risk: the writer never waits on the GUI thread. `// DECKOS:` marked; a candidate to offer upstream.

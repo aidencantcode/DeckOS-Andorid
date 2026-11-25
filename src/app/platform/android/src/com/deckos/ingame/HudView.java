@@ -15,6 +15,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.util.Log;
 import android.view.View;
 
 import java.text.SimpleDateFormat;
@@ -64,12 +65,12 @@ final class HudView extends View {
     HudView(Context ctx, float unit) {
         super(ctx);
         u = unit;
-        labelPaint.setTypeface(Typeface.DEFAULT_BOLD);
+        labelPaint.setTypeface(font(ctx, true));
         labelPaint.setTextSize(15 * u);
-        valuePaint.setTypeface(Typeface.DEFAULT_BOLD);
+        valuePaint.setTypeface(font(ctx, true));
         valuePaint.setTextSize(15 * u);
         valuePaint.setColor(Color.WHITE);
-        unitPaint.setTypeface(Typeface.DEFAULT);
+        unitPaint.setTypeface(font(ctx, false));
         unitPaint.setTextSize(10 * u);
         unitPaint.setColor(Color.WHITE);
         bgPaint.setColor(Color.argb(140, 0, 0, 0));
@@ -79,6 +80,24 @@ final class HudView extends View {
         lineHeight = 19 * u;
         pad = 6 * u;
         graphHeight = 34 * u;
+    }
+
+    // Unispace (Ray Larabie, CC0 - assets/fonts), the Steam Deck overlay look; Android's own font if it fails
+    private static Typeface sRegular, sBold;
+
+    static Typeface font(Context ctx, boolean bold) {
+        if (sRegular == null) {
+            try {
+                sRegular = Typeface.createFromAsset(ctx.getAssets(), "fonts/unispace_regular.otf");
+                sBold = Typeface.createFromAsset(ctx.getAssets(), "fonts/unispace_bold.otf");
+            }
+            catch (Exception e) {
+                Log.w(Session.TAG, "overlay font: " + e);
+                sRegular = Typeface.DEFAULT;
+                sBold = Typeface.DEFAULT_BOLD;
+            }
+        }
+        return bold ? sBold : sRegular;
     }
 
     void setLevel(int newLevel) {

@@ -20,5 +20,8 @@ Written for DeckOS (no third-party code): `screens/ProfileBadge.qml`, `screens/g
 `screens/settings/library.qml`, `screens/settings/profile.qml`, `screens/settings/parts/*`, and the rebuilt
 `screens/settings/general.qml` / `screens/settings/system.qml`.
 
+Outside this folder, `src/app/platform/android/assets/fonts/unispace_*.otf` is Unispace by Ray Larabie (Typodermic), released
+under CC0 (public domain) and supplied by the owner for the performance overlay; it may be redistributed freely.
+
 Outside this folder, `src/frontend/assets/boot.mp4` is the Steam Deck startup animation (Valve), supplied by the
 owner and re-encoded to 1080p; it falls under the same personal-use-only terms as the Deck sounds above.

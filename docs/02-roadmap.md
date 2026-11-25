@@ -68,11 +68,13 @@ The first build that is not a pre-release (`ship.ps1 -Phase 1` → `0.1.x`; `and
   - Recent screenshots: scraped ones, plus emulator screenshot folders (RetroArch, PPSSPP, DuckStation, AetherSX2-family; paths *verify*).
   - Recently earned achievements.
   - A list/grid toggle. The list looks like the overlay's achievement rows; the grid shows badges with dates.
+- [x] **Launch cover:** the launch screen stays over the game while the emulator starts, then fades to the game, so its loading screens and pop-ups are never seen (Winlator's boot screen, splash screens). Settings › Overlay › Game launch: on/off and 2–20 s (default 5). Needs "Display over other apps" or the controller shortcut service. Any button ends it early when that service is on. (0.0.12, device check pending)
 - [ ] **Trailer:** player done (0.0.11); scraping waits for ScreenScraper credentials.
   - After ~3 s on the game page, the hero background cross-fades into the game's video. The logo and buttons stay.
   - It stops on leaving or launching. Settings has *Play trailers* (off / muted / with sound) and the delay.
   - Plays any video the game already has (`assets.video`, `media/<game>/video.*`).
   - **Scraping videos needs ScreenScraper** (the only free source of game video snaps). That needs a ScreenScraper account from the owner and DeckOS developer credentials, so it's **blocked on the owner**. TheGamesDB only links YouTube, which Qt can't play, and fetching YouTube streams isn't allowed by its terms.
+  - 2026-11-25: the owner's account arrived, but ScreenScraper refused its login, and every lookup also needs DeckOS developer credentials, which only ScreenScraper issues. Both are with the owner (DECISIONS 2026-11-25).
 
 ### C — Scraping
 - [x] **Rescrape everything →** a picker: every collection with a checkbox and a count, plus *Everything*. Only the chosen collections are rescraped; the rest are left as they are. (0.0.11)
@@ -94,7 +96,7 @@ The first build that is not a pre-release (`ship.ps1 -Phase 1` → `0.1.x`; `and
     - Shows the connected network and nearby networks with signal, and rescans.
     - Picking a network: open networks and saved networks connect when the firmware allows (*verify*). A new network needing a password opens Android's Wi-Fi panel.
   - **Bluetooth drawer:** paired devices with their connected state. Connecting or pairing new devices opens Android's Bluetooth settings.
-- [ ] **Font:** the HUD and Quick Access use the gamescope/Steam font when the owner provides the file. Until then, the Roboto/sans fallback.
+- [x] **Font:** the performance overlay uses Unispace Regular/Bold (CC0), supplied by the owner. Quick Access keeps the system font. (0.0.12)
 
 ### E — Performance tab: device profiles (AYN / Retroid)
 Under the overlay level slider, each one is a 3–5 step slider like the overlay one, and the HUD shows what's active:

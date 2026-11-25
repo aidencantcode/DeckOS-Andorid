@@ -41,6 +41,8 @@ FocusScope {
     property bool optionsMenuVisible: false
     property var currentFocusedGame: null
     property bool isLaunching: false
+    property bool coverLaunch: false   // DECKOS: this launch goes under the launch cover
+    property var coverGame: null
     property int originalZone1Height: 620
     property bool closeMenuVisible: false
     property var selectedGameForMedia: null
@@ -56,6 +58,8 @@ FocusScope {
         if (isLaunching) return
 
         isLaunching = true
+        // DECKOS: launch cover - the launch screen stays over the game while it loads (Settings › Overlay)
+        coverLaunch = theme.gameLaunchingAnimation && !!deckos.ingame && deckos.ingame.launchCover && deckos.ingame.launchCoverPossible
         flick.interactive = false
         masterReverseAnim.stop()
 
@@ -67,12 +71,38 @@ FocusScope {
         if (!isLaunching) return
 
         isLaunching = false
+        coverLaunchTimer.stop()
+        if (coverLaunch) deckos.ingame.hideLaunchCover()
         masterLaunchAnim.stop()
         masterReverseAnim.start()
         flick.interactive = true
         zone2.forceActiveFocus()
 
         try { sLeftClose.play() } catch(e) {}
+    }
+
+    // DECKOS: starts the game - under the launch cover when it can be shown (Java LaunchCover: a snapshot of
+    // this screen over everything, the Steam logo and spinner still moving; it fades after its time)
+    function launchCurrentGame() {
+        var g = theme.currentGame
+        if (!g || typeof g.launch !== "function") return
+        if (coverLaunch && deckos.ingame.showLaunchCover(loadingCircles, loadingCircles.step, themeLogo,
+                                                          deckos.ingame.launchCoverSeconds * 1000)) {
+            coverGame = g
+            coverLaunchTimer.start() // the cover's window first, then the game
+        } else {
+            g.launch()
+        }
+    }
+
+    Timer {
+        id: coverLaunchTimer
+        interval: 200
+        onTriggered: {
+            var g = root.coverGame
+            root.coverGame = null
+            if (root.isLaunching && g) g.launch()
+        }
     }
 
     function toggleOptionsMenu() {
@@ -1856,15 +1886,15 @@ FocusScope {
             NumberAnimation { target: theme.gameLaunchingAnimation ? themeLogo : null; property: "scale"; from: 0; to: 1; duration: 500; easing.type: Easing.InOutQuad }
         }
 
-        PauseAnimation { duration: theme.gameLaunchingAnimation ? 3200 :0 }
-
-        ScriptAction {
-            script: {
-                if (theme.currentGame && typeof theme.currentGame.launch === "function") {
-                    theme.currentGame.launch();
-                }
-            }
+        // DECKOS: under the launch cover, the wait happens over the loading game instead (its own time),
+        // and the bars fade first, so no frozen clock or button hints sit over the game
+        ParallelAnimation {
+            NumberAnimation { target: root.coverLaunch ? topBar : null; property: "opacity"; to: 0; duration: 400; easing.type: Easing.InOutQuad }
+            NumberAnimation { target: root.coverLaunch ? bottomBar : null; property: "opacity"; to: 0; duration: 400; easing.type: Easing.InOutQuad }
+            PauseAnimation { duration: theme.gameLaunchingAnimation ? (root.coverLaunch ? 500 : 3200) : 0 }
         }
+
+        ScriptAction { script: root.launchCurrentGame() }
     }
 
 
@@ -1882,6 +1912,8 @@ FocusScope {
         NumberAnimation { target: logo; property: "opacity"; to: 1; duration: 600; easing.type: Easing.InOutQuad }
 
         NumberAnimation { target: launchOverlay; property: "opacity"; to: 0; duration: 600; easing.type: Easing.OutCubic }
+        NumberAnimation { target: topBar; property: "opacity"; to: 1; duration: 400; easing.type: Easing.OutCubic } // DECKOS: launch cover
+        NumberAnimation { target: bottomBar; property: "opacity"; to: 1; duration: 400; easing.type: Easing.OutCubic }
 
         NumberAnimation { target: mainContentArea; property: "opacity"; to: 0; duration: 400; easing.type: Easing.OutCubic }
         NumberAnimation { target: zoneGameInfoLS; property: "opacity"; to: 0; duration: 600 }

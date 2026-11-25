@@ -3,6 +3,26 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**Launch cover and overlay font.** Two owner requests on top of 0.0.11:
+- **Launch cover:** the launch screen now stays over the game while the emulator starts, then fades away to the running game. Emulator loading screens and pop-ups (Winlator's boot screen, splash screens) aren't seen any more. The Steam logo and spinner keep moving the whole time.
+  - Settings › Overlay › Game launch: *Hide emulator loading screens* (on by default) and *Keep the launch screen for* 2, 3, 5, 8, 12 or 20 seconds (default 5).
+  - It needs "Display over other apps" (the same permission as the performance overlay) or the controller shortcut's accessibility service. Without them, launching works as before.
+  - With the controller shortcut service on, any button shows the game sooner.
+  - If the launch fails, the cover goes away at once and DeckOS shows the error.
+- **Performance overlay font:** Unispace, the font you sent, for every level of the performance overlay.
+
+**Notes**
+- Trailer scraping is still blocked: ScreenScraper refused the account login, and DeckOS also needs its own ScreenScraper developer credentials (see the release message).
+- Nothing here has run on a handheld yet: the cover was checked on PC by saving its snapshot.
+
+**Test checklist**
+1. Settings › Overlay: "Allow drawing over games" shows ✓ (grant it if not). *Game launch* shows the two new rows.
+2. Start a game from its page. The launch screen plays as before, then stays up while the emulator starts: the Steam logo keeps animating and the spinner keeps turning, with no jump when the game starts underneath.
+3. After about 5 seconds it fades out to the running game, with no emulator loading screen seen. Try a Winlator game with 12 or 20 seconds.
+4. With the controller shortcut turned on (Android accessibility), press any button while the cover is up: it fades out at once.
+5. Start a game whose emulator isn't installed: the cover goes away straight away and the error shows.
+6. Turn the cover off: launching is as in 0.0.11 (3 s on the launch screen, then the emulator's own loading).
+7. Performance overlay levels 1–4 use the new font and nothing is cut off. Try the Retroid's near-square screen too.
 
 ## 0.0.11 — 2026-11-25
 **Stable Alpha work.** This build makes the library fast, makes coming back from a game instant, and makes the in-game layer usable. Highlights:

@@ -40,6 +40,8 @@ public final class Session {
     static final String KEY_PERF_MODE = "performance_mode";
     static final String KEY_TAB = "last_tab";
     static final String KEY_ADVANCED = "advanced_view";
+    static final String KEY_COVER = "launch_cover";
+    static final String KEY_COVER_SECONDS = "launch_cover_seconds";
 
     private static Context sApp;
 
@@ -172,6 +174,37 @@ public final class Session {
         if (sApp != null) prefs().edit().putBoolean(KEY_KEEP_RUNNING, on).apply();
     }
 
+    /// the launch screen stays over the game while it loads (LaunchCover), for this many seconds
+    public static boolean launchCover() {
+        return sApp != null && prefs().getBoolean(KEY_COVER, true);
+    }
+
+    public static void setLaunchCover(boolean on) {
+        if (sApp != null) prefs().edit().putBoolean(KEY_COVER, on).apply();
+    }
+
+    public static int launchCoverSeconds() {
+        return sApp == null ? 5 : prefs().getInt(KEY_COVER_SECONDS, 5);
+    }
+
+    public static void setLaunchCoverSeconds(int seconds) {
+        if (sApp != null) prefs().edit().putInt(KEY_COVER_SECONDS, Math.max(1, Math.min(30, seconds))).apply();
+    }
+
+    public static boolean launchCoverPossible() {
+        return sApp != null && LaunchCover.possible();
+    }
+
+    /// from C++ right before a launch; see LaunchCover.show
+    public static boolean showLaunchCover(int[] pixels, int w, int h, int x, int y, float[] spinnerRect, int spinnerStep,
+                                          float[] logoRect, String gifPath, float gifProgress, int holdMs) {
+        return sApp != null && LaunchCover.show(pixels, w, h, x, y, spinnerRect, spinnerStep, logoRect, gifPath, gifProgress, holdMs);
+    }
+
+    public static void hideLaunchCover() {
+        LaunchCover.hide();
+    }
+
     /// controller shortcut: 0 off, 1 Select+Start, 2 Select+R1, 3 L3+R3
     public static int shortcut() {
         return sApp == null ? 0 : prefs().getInt(KEY_SHORTCUT, 2);
@@ -276,6 +309,7 @@ public final class Session {
     public static void onFrontendResumed(Activity activity) {
         frontendInFront = true;
         QuickAccessOverlay.hide();
+        LaunchCover.hide();
         sGameLaunched = false;
         SessionService.stop(activity);
     }

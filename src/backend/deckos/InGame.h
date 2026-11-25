@@ -50,6 +50,14 @@ class InGame : public QObject {
     Q_PROPERTY(bool privileged READ privileged NOTIFY changed)
     /// name of the imported ClusterTune profile used as "Custom" underclock ("" = none)
     Q_PROPERTY(QString customUnderclock READ customUnderclock NOTIFY changed)
+    /// the launch cover: the launch screen stays over the game while it loads, hiding the emulator's own
+    /// loading screens (Android; Java LaunchCover)
+    Q_PROPERTY(bool launchCover READ launchCover WRITE setLaunchCover NOTIFY changed)
+    /// how long it stays, seconds (1-30)
+    Q_PROPERTY(int launchCoverSeconds READ launchCoverSeconds WRITE setLaunchCoverSeconds NOTIFY changed)
+    /// it can be shown: "Display over other apps" or DeckOS's accessibility service (PC: only with
+    /// DECKOS_COVER_DUMP=<file.png> set, which saves the snapshot instead - for testing)
+    Q_PROPERTY(bool launchCoverPossible READ launchCoverPossible NOTIFY changed)
 
 public:
     InGame(model::ApiObject* api, RaMatcher* ra, QObject* parent = nullptr);
@@ -76,6 +84,11 @@ public:
     void setShowFps(bool on);
     bool privileged() const;
     QString customUnderclock() const;
+    bool launchCover() const;
+    void setLaunchCover(bool on);
+    int launchCoverSeconds() const;
+    void setLaunchCoverSeconds(int seconds);
+    bool launchCoverPossible() const;
 
     /// Android's accessibility settings, to turn on the shortcut service
     Q_INVOKABLE void openAccessibilitySettings();
@@ -83,6 +96,13 @@ public:
     Q_INVOKABLE QString deviceInfo() const;
     /// reads a ClusterTune export file and keeps its first profile as "Custom"; "" or an error message
     Q_INVOKABLE QString importClusterTune(const QString& path);
+
+    /// Right before a launch: snapshots the window with `spinner` and `logo` (an AnimatedImage) hidden
+    /// and shows it over everything for `holdMs`, the two drawn again natively on top, so the game can
+    /// load underneath. false if it can't be shown (PC, no permission): launch without it.
+    Q_INVOKABLE bool showLaunchCover(QObject* spinner, int spinnerStep, QObject* logo, int holdMs);
+    /// the launch was cancelled
+    Q_INVOKABLE void hideLaunchCover();
 
     /// opens Android's "Display over other apps" screen for DeckOS
     Q_INVOKABLE void requestOverlayPermission();
@@ -114,6 +134,8 @@ private:
     int m_pc_shortcut = 2;
     int m_pc_hud_pos = 0;
     bool m_pc_fps = true;
+    bool m_pc_cover = true;
+    int m_pc_cover_seconds = 5;
 
     void onAppState(Qt::ApplicationState state);
     void endSession();

@@ -1,6 +1,6 @@
 // DECKOS: Settings > Overlay - the Android in-game layer (deckos.ingame, Java com.deckos.ingame):
 // the Quick Access menu over games (how it opens, its size, whether the game keeps running), the
-// performance overlay, the AYN / Retroid controls it uses, and the device check. The overlay's own
+// performance overlay, the launch cover, the AYN / Retroid controls it uses, and the device check. The overlay's own
 // Overlay tab changes the same values (shared Android preferences), so both always agree.
 import QtQuick 2.15
 import "parts"
@@ -15,6 +15,7 @@ DeckSettingsPage {
     readonly property var shortcutNames: ["Off", "Select + Start", "Select + R1", "L3 + R3"]
     readonly property var positionNames: ["Top left", "Top right", "Bottom left", "Bottom right"]
     readonly property var scales: [75, 90, 100, 110, 125, 150, 175, 200]
+    readonly property var coverTimes: [2, 3, 5, 8, 12, 20]
     property string importMessage: ""
 
     // permissions are granted in Android's settings: look again whenever DeckOS comes back
@@ -29,6 +30,13 @@ DeckSettingsPage {
         var i = scales.indexOf(ig.overlayScale)
         if (i < 0) i = 4
         ig.overlayScale = scales[Math.max(0, Math.min(scales.length - 1, i + step))]
+    }
+
+    function coverStep(step) {
+        if (!ig) return
+        var i = 0
+        while (i < coverTimes.length - 1 && coverTimes[i] < ig.launchCoverSeconds) i++
+        ig.launchCoverSeconds = coverTimes[Math.max(0, Math.min(coverTimes.length - 1, i + step))]
     }
 
     // "Device info": the page shows the dump instead of the settings until B
@@ -114,6 +122,23 @@ DeckSettingsPage {
                  value: function () { return ig && ig.overlayAllowed ? "✓" : "" },
                  enabled: function () { return android && !ig.overlayAllowed },
                  activate: function () { if (ig) ig.requestOverlayPermission() } })
+
+        r.push({ type: "section", label: "Game launch" })
+        r.push({ type: "toggle", label: "Hide emulator loading screens",
+                 desc: function () {
+                     if (!android) return "Android only"
+                     if (typeof theme !== "undefined" && theme && !theme.gameLaunchingAnimation) return "Needs the game launch animation (Settings › Accessibility)"
+                     if (!ig.launchCoverPossible) return "Needs \"Display over other apps\" (above) or the controller shortcut"
+                     return "The launch screen stays over the game while it starts, then fades away to it. With the controller shortcut on, any button shows the game sooner."
+                 },
+                 value: function () { return ig ? ig.launchCover : false },
+                 enabled: function () { return !!ig },
+                 toggle: function () { if (ig) ig.launchCover = !ig.launchCover } })
+        r.push({ type: "choice", label: "Keep the launch screen for",
+                 desc: "Longer for slow starters (Winlator)",
+                 value: function () { return (ig ? ig.launchCoverSeconds : 5) + " seconds" },
+                 enabled: function () { return !!ig && ig.launchCover },
+                 next: function () { ingamePage.coverStep(1) }, prev: function () { ingamePage.coverStep(-1) } })
 
         r.push({ type: "section", label: "Device (AYN / Retroid)" })
         r.push({ type: "info", label: "Performance mode, fan and underclock",
