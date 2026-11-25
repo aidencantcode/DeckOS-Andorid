@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.0.3 — 2026-11-25
 **StMini 0.4, the Steam Deck boot animation, and no more Pegasus screens.** The whole interface is now StMini 0.4 (much bigger: new Settings, game properties, SteamGridDB artwork picker), every Pegasus setting lives in its Settings screen, and the app starts with the Deck boot animation.
 
 ### Test checklist (Odin 3 Max first, then Retroid)
