@@ -49,45 +49,45 @@ The first build that is not a pre-release (`ship.ps1 -Phase 1` → `0.1.x`; `and
 - **Lag:** `theme.qml` has a single page `Loader` that destroys and rebuilds each screen on every navigation. Library is 3.3k lines of QML, the game page 3k. Rebuilding them is the "UI break" when going back from a game to the library, and part of the library-open hiccup.
 
 ### A — Fluid library (optimization first)
-- [ ] Keep Home, Library and the game page alive. Hide and show them instead of rebuilding them, so going back restores focus and scroll position instantly. Other pages keep loading on demand.
+- [x] Keep Home and Library alive: hide and show them instead of rebuilding them, so going back restores focus and scroll position instantly (0.0.11; dropped when Settings opens). Android: DeckOS stays loaded while a game runs instead of tearing down and rebuilding the whole UI at every launch, which also gives real play time.
 - [ ] Library open: show cached data at once. A first start, or a start with no cache, gets a Steam-style loading screen instead of a frozen UI.
 - [ ] Find what blocks the UI thread on open: image decode, model sorting, bindings. Log timings with a `--deckos-timing` flag, and fix the biggest costs:
   - `sourceSize` and `asynchronous` on every grid image;
   - fewer delegates built off-screen;
   - no full-model `count` loops in bindings.
-- [ ] Budget on PC: game page ↔ library under 100 ms. On the Odin 3: no visible stall, checked by the owner.
+- [ ] Budget on PC: game page ↔ library under 100 ms (done: 1 ms, logged as "DeckOS: page N shown again"). On the Odin 3: no visible stall, checked by the owner.
 
 ### B — Game page
-- [ ] **Last played:** "Never" for games never launched. The StMini leftover showed "Just now" when there was no date.
+- [x] **Last played:** "Never" for games never launched. The StMini leftover showed "Just now" when there was no date. (0.0.11)
   - Next to it, PLAYTIME with "3 h 12 min" (or "Never") underneath, from Pegasus's playtime stats.
-- [ ] **RetroAchievements tab:**
+- [x] **RetroAchievements tab:** (0.0.11)
   - A Steam-style spinner instead of the Pegasus loading icon.
   - When logged out: no BigScreenFE login or keyboard. One "Log in to RetroAchievements" button opens Settings › Profile › RetroAchievements.
-- [ ] **Profile RA login:** "Checking…" with a spinner, then ✓ "Logged in as *name*" or ✕ "Login failed: *reason*" (wrong key / offline). The tab refreshes on success.
-- [ ] **Activity tab:**
+- [x] **Profile RA login:** "Checking…" with a spinner, then ✓ "Logged in as *name*" or ✕ "Login failed: *reason*" (wrong key / offline). The tab refreshes on success. (0.0.11)
+- [x] **Activity tab:** (0.0.11; RetroArch screenshots only - other emulators keep theirs in private folders)
   - Recent screenshots: scraped ones, plus emulator screenshot folders (RetroArch, PPSSPP, DuckStation, AetherSX2-family; paths *verify*).
   - Recently earned achievements.
   - A list/grid toggle. The list looks like the overlay's achievement rows; the grid shows badges with dates.
-- [ ] **Trailer:**
+- [ ] **Trailer:** player done (0.0.11); scraping waits for ScreenScraper credentials.
   - After ~3 s on the game page, the hero background cross-fades into the game's video. The logo and buttons stay.
   - It stops on leaving or launching. Settings has *Play trailers* (off / muted / with sound) and the delay.
   - Plays any video the game already has (`assets.video`, `media/<game>/video.*`).
   - **Scraping videos needs ScreenScraper** (the only free source of game video snaps). That needs a ScreenScraper account from the owner and DeckOS developer credentials, so it's **blocked on the owner**. TheGamesDB only links YouTube, which Qt can't play, and fetching YouTube streams isn't allowed by its terms.
 
 ### C — Scraping
-- [ ] **Rescrape everything →** a picker: every collection with a checkbox and a count, plus *Everything*. Only the chosen collections are rescraped; the rest are left as they are.
+- [x] **Rescrape everything →** a picker: every collection with a checkbox and a count, plus *Everything*. Only the chosen collections are rescraped; the rest are left as they are. (0.0.11)
 
 ### D — In-game layer (Quick Access + HUD)
-- [ ] **Controller shortcut:** an accessibility service watches for a button combo and opens Quick Access over any app.
+- [x] **Controller shortcut:** an accessibility service watches for a button combo and opens Quick Access over any app. (0.0.11, device check pending)
   - Choices: Select+Start, Select+R1, L3+R3. Default Select+R1.
   - Only the second button of the combo is swallowed.
   - The permission is asked for in Settings › In-Game.
-- [ ] **Keep game running:** an option under *Resume game*, also in settings. When on, Quick Access opens as an overlay window and the game isn't paused.
-- [ ] **Overlay settings tab:**
+- [x] **Keep game running:** an option under *Resume game*, also in settings. When on, Quick Access opens as an overlay window and the game isn't paused. (0.0.11, device check pending)
+- [x] **Overlay settings tab:** (0.0.11)
   - A new rail tab in Quick Access and the same page in DeckOS Settings › In-Game (renamed "Overlay"). Both read and write the same settings, so changing one shows in the other.
   - Contents: overlay scale, HUD level, HUD position, keep running, notification, shortcut, FPS.
-- [ ] **Overlay scale:** a slider (75–200%) that rescales the open panel live and smoothly. It also scales the HUD. The default is bigger than 0.0.10's, which the owner found too small.
-- [ ] **Quick Settings:**
+- [x] **Overlay scale:** a slider (75–200%) that rescales the open panel live and smoothly. It also scales the HUD. The default is bigger than 0.0.10's, which the owner found too small. (0.0.11)
+- [x] **Quick Settings:** (0.0.11, device check pending)
   - A brightness slider. It needs the "Modify system settings" permission, asked for once; DeckOS's own window adjusts meanwhile.
   - Wi-Fi and Bluetooth toggles that switch directly through PServer; elsewhere they open Android's panel.
   - **Wi-Fi drawer:**
@@ -98,17 +98,17 @@ The first build that is not a pre-release (`ship.ps1 -Phase 1` → `0.1.x`; `and
 
 ### E — Performance tab: device profiles (AYN / Retroid)
 Under the overlay level slider, each one is a 3–5 step slider like the overlay one, and the HUD shows what's active:
-- [ ] **Performance mode:** Standard / Performance / High Performance (vendor `performance_mode`).
+- [x] **Performance mode:** Standard / Performance / High Performance (vendor `performance_mode`). (0.0.11, values to confirm)
 - [ ] **Fan:** Quiet / Smart / Sport / **Maximum**. Maximum switches the vendor fan to Custom and sets the highest speed. The key is confirmed from the device dump first.
-- [ ] **Underclock:** Stock / Small / Medium / Large / Custom.
+- [x] **Underclock:** Stock / Small / Medium / Large / Custom. (0.0.11, device check pending)
   - ClusterTune presets for the chip; Custom is the first profile of an imported ClusterTune export.
   - Applied through PServer and restored to Stock when the game session ends, if *Reset after game* is on.
   - If ClusterTune is installed, a note says its own app profiles may override DeckOS's.
-- [ ] **FPS** on HUD levels 1–4 via PServer, plus the active profiles ("PERF High · FAN Smart · CPU Medium").
-- [ ] **Device info dump** (Settings › System › Device info): model, SoC, PServer yes/no, vendor `Settings.System` keys with fan/perf in their name, readable sensors. The owner copies it for us, which settles the *verify* items above.
+- [x] **FPS** on HUD levels 1–4 via PServer, plus the active profiles ("PERF High · FAN Smart · CPU Medium"). (0.0.11, device check pending)
+- [x] **Device info dump** (Settings › Overlay › Device info): model, SoC, PServer yes/no, vendor `Settings.System` keys with fan/perf in their name, readable sensors. The owner copies it for us, which settles the *verify* items above. (0.0.11)
 
 ### F — Stable Alpha release
-- [ ] `android.yml`: 0.1+ tags publish as a normal release; 0.0.x stays pre-release.
+- [x] `android.yml`: 0.1+ tags publish as a normal release; 0.0.x stays pre-release.
 - [ ] Full checklist on both handhelds (layout at 1080p and 1240×1080; controller-only; offline; first start).
 - [ ] CHANGELOG "0.1.0 — Stable Alpha" with the test checklist.
 

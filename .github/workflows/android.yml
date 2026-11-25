@@ -1,5 +1,6 @@
 # DeckOS Android build (docs/13-release-flow.md)
-#  - tag v<major>.<phase>.<build> (pushed by tools/ship.ps1) -> signed arm64 APK -> GitHub pre-release
+#  - tag v<major>.<phase>.<build> (pushed by tools/ship.ps1) -> signed arm64 APK -> GitHub release
+#    (a pre-release for 0.0.x, a normal "Alpha" release from 0.1.0)
 #  - manual run (Actions -> Android -> Run workflow)          -> signed APK as a downloadable artifact only
 # Every APK is signed with the stable DeckOS test key from the repo secrets, so builds install over each other.
 # Toolchain: upstream Pegasus's prebuilt Qt 5.15.10 for Android + NDK r21e (same as upstream's workflow).
@@ -109,7 +110,7 @@ jobs:
           name: ${{ steps.apk.outputs.name }}
           path: dist/${{ steps.apk.outputs.name }}.apk
 
-      - name: Publish pre-release
+      - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
@@ -124,6 +125,13 @@ jobs:
           **Install:** on the handheld, download the \`.apk\` below and open it. It installs over earlier DeckOS test builds and keeps your settings.
           **Found a bug?** [Open a test report](${{ github.server_url }}/${{ github.repository }}/issues/new/choose).
           EOF
+          # 0.0.x builds are pre-releases; from 0.1.0 (the first Stable Alpha) they are normal releases
+          kind="--prerelease"
+          title="DeckOS $VERSION"
+          case "$VERSION" in
+            0.0.*) ;;
+            *) kind="--latest"; title="DeckOS $VERSION (Alpha)" ;;
+          esac
           gh release create "$GITHUB_REF_NAME" "dist/${{ steps.apk.outputs.name }}.apk" \
-            --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
-            --title "DeckOS $VERSION" --notes-file notes.md
+            --repo "$GITHUB_REPOSITORY" --verify-tag $kind \
+            --title "$title" --notes-file notes.md

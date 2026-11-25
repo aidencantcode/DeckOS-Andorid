@@ -141,7 +141,18 @@ Format: `## YYYY-MM-DD — Title` · **Decision** · **Why** · **Alternatives c
   - **Risk:** it's an undocumented firmware interface and may change with updates. Every use is probed and fails soft.
 - **Vendor modes** are read from `Settings.System` (`performance_mode`, `fan_mode`; mapping from ClusterTune's HUD code, *verify* on both handhelds) and written with `settings put system …` through PServer.
 - **FPS:** SurfaceFlinger's frame counter, sampled through PServer only while the HUD shows FPS. Shizuku was considered and dropped: it needs a pairing step on every boot without root, and it's more code.
-- **Lag:** the theme rebuilds whole screens on each navigation (one `Loader`), so Home, Library and the game page will be kept alive. This is measured before and after.
+- **Lag:** the theme rebuilt whole screens on each navigation (one `Loader`).
+  - Done in 0.0.11: Home and Library are kept alive once built (dropped when Settings opens). Going back costs 1 ms on PC instead of a rebuild.
+  - Page build and re-show times are logged ("DeckOS: page N built in X ms").
+  - `theme` is now an initial property, so pages' `onThemeChanged` runs during creation. `settings.qml` and `media.qml` defer their work with `Qt.callLater`.
+- **Android play time and return from games (0.0.11):**
+  - Upstream Pegasus tears down the whole QML engine at every launch on Android (`platform_requires_hiding`) and rebuilds it at once, because `am start` returns immediately. So the UI was rebuilt while the emulator started, and every session was saved as ~0 s of play time.
+  - DeckOS now keeps the engine loaded. Qt doesn't render or run the event loop in the background (`background_running=false`).
+  - The session ends when the app is active again after having left the front (`InGame::beginSession` / `sessionEnded`). If DeckOS never left the front within 15 s, the launch is treated as failed.
+  - It can be turned off ("Keep DeckOS loaded while playing").
+  - **Trade-off:** DeckOS's memory stays in use during games. A foreground service is already running then, so DeckOS is unlikely to be killed.
+- **Quick Access without pausing:** the same panel view is hosted either by the activity or by a `TYPE_APPLICATION_OVERLAY` window, or a `TYPE_ACCESSIBILITY_OVERLAY` window when the controller shortcut opens it, which needs no permission. The notification now opens it through `SessionService` (`getService` PendingIntent), so no activity is involved.
+- **Controller shortcut:** an `AccessibilityService` with `flagRequestFilterKeyEvents` is the only non-root way to see buttons while another app is in front. Only the completing button is consumed.
 
 ## 2026-11-25 — Upstream bug fixed: PlaytimeStats use-after-free
 - **Found:** Linux CI (qmake job) segfaulted after `test_Playtime` had passed all 7 cases; the same code had passed one push earlier and 300 local Windows runs → timing-dependent. Cause in upstream `PlaytimeStats`: the `QtConcurrent` writer captures `this` and emits `finishedWriting()` as its last step; whoever waits for that signal (the test; in the app, shutdown right after a game session is saved) can destroy the object while the worker is still inside the emit.
