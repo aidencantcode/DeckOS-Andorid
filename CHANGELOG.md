@@ -3,6 +3,13 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**A first-start welcome.** On a fresh install (no ROM folder, no metadata folder) Home shows a "Welcome to DeckOS" card: A goes straight to Settings → Library to add your ROM folder, B hides it for good.
+
+### Test checklist
+1. Only on a fresh install (or after clearing DeckOS's data): the card appears over Home; A opens Settings → Library; B closes it and Home works normally. Your existing setup won't show it.
+
+### Under the hood
+- Empty-library start verified (no warnings); the page under the card is disabled so its buttons can't be pressed by accident.
 
 ## 0.0.6 — 2026-11-25
 **Just pick your ROM folder.** DeckOS finds your systems by folder name (snes, gba, psx, "PlayStation 2"…), lists the games, and picks an installed emulator for each system — no metadata files needed. Every launch command is visible and editable.

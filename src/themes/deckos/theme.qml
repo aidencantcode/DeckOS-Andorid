@@ -320,6 +320,7 @@ anchors.centerIn: parent
 
     
     focus: true
+    enabled: !welcome.visible // DECKOS: the first-start card keeps the keys
     source: getPageSource(currentPage)
     asynchronous: api.memory.has("asyncLoading") ? api.memory.get("asyncLoading") : false
 
@@ -439,5 +440,96 @@ if (pageLoader.item && typeof pageLoader.item.startExitAnimation === "function" 
         finalizeNavigation(index);
     }
 }
-}
 
+// DECKOS: first start without any game folder: point to where games are added (A), or dismiss for good (B)
+FocusScope {
+    id: welcome
+    anchors.fill: parent
+    z: 5000
+    property bool dismissed: api.memory.has("welcomeDismissed")
+    readonly property bool noFolders: Internal.settings.gameDirs.filter(function (d) { return d !== "" && d !== "." }).length === 0
+        && (typeof deckos === "undefined" || !deckos || deckos.library.romFolders.length === 0)
+    visible: noFolders && !dismissed && root.currentPage === 0
+    onVisibleChanged: if (visible) forceActiveFocus()
+    Component.onCompleted: if (visible) forceActiveFocus()
+    Timer { // the page under it and main.qml move the focus while loading; take it back while shown
+        interval: 250; repeat: true
+        running: welcome.visible && !welcome.activeFocus
+        onTriggered: welcome.forceActiveFocus()
+    }
+
+    function close(openSettings) {
+        dismissed = true
+        if (openSettings) {
+            root.openSettingsPage("settings/library.qml")
+        } else {
+            api.memory.set("welcomeDismissed", true)
+            Qt.callLater(function () { if (pageLoader.item) pageLoader.item.forceActiveFocus() }) // once the page is enabled again
+        }
+    }
+    Keys.onPressed: {
+        if (api.keys.isAccept(event)) { sAccept.play(); close(true) }
+        else if (api.keys.isCancel(event)) { sBack.play(); close(false) }
+        event.accepted = true
+    }
+    Connections { // a page that finishes loading takes the focus; give it back while the card is up
+        target: pageLoader
+        function onLoaded() { if (welcome.visible) welcome.forceActiveFocus() }
+    }
+
+    Rectangle { anchors.fill: parent; color: "#B0000000"; MouseArea { anchors.fill: parent } }
+
+    Rectangle {
+        id: welcomeCard
+        width: Math.min(parent.width * 0.7, parent.height * 1.15)
+        height: welcomeColumn.height + parent.height * 0.08
+        anchors.centerIn: parent
+        radius: 8
+        color: "#23262B"
+
+        Column {
+            id: welcomeColumn
+            width: parent.width * 0.86
+            anchors.centerIn: parent
+            spacing: welcome.height * 0.03
+
+            Text {
+                text: "Welcome to DeckOS"
+                color: "white"
+                font.family: extrabold.name
+                font.pixelSize: welcome.height * 0.055
+            }
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "Add the folder with your games. DeckOS finds your systems by their folder names "
+                    + "(snes, gba, psx, \"PlayStation 2\"…) and picks an installed emulator for each - "
+                    + "nothing is written into your folders."
+                color: "#c7d0d9"
+                font.family: bold.name
+                font.pixelSize: welcome.height * 0.028
+                lineHeight: 1.2
+            }
+            Row {
+                spacing: welcome.height * 0.025
+                Rectangle {
+                    width: addText.implicitWidth + welcome.height * 0.06
+                    height: welcome.height * 0.075
+                    radius: 4
+                    color: "#1a9fff"
+                    Text { id: addText; anchors.centerIn: parent; text: "Ⓐ  Add your ROM folder"; color: "white"; font.family: bold.name; font.pixelSize: welcome.height * 0.03 }
+                    MouseArea { anchors.fill: parent; onClicked: welcome.close(true) }
+                }
+                Rectangle {
+                    width: laterText.implicitWidth + welcome.height * 0.06
+                    height: welcome.height * 0.075
+                    radius: 4
+                    color: "#3d4450"
+                    Text { id: laterText; anchors.centerIn: parent; text: "Ⓑ  Not now"; color: "white"; font.family: bold.name; font.pixelSize: welcome.height * 0.03 }
+                    MouseArea { anchors.fill: parent; onClicked: welcome.close(false) }
+                }
+            }
+        }
+    }
+}
+}
