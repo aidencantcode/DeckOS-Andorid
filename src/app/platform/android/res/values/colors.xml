@@ -3,4 +3,6 @@
     <color name="pegasus_bg">#333333</color>
     <!-- DECKOS: adaptive icon + splash background; keep in sync with tools/make-placeholder-icons.ps1 -->
     <color name="deckos_bg">#121822</color>
+    <!-- DECKOS: start-up window and splash, matches the boot animation -->
+    <color name="deckos_boot_bg">#000000</color>
 </resources>

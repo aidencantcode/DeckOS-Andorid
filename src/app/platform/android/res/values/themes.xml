@@ -2,6 +2,7 @@
 <resources>
     <style name="PegasusMain">
         <item name="android:colorPrimary">@color/pegasus_bg</item>
+        <item name="android:windowBackground">@color/deckos_boot_bg</item> <!-- DECKOS: no grey flash before the boot animation -->
         <item name="android:windowAllowReturnTransitionOverlap">true</item>
         <item name="android:windowAllowEnterTransitionOverlap">true</item>
     </style>

@@ -9,111 +9,559 @@ FocusScope {
     id: root
     anchors.fill: parent
     focus: true
+    
+    ShaderEffectSource {
+    id: globalBlurSource
+    anchors.fill: parent
+    sourceItem: animatedContent
+    live: true
+    visible: false
+    // ClampToEdge гарантирует отсутствие щелей при размытии
+    wrapMode: ShaderEffectSource.ClampToEdge
+}
+
+        
 
     property int currentPage: 0
     property real topH: 95
     property var theme
     
-    
     property int kbCurrentIndex: 0
-
     
     // Клавиатура
     property bool keyboardOpen: false
-// В самом верху root, где свойства
-property string searchQuery: "" 
+    property string searchQuery: "" 
+    
+    property bool isScrolled: false
+    
+    // меню закрытия (новое)
+    property bool closeMenuVisible: false
+    
+    // Система фокуса
+    property int focusZone: fromGameMenu ? 2 : 0
+    
+    // Свойства для анимации переключения страниц
+    property real animX: 0
+    property real animOpacity: 1.0
+    
+    property string sortMode: api.memory.has("librarySortMode") ? api.memory.get("librarySortMode") : "alphabetical"
+property bool sortMenuVisible: false
 
-function handleInput(val) {
-    console.log("Input received:", val); // Для отладки в логах
-    if (val === "⌫") {
-        root.searchQuery = root.searchQuery.slice(0, -1);
-    } else if (val === "Done") {
-        root.keyboardOpen = false;
-        root.goToZone(0);
-    } else {
-        root.searchQuery += val;
+    // -------------------------------------------------------
+    // CustomSearch: проверяет совпадение с поисковым запросом
+    // учитывает как стандартное title, так и customTitles.searchTitle
+    // из custom_assets_<title> (заданное на странице Customization)
+    // -------------------------------------------------------
+    function getCustomSearchTitle(title) {
+        var data = api.memory.get("custom_assets_" + title)
+        if (data && data.customTitles && data.customTitles.searchTitle && data.customTitles.searchTitle !== "")
+            return data.customTitles.searchTitle
+        return ""
+    }
+
+    function matchesSearchQuery(title) {
+        if (root.searchQuery === "") return true
+        var q = root.searchQuery.toLowerCase()
+        if (title.toLowerCase().indexOf(q) !== -1) return true
+        var custom = root.getCustomSearchTitle(title)
+        if (custom !== "" && custom.toLowerCase().indexOf(q) !== -1) return true
+        return false
+    }
+    
+    // Скрытый помощник для работы с буфером обмена
+    TextEdit {
+        id: clipboardHelper
+        visible: false
+        function getClipboard() {
+            text = "";
+            paste();
+            return text;
+        }
+    }
+
+
+
+
+    // ========== ОБЩИЙ КОМПОНЕНТ ДЛЯ СЕТКИ ИГР ==========
+    Component {
+        id: gameGridComponent
+
+        FocusScope {
+            property alias model: gridView.model
+            property alias gridView: gridView
+            signal gameSelected(var game)
+
+            Rectangle {
+                anchors.fill: parent
+                color: "#0F1318"
+
+                GridView {
+                    id: gridView
+                    anchors {
+                        fill: parent
+                        topMargin: 20
+                        leftMargin: parent.width * 0.015
+                        rightMargin: parent.width * 0.015
+                        bottomMargin: 20
+                    }
+
+                    clip: false
+                    cellWidth: width / theme.searchRows
+                    cellHeight: cellWidth * 0.6   // Search использует другое соотношение, сохраняем
+                    currentIndex: 0
+                    focus: false
+                    
+                    snapMode: GridView.NoSnap
+                    highlightRangeMode: GridView.ApplyRange
+                    highlightMoveDuration: 250
+                    cacheBuffer: cellHeight * 3
+
+                    onContentYChanged: root.isScrolled = (contentY > 30)
+
+                    Keys.onPressed: {
+                        if (root.focusZone === 2) {
+                            if (event.key === Qt.Key_Left) {
+                                if (currentIndex > 0) {
+                                    sNav.stop(); sNav.play();
+                                    currentIndex--;
+                                    event.accepted = true;
+                                }
+                            }
+                            else if (event.key === Qt.Key_Right) {
+                                if (currentIndex < count - 1) {
+                                    sNav.stop(); sNav.play();
+                                    currentIndex++;
+                                    event.accepted = true;
+                                }
+                            }
+                            else if (event.key === Qt.Key_Up) {
+                                var columnsCount = Math.floor(width / cellWidth);
+                                if (currentIndex < columnsCount) {
+                                    sNav.stop(); sNav.play();
+                                    root.goToZone(1);
+                                    event.accepted = true;
+                                } else {
+                                    sNav.stop(); sNav.play();
+                                    currentIndex -= columnsCount;
+                                    event.accepted = true;
+                                }
+                            }
+                            else if (event.key === Qt.Key_Down) {
+                                var columnsCount = Math.floor(width / cellWidth);
+                                if (currentIndex < count - columnsCount) {
+                                    sNav.stop(); sNav.play();
+                                    currentIndex += columnsCount;
+                                    event.accepted = true;
+                                }
+                            }
+                            else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
+    if (currentItem && currentItem.gameRef) {
+        gameSelected(currentItem.gameRef);
+    }
+    event.accepted = true;
+}
+                            else if (api.keys.isFilters(event) && !root.optionsMenuVisible && !root.closeMenuVisible && !root.sortMenuVisible) {
+    root.toggleSortMenu();
+    event.accepted = true;
+}
+                            else if (api.keys.isDetails(event) && !root.optionsMenuVisible) {
+                                var game = model.get(currentIndex);
+                                if (game) {
+                                    root.currentFocusedGame = game;
+                                    root.toggleOptionsMenu();
+                                }
+                                event.accepted = true;
+                            }
+                        }
+                    }
+
+                    delegate: Item {
+    width: gridView.cellWidth
+    height: gridView.cellHeight
+    
+    property var gameRef: modelData
+    
+    property bool hasImage: {
+    if (!modelData) return false;
+
+    // 1. Проверка наличия веб-ассета (capsule) в api.memory
+    if (typeof api !== "undefined" && api.memory) {
+        var customData = api.memory.get("custom_assets_" + modelData.title);
+        if (customData && customData.assets && (customData.assets.capsule !== "" && customData.assets.capsule !== undefined)) {
+            return true;
+        }
+    }
+
+    // 2. Проверка локальных метаданных (poster или boxFront)
+    return !!(modelData.assets && (modelData.assets.steam || modelData.assets.boxFront));
+}
+
+    property bool isFocused: GridView.isCurrentItem && gridView.focus && root.focusZone === 2
+
+    Rectangle {
+        id: gameContainer
+        anchors.fill: parent
+        color: "transparent"
+        scale: isFocused ? 1.015 : 1.0
+        Behavior on scale { NumberAnimation { duration: 150 } }
+
+        // === Область изображения (всегда присутствует, даже если нет картинки) ===
+        Item {
+            id: imageArea
+            width: gridView.cellWidth * 0.9
+            height: width * 0.467          // пропорция Steam-изображений
+            anchors.centerIn: parent
+
+            // Выделенный элемент маски для скругления обложек Steam
+            Rectangle {
+                id: steamMask
+                anchors.fill: parent
+                radius: theme.roundedCovers ? 24 : 0
+                visible: false
+            }
+
+            // Анимированное изображение (видимо только при наличии)
+            AnimatedImage {
+                anchors.fill: parent
+                source: theme.getAssetSource("steam", modelData)
+                fillMode: AnimatedImage.PreserveAspectCrop
+                visible: hasImage && status === AnimatedImage.Ready
+                playing: visible && status === AnimatedImage.Ready && theme.animatedCovers && (!theme.animationInFocus || isFocused)              
+                cache: true
+                asynchronous: true
+
+                layer.enabled: theme.roundedCovers
+                layer.effect: OpacityMask {
+                    maskSource: steamMask
+                }
+            }
+
+            // Заглушка (серая плашка), когда нет изображения
+            Rectangle {
+                anchors.fill: parent
+                color: "#555"
+                radius: theme.roundedCovers ? 24 : 0
+                visible: !hasImage
+            }
+
+            // Текст названия игры (показывается только при отсутствии изображения)
+            Text {
+                anchors.centerIn: parent
+                text: modelData.title
+                color: "white"
+                font.family: bold.name
+                font.pixelSize: 20
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                wrapMode: Text.WordWrap
+                width: parent.width * 0.9
+                visible: !hasImage
+            }
+        }
+
+        // Индикатор избранного (без изменений)
+        Rectangle {
+            id: favoritesIndicator
+            anchors {
+                right: parent.right
+                bottom: parent.bottom
+                rightMargin: 20
+                bottomMargin: 27
+            }
+            width: 110
+            height: 55
+            radius: 45
+            color: "#0F1318"
+            visible: modelData && modelData.favorite === true && isFocused
+            z: 20
+
+            Row {
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: 10
+                spacing: 5
+
+                Text {
+                    text: "★"
+                    color: "white"
+                    font.pixelSize: 50
+                    font.family: icons.name
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
+                    text: "✓"
+                    color: "#6ccf58"
+                    font.pixelSize: 50
+                    font.family: icons.name
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+        }
+
+        // Эффект размытия для фокуса (без изменений)
+        Item {
+            width: gridView.cellWidth * 1.1
+            height: width * 0.467
+            anchors.centerIn: parent
+            clip: false
+            opacity: isFocused ? 0.2 : 0.0
+            z: parent.z - 1
+
+            Image {
+                id: blurSource
+                anchors.fill: parent
+                source: theme.getAssetSource("steam", modelData)
+                fillMode: Image.PreserveAspectCrop
+                visible: false
+            }
+
+            FastBlur {
+                anchors.fill: parent
+                anchors.margins: -20
+                source: blurSource
+                radius: 144
+                transparentBorder: true
+            }
+        }
+
+        // === Row с текстом библиотеки (теперь привязан к imageArea) ===
+        Row {
+            id: libraryRow
+            anchors {
+                left: imageArea.left
+                top: imageArea.bottom
+                topMargin: gridView.cellHeight * 0.05   // отступ 5% от высоты ячейки
+            }
+            spacing: 17
+            z: 800000   // высокий z, чтобы текст был поверх всего
+
+            Text {
+                text: "L"
+                color: "#8C939B"
+                font.pixelSize: 30
+                font.family: icons.name
+            }
+
+            Text {
+                id: libraryText
+                text: {
+                    var collectionName = "";
+                    for (var i = 0; i < api.collections.count; i++) {
+                        var coll = api.collections.get(i);
+                        for (var j = 0; j < coll.games.count; j++) {
+                            if (coll.games.get(j).title === modelData.title) {
+                                collectionName = "From " + coll.name;
+                                break;
+                            }
+                        }
+                        if (collectionName !== "") break;
+                    }
+                    return collectionName;
+                }
+                color: "#8C939B"
+                font.pixelSize: 30
+                font.family: bold.name
+                width: parent.parent.width * 0.85   // restriction of width
+                elide: Text.ElideRight
+                maximumLineCount: 1
+            }
+        }
+    } // gameContainer
+
+    // Рамка выделения с поддержкой динамического скругления
+    Rectangle {
+        id: highlightBorder
+        width: gridView.cellWidth * 0.947
+        height: width * 0.2
+        anchors.centerIn: parent
+        color: "transparent"
+        border.width: 5
+        border.color: "grey"
+        radius: theme.roundedCovers ? 32 : 2
+        opacity: isFocused ? 1.0 : 0.0
+        visible: isFocused
+        z: 1000
+        scale: isFocused ? 1.015 : 1.0
+        Behavior on scale { NumberAnimation { duration: 150 } }
+
+        SequentialAnimation {
+            id: appearAnim
+            running: isFocused
+            loops: 1
+
+            ParallelAnimation {
+                NumberAnimation { target: highlightBorder; property: "border.width"; to: 10; duration: 200; easing.type: Easing.OutBack }
+                NumberAnimation { target: highlightBorder; property: "radius"; to: theme.roundedCovers ? 32 : 0; duration: 200; easing.type: Easing.OutBack }
+                NumberAnimation { target: highlightBorder; property: "width"; to: gridView.cellWidth * 0.947 + 12; duration: 200; easing.type: Easing.OutBack }
+                NumberAnimation { target: highlightBorder; property: "height"; to: (width * 0.467) + 12; duration: 200; easing.type: Easing.OutBack }
+                ColorAnimation { target: highlightBorder; property: "border.color"; to: "white"; duration: 200 }
+                NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.5; duration: 200 }
+            }
+
+            ParallelAnimation {
+                NumberAnimation { target: highlightBorder; property: "radius"; to: theme.roundedCovers ? 32 : 2; duration: 200; easing.type: Easing.InOutQuad }
+                NumberAnimation { target: highlightBorder; property: "width"; to: gridView.cellWidth * 0.947; duration: 200; easing.type: Easing.InOutQuad }
+                NumberAnimation { target: highlightBorder; property: "height"; to: width * 0.467; duration: 200; easing.type: Easing.InOutQuad }
+                NumberAnimation { target: highlightBorder; property: "border.width"; to: 4; duration: 200; easing.type: Easing.OutBack }
+            }
+
+            SequentialAnimation {
+                loops: Animation.Infinite
+                NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.2; duration: 500 }
+                NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.5; duration: 500 }
+            }
+        }
+    }
+
+
+    // MouseArea (без изменений)
+    MouseArea {
+        anchors.fill: parent
+        onClicked: {
+            if (!isFocused) {
+                gridView.currentIndex = index
+                gridView.forceActiveFocus()
+                root.goToZone(2)
+                sNav.stop(); sNav.play();
+            } else {
+                if (modelData && modelData.launch) {
+                    gameSelected(modelData);
+                }
+            }
+        }
+        onPressAndHold: {
+            if (root.focusZone === 2) {
+                root.currentFocusedGame = modelData
+                root.toggleOptionsMenu()
+            }
+        }
+    }
+}
+                }
+            }
+        }
+    }
+
+    SortFilterProxyModel {
+    id: favoritesModel
+    sourceModel: api.allGames
+    dynamicSortFilter: true   // <-- добавить эту строку
+    filters: ValueFilter {
+        roleName: "favorite"
+        value: true
     }
 }
 
 
+    // Анимация переключения страниц
+    SequentialAnimation {
+        id: pageSwapAnim
+        property int targetIdx: 0
+        property int direction: 1
+
+        ParallelAnimation {
+            NumberAnimation { target: root; property: "animOpacity"; to: 0.2; duration: 100 }
+            NumberAnimation { target: root; property: "animX"; to: -root.width * 0.2 * pageSwapAnim.direction; duration: 150; easing.type: Easing.OutQuad }
+        }
+        ScriptAction {
+            script: {
+                root.currentPage = pageSwapAnim.targetIdx
+                topNavRow.currentIndex = pageSwapAnim.targetIdx
+                collectionGamesLoader.active = false
+                root.animX = root.width * 0.2 * pageSwapAnim.direction
+            }
+        }
+        ParallelAnimation {
+            NumberAnimation { target: root; property: "animOpacity"; to: 1.0; duration: 250 }
+            NumberAnimation { target: root; property: "animX"; to: 0; duration: 500; easing.type: Easing.OutExpo }
+        }
+    }
+
+    function safeNav(newIdx) {
+        if (newIdx === currentPage) return;
+        if (pageSwapAnim.running) pageSwapAnim.stop();
+        pageSwapAnim.direction = (newIdx > currentPage) ? 1 : -1;
+        pageSwapAnim.targetIdx = newIdx;
+        pageSwapAnim.start();
+    }
+
+    function handleInput(val) {
+        console.log("Input received:", val);
+        if (val === "⌫") {
+            root.searchQuery = root.searchQuery.slice(0, -1);
+        } else if (val === "Done") {
+            root.keyboardOpen = false;
+            root.goToZone(0);
+        } else {
+            root.searchQuery += val;
+        }
+    }
+
     function openKeyboard() {
-    keyboardOpen = true;
-    keyboardContainer.forceActiveFocus();
-}
+        keyboardOpen = true;
+        keyboardContainer.forceActiveFocus();
+    }
     
-    // В корневой FocusScope добавь:
-property bool optionsMenuVisible: false
-property var currentFocusedGame: null
-
-    // Система фокуса - 3 зоны (1-0-2)
-    property int focusZone: 1 // 1 = верхний бар, 0 = верхние кнопки, 2 = gridView
+    property bool optionsMenuVisible: false
+    property var currentFocusedGame: null
     
-    // Самый нижний слой (фоновая подложка)
-Rectangle {
-    id: globalBackground
-    anchors.fill: parent
-    color: "#0F1318" // Тот самый цвет темы
-    z: -100 // Всегда сзади всех
-}
+    
 
-// Внутри FocusScope { id: root ... }
-readonly property real currentScrollY: {
-    var gv = getCurrentGridView();
-    return gv ? gv.contentY : 0;
-}
-
+    readonly property real currentScrollY: {
+        var gv = getCurrentGridView();
+        return gv ? gv.contentY : 0;
+    }
     
     function toggleOptionsMenu() {
-    console.log("toggleOptionsMenu called. Visible:", optionsMenuVisible, "focusZone:", focusZone);
+        if (optionsMenuVisible) {
+            optionsMenuVisible = false
+            optionsMenu.focus = false
+            var currentGridView = getCurrentGridView()
+            if (currentGridView && focusZone === 2) {
+                currentGridView.forceActiveFocus()
+            }
+        } else if (focusZone === 2) {
+            var currentGridView = getCurrentGridView()
+            if (currentGridView && currentGridView.count > 0) {
+                var gameData = null;
+                if (currentGridView.model && currentGridView.model.get) {
+                    gameData = currentGridView.model.get(currentGridView.currentIndex);
+                } else if (currentGridView.model && Array.isArray(currentGridView.model)) {
+                    gameData = currentGridView.model[currentGridView.currentIndex];
+                }
+                if (gameData) {
+                    currentFocusedGame = gameData
+                    topNavRow.focus = false
+                    topButtonsNames.focus = false
+                    currentGridView.focus = false
+                    optionsMenuVisible = true
+                    optionsMenu.forceActiveFocus()
+                }
+            }
+        }
+    }
     
-    if (optionsMenuVisible) {
-        // Закрытие меню
-        console.log("Closing options menu");
-        optionsMenuVisible = false
-        optionsMenu.focus = false
-        
-        // Возвращаем фокус в GridView
-        var currentGridView = getCurrentGridView()
-        if (currentGridView && focusZone === 2) {
-            currentGridView.forceActiveFocus()
-        }
-    } else if (focusZone === 2) {
-        // Открытие меню
-        console.log("Opening options menu");
-        var currentGridView = getCurrentGridView()
-        
-        if (currentGridView && currentGridView.count > 0) {
-            // Получаем текущую игру из GridView
-            console.log("GridView found. Current index:", currentGridView.currentIndex, "Total count:", currentGridView.count);
-            
-            var gameData = null;
-            
-            // Проверяем разные типы моделей
-            if (currentGridView.model && currentGridView.model.get) {
-                gameData = currentGridView.model.get(currentGridView.currentIndex);
-            } else if (currentGridView.model && Array.isArray(currentGridView.model)) {
-                gameData = currentGridView.model[currentGridView.currentIndex];
-            }
-            
-            if (gameData) {
-                console.log("Game found:", gameData.title);
-                currentFocusedGame = gameData
-                
-                // Снимаем фокус со всех элементов
-                topNavRow.focus = false
-                topButtonsNames.focus = false
-                currentGridView.focus = false
-                
-                // Открываем меню
-                optionsMenuVisible = true
-                optionsMenu.forceActiveFocus()
-                console.log("Menu opened successfully");
-            } else {
-                console.log("No game data at index:", currentGridView.currentIndex);
-            }
-        } else {
-            console.log("No grid view or grid is empty");
-        }
+    function applySortMode(mode) {
+    api.memory.set("librarySortMode", mode);
+    sortMode = mode;
+    var useTitle = (mode === "alphabetical");
+    allGamesSorter.roleName = useTitle ? "title" : "lastPlayed";
+    allGamesSorter.ascendingOrder = useTitle ? true : false;
+    favoritesSorter.roleName = useTitle ? "title" : "lastPlayed";
+    favoritesSorter.ascendingOrder = useTitle ? true : false;
+}
+
+function toggleSortMenu() {
+    if (sortMenuVisible) {
+        sortMenuVisible = false;
+        sortMenu.focus = false;
+        var gv = getCurrentGridView();
+        if (gv && focusZone === 2) gv.forceActiveFocus();
+    } else if (focusZone === 2 || focusZone === 1) {
+        sortMenuVisible = true;
+        sortMenu.currentButtonIndex = (sortMode === "alphabetical") ? 0 : 1;
+        sortMenu.forceActiveFocus();
     }
 }
 
@@ -121,947 +569,843 @@ readonly property real currentScrollY: {
     function getCurrentGridView() {
         if (collectionGamesLoader.active && collectionGamesLoader.item) {
             return collectionGamesLoader.item.gridView;
-        } else if (pageLoader.item) {
-            if (currentPage === 0 || currentPage === 3) {
-                // All Games или Other
-                return pageLoader.item.gridView;
-            } else if (currentPage === 1) {
-                // Favorites
-                return pageLoader.item.gridView;
-            } else if (currentPage === 2) {
-                // Collections
-                return pageLoader.item.gridCollections;
+        }
+        for (var i in contentContainer.loadedPages) {
+            var page = contentContainer.loadedPages[i];
+            if (page && page.visible) {
+                if (i == 2) { // Страница коллекций
+                    return page.gridCollections ? page.gridCollections : null;
+                } else {
+                    return page.gridView ? page.gridView : null;
+                }
             }
         }
         return null;
     }
 
     // ============================================
-    // ГЛАВНЫЙ ОБРАБОТЧИК КЛАВИШ ДЛЯ ВСЕХ ЗОН
+    // ГЛАВНЫЙ ОБРАБОТЧИК КЛАВИШ
     // ============================================
-    // В root FocusScope
-Keys.onPressed: {
-    if (keyboardOpen) {
-        // Если клава открыта, разрешаем только Вверх (на поиск) или управление внутри клавы
-        if (api.keys.isUp(event)) {
-            topButtonsNames.currentIndex = 0;
-            topButtonsNames.forceActiveFocus();
+    Keys.onPressed: {
+        if (keyboardOpen) {
+            if (api.keys.isUp(event)) {
+                topButtonsNames.currentIndex = 0;
+                topButtonsNames.forceActiveFocus();
+                event.accepted = true;
+            }
+            return; 
+        }
+        
+        if (api.keys.isDetails(event) && !optionsMenuVisible) {
+            var isOnCollectionGrid = (currentPage === 2 && !collectionGamesLoader.active);
+
+            if (focusZone === 2 && !isOnCollectionGrid) {
+                toggleOptionsMenu();
+                event.accepted = true;
+                return;
+            } else if (focusZone === 2 && isOnCollectionGrid) {
+                event.accepted = true;
+                return;
+            }
+        }
+        else if (!closeMenuVisible && api.keys.isMenu(event)) {
+            leftBar.toggle()
+            event.accepted = true
+        }
+        else if (api.keys.isPrevPage(event)) {
+            if (focusZone === 2 || focusZone === 1) {
+                if (currentPage > 0) {
+                    sTab.stop(); sTab.play();
+                    safeNav(currentPage - 1);
+                    goToZone(1);
+                }
+                event.accepted = true
+            }
+        }
+        else if (api.keys.isNextPage(event)) {
+            if (focusZone === 2 || focusZone === 1) {
+                if (currentPage < 3) {
+                    sTab.stop(); sTab.play();
+                    safeNav(currentPage + 1);
+                    goToZone(1);
+                }
+                event.accepted = true
+            }
+        }
+        else if (api.keys.isDown(event)) {
+            if (focusZone === 0) goToZone(1);
+            else if (focusZone === 1) goToZone(2);
             event.accepted = true;
         }
-        return; 
-    }
-    
-    // В основном Keys.onPressed в корне
-if (api.keys.isDetails(event) && !optionsMenuVisible) {
-    // Условие: мы в зоне контента (2) 
-    // И ПРИ ЭТОМ: либо это не страница коллекций, либо мы уже ВНУТРИ лоадера игр коллекции
-    var isOnCollectionGrid = (currentPage === 2 && !collectionGamesLoader.active);
-
-    if (focusZone === 2 && !isOnCollectionGrid) {
-        toggleOptionsMenu();
-        event.accepted = true;
-        return;
-    } else if (focusZone === 2 && isOnCollectionGrid) {
-        event.accepted = true; // Поглощаем нажатие, чтобы ничего не происходило
-        return;
-    }
-}
-
-// В корневом Keys.onPressed, после блока горизонтальной навигации, перед блоком ACCEPT:
-
-// ========== PAGE UP/DOWN ПЕРЕКЛЮЧЕНИЕ СТРАНИЦ ==========
-else if (api.keys.isPrevPage(event)) {
-    if (focusZone === 2 || focusZone === 1) {
-        if (currentPage > 0) {
-            currentPage--
-            topNavRow.currentIndex = currentPage
-            console.log("Prev page:", currentPage)
-            
-            // Сразу ставим фокус на новую страницу
-            goToZone(1) // Фокус на верхний навигатор
+        else if (api.keys.isUp(event)) {
+            if (focusZone === 2) {
+                var gv = getCurrentGridView();
+                var cols = gv ? Math.floor(gv.width / gv.cellWidth) : 1;
+                if (gv && gv.currentIndex < cols) goToZone(1);
+            } else if (focusZone === 1) {
+                goToZone(0);
+            }
+            event.accepted = true;
         }
-        event.accepted = true
-    }
-}
-else if (api.keys.isNextPage(event)) {
-    if (focusZone === 2 || focusZone === 1) {
-        if (currentPage < 3) {
-            currentPage++
-            topNavRow.currentIndex = currentPage
-            console.log("Next page:", currentPage)
-            
-            // Сразу ставим фокус на новую страницу
-            goToZone(1) // Фокус на верхний навигатор
+        else if (event.key === Qt.Key_Left) {
+            if (focusZone === 0 && topButtonsNames.currentIndex > 0) {
+                topButtonsNames.currentIndex--
+                safeNav(currentPage - 1);
+                sTab.stop(); sTab.play();
+                event.accepted = true
+            }
+            else if (focusZone === 1) {
+                if (currentPage > 0) {
+                    sTab.stop(); sTab.play();
+                    safeNav(currentPage - 1);
+                }
+                event.accepted = true
+            }
         }
-        event.accepted = true
-    }
-}
-
-    // Навигация между зонами (0: Поиск, 1: Табы, 2: Игры)
-    if (api.keys.isDown(event)) {
-        if (focusZone === 0) goToZone(1);
-        else if (focusZone === 1) goToZone(2);
-        event.accepted = true;
-    }
-    else if (api.keys.isUp(event)) {
-        if (focusZone === 2) {
-            var gv = getCurrentGridView();
-            var cols = gv ? Math.floor(gv.width / gv.cellWidth) : 1;
-            if (gv && gv.currentIndex < cols) goToZone(1);
-        } else if (focusZone === 1) {
-            goToZone(0);
+        else if (event.key === Qt.Key_Right) {
+            if (focusZone === 0 && topButtonsNames.currentIndex < 3) {
+                topButtonsNames.currentIndex++
+                safeNav(currentPage + 1);
+                sTab.stop(); sTab.play();
+                event.accepted = true
+            }
+            else if (focusZone === 1) {
+                if (currentPage < 3) {
+                    sTab.stop(); sTab.play();
+                    safeNav(currentPage + 1);
+                }
+                event.accepted = true
+            }
         }
-        event.accepted = true;
-    }
-    // ========== КНОПКА CANCEL (BACK/B) ==========
-        else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape) {      
+        else if (!closeMenuVisible && api.keys.isCancel(event) || event.key === Qt.Key_Escape) {      
             if (collectionGamesLoader.active) {
-                // Выход из вложенных игр коллекции
                 console.log("Back from collection games")
                 collectionGamesLoader.active = false
-                // Возвращаем фокус в основную сетку коллекций
                 goToZone(2)
                 event.accepted = true
             }
             else if (focusZone === 2) {
-                // Из основного контента возвращаемся к верхним кнопкам
-                console.log("Back from grid to top buttons")
                 goToZone(1)
                 event.accepted = true
             }
             else if (focusZone === 0) {
-                // Из верхних кнопок возвращаемся к навигатору
-                console.log("Back from top buttons to nav")
                 goToZone(1)
                 event.accepted = true
             }
             else if (focusZone === 1) {
-                // В верхнем навигаторе - открываем меню
-                console.log("Open menu from top nav")
                 theme.openPage(0)
                 event.accepted = true
             }
         }
     }
 
-function goToZone(zoneIndex) {
-    focusZone = zoneIndex;
-    // Сбрасываем фокусы, чтобы не было "двойного фокуса"
-    topNavRow.focus = false;
-    topButtonsNames.focus = false;
-    var gv = getCurrentGridView();
-    if (gv) gv.focus = false;
-
-    if (zoneIndex === 0) {
-        topButtonsNames.focus = true;
-        topButtonsNames.forceActiveFocus();
-    } else if (zoneIndex === 1) {
-        topNavRow.focus = true;
-        topNavRow.forceActiveFocus();
-    } else if (zoneIndex === 2 && gv) {
-        gv.focus = true;
-        gv.forceActiveFocus();
+    function goToZone(zoneIndex) {
+        if (zoneIndex < 0) zoneIndex = 0
+        if (zoneIndex > 2) zoneIndex = 2
+        
+        topNavRow.focus = false
+        topButtonsNames.focus = false
+        
+        var currentGridView = getCurrentGridView();
+        if (currentGridView) {
+            currentGridView.focus = false
+        }
+        
+        focusZone = zoneIndex
+        
+        if (zoneIndex === 1) {
+            topNavRow.focus = true
+            topNavRow.forceActiveFocus()
+        }
+        else if (zoneIndex === 0) {
+            topButtonsNames.focus = true
+            topButtonsNames.forceActiveFocus()
+        }
+        else if (zoneIndex === 2) {
+            currentGridView = getCurrentGridView();
+            if (currentGridView) {
+                currentGridView.focus = true
+                currentGridView.forceActiveFocus()
+            }
+        }
     }
-}
 
-Item {
+    Item {
         id: animatedContent
+        x: root.animX
+        opacity: root.animOpacity
         anchors.fill: parent
-
-   // ===============================
-// === ВЕРХНЯЯ ЗОНА (КНОПКИ) ===
-// ===============================
-Rectangle {
-    id: topZone
-    y: 95
-    width: parent.width
-    height: topH
-    z: 2
-    
-    // Вычисляем прозрачность: 0 на старте, 1.0 после прокрутки на 100 пикселей
-    // clamp(0, 1) гарантирует, что значение не выйдет за пределы
-    property real bgOpacity: Math.min(1.0, Math.max(0.0, (root.currentScrollY + 0) / 100))
-
-    // Используем два слоя: прозрачный контейнер и заливка с изменяемой прозрачностью
-    color: "transparent"
-
+        
+        // Фон
     Rectangle {
+        id: globalBackground
         anchors.fill: parent
         color: "#0F1318"
-        opacity: parent.bgOpacity // Плавное появление фона
-    }
-    
-    // ТЕКСТ СЛЕВА
-    Text {
-        id: leftSideText
-        anchors {
-            left: parent.left
-            leftMargin: 40 // Отступ от края экрана
-            verticalCenter: parent.verticalCenter
-        }
-        text: "<" // Замените на нужный текст
-        color: "white"
-        font.pixelSize: 70
-        font.family: icons.name
-        opacity: (root.focusZone === 2||root.focusZone === 1) ? 1.0 : 0.0
-
-Behavior on opacity {
-    NumberAnimation { duration: 200; easing.type: Easing.OutQuad }
-}
+        z: -100
     }
 
-    // ТЕКСТ СПРАВА (ЗЕРКАЛЬНО)
-    Text {
-        id: rightSideText
-        anchors {
-            right: parent.right
-            rightMargin: 40 // Такой же отступ как слева
-            verticalCenter: parent.verticalCenter
-        }
-        text: ">" // Замените на нужный текст
-        color: "white"
-        font.pixelSize: 70
-        font.family: icons.name
-        opacity: (root.focusZone === 2||root.focusZone === 1) ? 1.0 : 0.0
-
-Behavior on opacity {
-    NumberAnimation { duration: 200; easing.type: Easing.OutQuad }
-}
-        horizontalAlignment: Text.AlignRight
-    }
-
-    Row {
-        id: topNavRow
-        anchors.centerIn: parent
-        spacing: 80
-        focus: true
-        property int currentIndex: 0
-        
+        // ===============================
+        // === ВЕРХНЯЯ ЗОНА (КНОПКИ) ===
+        // ===============================
+        Rectangle {
+            id: topZone
+            y: 95
+            width: parent.width
+            height: topH
+            z: 2
             
-    // КОМПОНЕНТ ДОЛЖЕН БЫТЬ FOCUSSCOPE ИЛИ ИМЕТЬ ФОКУС
-    // focus: true - уже есть
-    
-    
-    // ЯВНО объявляем что принимаем клавиши
-    Keys.enabled: true
-    Keys.forwardTo: []  // Никому не передаём
-    
-    // ЛЕВАЯ КЛАВИША - переключение табов
-    Keys.onLeftPressed: {
-        if (currentIndex > 0) {
-            currentIndex--;
-            // Можно сразу переключить страницу
-            if (collectionGamesLoader.active) collectionGamesLoader.active = false
-            currentPage = currentIndex;
-        }
-        event.accepted = true;  // ← ВАЖНО!
-    }
-    
-    // ПРАВАЯ КЛАВИША - переключение табов  
-    Keys.onRightPressed: {
-        if (currentIndex < 3) {
-            currentIndex++;
-            if (collectionGamesLoader.active) collectionGamesLoader.active = false
-            currentPage = currentIndex;
-        }
-        event.accepted = true;  // ← ВАЖНО!
-    }
-    
-    // ENTER - подтверждение выбора (оставляем как было)
-    Keys.onReturnPressed: {
-        if (collectionGamesLoader.active) collectionGamesLoader.active = false
-        currentPage = currentIndex
-        event.accepted = true
-    }
+            property real bgOpacity: Math.min(1.0, Math.max(0.0, (root.currentScrollY + 0) / 100))
+            color: "transparent"
 
-        Repeater {
-            model: [
-                { name: "All Games" },
-                { name: "Favorites" },
-                { name: "Collections" },
-                { name: "Other" }
-            ]
-
-            delegate: Rectangle {
-                width: 240
-                height: 74
-                radius: 40
-                color: {
-                    if (root.focusZone === 1 && index === currentPage) {
-                        return "white" // ФОКУС НА КНОПКАХ + АКТИВНАЯ ВКЛАДКА
-                    } else if (index === currentPage) {
-                        return "#31343B" // АКТИВНАЯ ВКЛАДКА БЕЗ ФОКУСА
-                    } else {
-                        return "transparent" // НЕАКТИВНАЯ ВКЛАДКА
-                    }
+            Rectangle {
+                id: topBarBg
+                anchors.fill: parent
+                color: "black"
+                opacity: root.isScrolled ? 1.0 : 0.0
+                Behavior on opacity { NumberAnimation { duration: 200 } }
+            }
+            
+            Text {
+                id: leftSideText
+                anchors {
+                    left: parent.left
+                    leftMargin: 40
+                    verticalCenter: parent.verticalCenter
                 }
-                border.width: 0
-                Behavior on color { ColorAnimation { duration: 150 } }
+                text: "<"
+                color: "white"
+                font.pixelSize: 70
+                font.family: icons.name
+                opacity: (root.focusZone === 2||root.focusZone === 1) ? 1.0 : 0.0
+                Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutQuad } }
+            }
 
-                Text {
-                    anchors.centerIn: parent
-                    text: modelData.name
-                    font.pixelSize: 25
-                    font.family: bold.name 
-                    color: (root.focusZone === 1 && index === currentPage) ? "black" : "white"
+            Text {
+                id: rightSideText
+                anchors {
+                    right: parent.right
+                    rightMargin: 40
+                    verticalCenter: parent.verticalCenter
                 }
+                text: ">"
+                color: "white"
+                font.pixelSize: 70
+                font.family: icons.name
+                opacity: (root.focusZone === 2||root.focusZone === 1) ? 1.0 : 0.0
+                Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutQuad } }
+                horizontalAlignment: Text.AlignRight
+            }
 
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
+            Row {
+                id: topNavRow
+                anchors.centerIn: parent
+                spacing: 80
+                focus: true
+                property int currentIndex: 0
+                
+                Keys.enabled: true
+                Keys.forwardTo: []
+                
+                Keys.onLeftPressed: {
+                    if (currentIndex > 0) {
+                        currentIndex--;
                         if (collectionGamesLoader.active) collectionGamesLoader.active = false
-                        currentPage = index
-                        root.goToZone(1) // ОСТАЕМСЯ В ВЕРХНЕЙ ЗОНЕ КНОПОК
+                        safeNav(currentIndex);
+                    }
+                    event.accepted = true;
+                }
+                
+                Keys.onRightPressed: {
+                    if (currentIndex < 3) {
+                        currentIndex++;
+                        if (collectionGamesLoader.active) collectionGamesLoader.active = false
+                        safeNav(currentIndex);
+                    }
+                    event.accepted = true;
+                }
+                
+                Keys.onReturnPressed: {
+                    if (collectionGamesLoader.active) collectionGamesLoader.active = false
+                    safeNav(currentIndex);
+                    event.accepted = true
+                }
+
+                Repeater {
+                    model: [
+                        { name: "ALL GAMES" },
+                        { name: "FAVORITES" },
+                        { name: "COLLECTIONS" },
+                        { name: "OTHER" }
+                    ]
+
+                    delegate: Rectangle {
+                        width: 240
+                        height: 74
+                        radius: 40
+                        color: {
+                            if (root.focusZone === 1 && index === currentPage) {
+                                return "white"
+                            } else if (index === currentPage) {
+                                return "#26FFFFFF"
+                            } else {
+                                return "transparent"
+                            }
+                        }
+                        border.width: 0
+                        Behavior on color { ColorAnimation { duration: 150 } }
+
+                        Text {
+    anchors.centerIn: parent
+    font.pixelSize: 25
+    font.family: bold.name
+    // Устанавливаем черный цвет только для активного таба, иначе белый
+    color: (root.focusZone === 1 && index === currentPage) ? "black" : "white"
+
+    text: {
+        var count = 0;
+        if (index === 0) count = api.allGames.count;
+        else if (index === 1) count = favoritesModel.count;
+        else if (index === 2) count = api.collections.count;
+        else if (index === 3) count = api.allGames.count;
+        
+        // Формируем строку: Название + пробел + число
+        return modelData.name + "      " + "<font color='#808080'>" + count + "</font>";
+    }
+    
+    // Включаем поддержку rich text для отображения серого цвета внутри строки
+    textFormat: Text.StyledText
+}
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                if (collectionGamesLoader.active) collectionGamesLoader.active = false
+                                sTab.stop(); sTab.play();
+                                safeNav(index);
+                                root.goToZone(1);
+                            }
+                        }
                     }
                 }
             }
         }
-    }
-} // ← ЗАКРЫВАЕМ topZone ЗДЕСЬ!
 
-// ===============================
-// === НИЖНЯЯ ЗОНА (КОНТЕНТ) ===
-// ===============================
-Loader {
-    id: pageLoader
-    y: topZone.y + topZone.height * 1.3     // Начало сразу под topZone
-    width: parent.width
-    height: parent.height - (topZone.y + topZone.height + bottomBar.height) // До верхней границы bottomBar
-    sourceComponent: [
-        pageAllGames,
-        pageFavorites,
-        pageCollections,  // ← заменили pageConsoles
-        pageOther
-    ][currentPage]
-}
+        // ===============================
+        // === НИЖНЯЯ ЗОНА (КОНТЕНТ) ===
+        // ===============================
+        Item {
+            id: contentContainer
+            x: root.animX
+            opacity: root.animOpacity
+            y: topZone.y + topZone.height
+            width: parent.width
+            height: parent.height - (topZone.y + topZone.height + bottomBar.height)
+            
+            property var loadedPages: ({})
+            
+            function showPage(index) {
+                for (var i in loadedPages) {
+                    if (loadedPages[i] && loadedPages[i].visible) {
+                        loadedPages[i].visible = false;
+                    }
+                }
+                
+                if (loadedPages[index]) {
+                    loadedPages[index].visible = true;
+                } else {
+                    createPage(index);
+                }
+            }
+            
+            function createPage(index) {
+                var component;
+                var pages = [pageAllGames, pageFavorites, pageCollections, pageOther];
+                
+                if (index >= 0 && index < pages.length) {
+                    component = pages[index];
+                    
+                    var page = component.createObject(contentContainer, {
+                        "width": contentContainer.width,
+                        "height": contentContainer.height,
+                        "visible": true
+                    });
+                    
+                    if (page) {
+                        loadedPages[index] = page;
+                        preloadAdjacentPages(index);
+                    }
+                }
+            }
+            
+            function preloadAdjacentPages(currentIdx) {
+                var pages = [pageAllGames, pageFavorites, pageCollections, pageOther];
+                var indices = [];
+                
+                if (currentIdx < pages.length - 1) indices.push(currentIdx + 1);
+                if (currentIdx > 0) indices.push(currentIdx - 1);
+                
+                for (var i = 0; i < indices.length; i++) {
+                    var idx = indices[i];
+                    if (!loadedPages[idx]) {
+                        var page = pages[idx].createObject(contentContainer, {
+                            "width": contentContainer.width,
+                            "height": contentContainer.height,
+                            "visible": false
+                        });
+                        if (page) {
+                            loadedPages[idx] = page;
+                        }
+                    }
+                }
+            }
+            
+            Component.onCompleted: {
+                createPage(root.currentPage);
+            }
+            
+            Connections {
+                target: root
+                function onCurrentPageChanged() {
+                    contentContainer.showPage(root.currentPage);
+                }
+            }
+        }
+    }
 
     // ============================================================================
-// 1. PAGE ALL GAMES (ЭТАЛОН)
-// ============================================================================
-Component {
-    id: pageAllGames
-    FocusScope {
-        width: parent.width
-        height: parent.height
-        property color flickableColor: "#0F1318"
-        property alias gridView: gridView
+    // 1. PAGE ALL GAMES
+    // ============================================================================
+    Component {
+        id: pageAllGames
+        FocusScope {
+            width: parent.width
+            height: parent.height
+            property var gridView: gridLoader.item ? gridLoader.item.gridView : null
 
-        Rectangle {
-            anchors.fill: parent
-            color: flickableColor
-            z: 1
-            clip: false
+            Loader {
+    id: gridLoader
+    anchors.fill: parent
+    asynchronous: api.memory.has("asyncLoading") ? api.memory.get("asyncLoading") : false
+    sourceComponent: gameGridComponent
+    property var currentModel: searchModel
+    onLoaded: {
+        item.model = currentModel
+        item.gameSelected.connect(function(game) {
+            theme.currentGame = game;
+            theme.openPage(8);
+        })
+    }
+    Connections {
+        target: root
+        function onSearchQueryChanged() {
+            if (item) item.model = currentModel
+        }
+    }
+}
+        }
+    }
 
-            GridView {
-                id: gridView
-                anchors {
-                    fill: parent
-                    leftMargin: parent.width * 0.015
-                    rightMargin: parent.width * 0.015
-                    topMargin: 20
-                    bottomMargin: 20                        
+    // ============================================================================
+    // 2. PAGE FAVORITES
+    // ============================================================================
+    Component {
+        id: pageFavorites
+        FocusScope {
+            width: parent.width
+            height: parent.height
+            property var gridView: gridLoader.item ? gridLoader.item.gridView : null
+
+            Loader {
+                id: gridLoader
+                anchors.fill: parent
+                asynchronous: api.memory.has("asyncLoading") ? api.memory.get("asyncLoading") : false
+                sourceComponent: gameGridComponent
+                onLoaded: {
+                    item.model = sortedFavoritesModel
+                    item.gameSelected.connect(function(game) {
+                        theme.currentGame = game;
+                        theme.openPage(8);
+                    })
                 }
+            }
+        }
+    }
 
-                clip: false
-                cellWidth: width / 5
-                cellHeight: cellWidth * 0.6
-                model: root.searchQuery === "" ? api.allGames : searchModel
-                currentIndex: 0
-                focus: false
+    // ============================================================================
+    // 3. PAGE COLLECTIONS (скопировано из Library.qml с сохранением поиска)
+    // ============================================================================
+    Component {
+        id: pageCollections
+        FocusScope {
+            width: parent.width
+            height: parent.height
+            property color flickableColor: "#0F1318"
+            property alias gridCollections: gridCollections
+
+            Rectangle {
+                anchors.fill: parent
+                color: flickableColor
                 
-                // === НАСТРОЙКИ СКРОЛЛА (ИДЕНТИЧНЫЕ ВЕЗДЕ) ===
-                boundsBehavior: Flickable.StopAtBounds
-                snapMode: GridView.SnapToRow
-                highlightRangeMode: GridView.NoHighlightRange
-
-                highlightMoveDuration: 200
-
-                Keys.onPressed: {
-                    if (root.focusZone === 2) {
-                        var columnsCount = Math.floor(width / cellWidth); // Считаем колонки динамически
-
-                        if (event.key === Qt.Key_Left) {
-                            if (currentIndex > 0) { currentIndex--; event.accepted = true; }
-                        }
-                        else if (event.key === Qt.Key_Right) {
-                            if (currentIndex < count - 1) { currentIndex++; event.accepted = true; }
-                        }
-                        else if (event.key === Qt.Key_Up || api.keys.isFilters(event)) {
-                            if (currentIndex < columnsCount) { root.goToZone(1); event.accepted = true; }
-                            else { currentIndex -= columnsCount; event.accepted = true; }
-                        }
-                        else if (event.key === Qt.Key_Down || api.keys.isDetails(event)) {
-                            if (currentIndex < count - columnsCount) { currentIndex += columnsCount; event.accepted = true; }
-                        }
-                        else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
-                            if (model.get(currentIndex) && model.get(currentIndex).launch) { model.get(currentIndex).launch(); }
-                            event.accepted = true;
-                        }
-                    }
-                }
-
-                delegate: Item {
-                    width: gridView.cellWidth 
-                    height: width * 0.467
-                    property bool hasImage: modelData.assets && (modelData.assets.steam)
-                    property bool isFocused: GridView.isCurrentItem && gridView.focus && root.focusZone === 2
-
-                    Rectangle {
-                        id: gameContainer
-                        anchors.fill: parent
-                        color: hasImage ? "transparent" : "#555"                                           
-
-                        Image {
-                            id: gameImage
-                            width: parent.width * 0.9
-                            height: parent.height * 0.9
-                            anchors.centerIn: parent
-                            source: (modelData.assets && modelData.assets.steam) ? modelData.assets.steam : ""
-                            fillMode: Image.PreserveAspectCrop
-                            visible: hasImage
-                        }
-                        
-                        Item {
-                            width: gridView.cellWidth * 1.1
-                            height: gridView.cellHeight * 1.1
-                            anchors.centerIn: parent
-                            clip: false
-                            opacity: isFocused ? 0.2 : 0.0
-                            z: parent.z - 1
-                            Image {
-                                id: blurSource
-                                anchors.fill: parent
-                                source: modelData && modelData.assets.steam
-                                fillMode: Image.PreserveAspectCrop
-                                visible: false
-                                anchors.left: parent.left
-                                anchors.bottom: parent.bottom
-                            }
-                            FastBlur {
-                                anchors.fill: parent
-                                anchors.margins: -20
-                                source: blurSource
-                                radius: 144
-                                transparentBorder: true
-                            }
-                        }
-                        
-                        Text {
-                            anchors.centerIn: parent
-                            text: modelData.title || ("Game " + (index + 1))
-                            color: "white"
-                            font.pixelSize: 20
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            wrapMode: Text.WordWrap
-                            width: parent.width * 0.9
-                            visible: !hasImage
-                        }
-                    } 
+                GridView {
+                    id: gridCollections
                     
-                    Row {
-                    anchors.left: parent.left
-                    anchors.top: parent.top 
-                    anchors.bottom: parent.bottom 
-                    anchors.topMargin: 258
-                    anchors.leftMargin: 23
-                    anchors.verticalCenter: parent.verticalCenter
-                    z: 800000
-                    spacing: 17
-                 
-                    Text {
-                        text: "L"
-                        color: "#8C939B"
-                        font.pixelSize: 30
-                        font.family: icons.name
-                        anchors.verticalCenter: parent.verticalCenter
-                    }                  
-                    Text {
-    id: libraryText
-    text: {
-        var collectionName = "";
-        // Ищем в какой коллекции находится игра
-        for (var i = 0; i < api.collections.count; i++) {
-            var coll = api.collections.get(i);
-            for (var j = 0; j < coll.games.count; j++) {
-                if (coll.games.get(j).title === modelData.title) {
-                    collectionName = "From " + coll.name;
-                    break;
-                }
-            }
-            if (collectionName !== "") break;
-        }
-        return collectionName;
-    }
-    color: "#8C939B"
-    font.pixelSize: 30
-    font.family: bold.name
-    anchors.verticalCenter: parent.verticalCenter
-    width: parent.parent.width * 0.85
-    elide: Text.ElideRight
-    maximumLineCount: 1
-}
-                }
-
-                    Rectangle {
-                        id: highlightBorder
-                        width: gameContainer.width * 0.93
-                        height: gameContainer.height * 0.97
-                        anchors.centerIn: parent
-                        color: "transparent"
-                        border.width: 4
-                        border.color: "grey"
-                        radius: 2
-                        opacity: isFocused ? 1.0 : 0.0
-                        visible: isFocused
-                        z: 1000
-                        scale: isFocused ? 1.015 : 1.0
-                        Behavior on scale { NumberAnimation { duration: 150 } }
-
-                        SequentialAnimation {
-                            id: appearAnim
-                            running: isFocused
-                            loops: 1
-                            ParallelAnimation {
-                                NumberAnimation { target: highlightBorder; property: "border.width"; to: 10; duration: 100; easing.type: Easing.OutBack }
-                                NumberAnimation { target: highlightBorder; property: "radius"; to: 0; duration: 100; easing.type: Easing.OutBack }
-                                NumberAnimation { target: highlightBorder; property: "width"; to: gameContainer.width * 0.92 + 12; duration: 100; easing.type: Easing.OutBack }
-                                NumberAnimation { target: highlightBorder; property: "height"; to: gameContainer.height * 0.97 + 12; duration: 100; easing.type: Easing.OutBack }
-                                ColorAnimation { target: highlightBorder; property: "border.color"; to: "white"; duration: 100 }
-                                NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.5; duration: 100 }
-                            }
-                            ParallelAnimation {
-                                NumberAnimation { target: highlightBorder; property: "radius"; to: 2; duration: 100; easing.type: Easing.InOutQuad }
-                                NumberAnimation { target: highlightBorder; property: "width"; to: gameContainer.width * 0.92; duration: 100; easing.type: Easing.InOutQuad }
-                                NumberAnimation { target: highlightBorder; property: "height"; to: gameContainer.height * 0.97; duration: 100; easing.type: Easing.InOutQuad }
-                                NumberAnimation { target: highlightBorder; property: "border.width"; to: 4; duration: 100; easing.type: Easing.OutBack }
-                            }
-                            SequentialAnimation {
-                                loops: Animation.Infinite
-                                NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.2; duration: 500 }
-                                NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.5; duration: 500 }
-                            }
-                        }
+                    anchors {
+                        fill: parent
+                        leftMargin: parent.width * 0.015
+                        rightMargin: parent.width * 0.015
+                        topMargin: 20
+                        bottomMargin: 20
                     }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            if (!isFocused) {
-                                gridView.currentIndex = index
-                                gridView.forceActiveFocus()
-                                root.goToZone(2)
-                            } else {
-                                if (modelData && modelData.launch) modelData.launch()
-                            }
-                        }
-                        onPressAndHold: {
-                            if (root.focusZone === 2) {
-                                root.currentFocusedGame = modelData
-                                root.toggleOptionsMenu()
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ============================================================================
-// 2. PAGE FAVORITES (ПОЛНАЯ КОПИЯ ALL GAMES)
-// ============================================================================
-Component {
-    id: pageFavorites
-    FocusScope {
-        width: parent.width
-        height: parent.height
-        property color flickableColor: "#0F1318"
-        property alias gridView: gridView
-
-        Rectangle {
-            anchors.fill: parent
-            color: flickableColor
-            z: 1
-            clip: false
-
-            GridView {
-                id: gridView
-                anchors {
-                    fill: parent
-                    leftMargin: parent.width * 0.015
-                    rightMargin: parent.width * 0.015
-                    topMargin: 20
-                    bottomMargin: 20                        
-                }
-
-                clip: false
-                cellWidth: width / 5
-                cellHeight: cellWidth * 0.6
-                model: {
-                    var source = root.searchQuery === "" ? api.allGames : searchModel
-                    var favorites = []
-                    for (var i = 0; i < source.count; i++) {
-                        var game = source.get(i)
-                        if (game.favorite) favorites.push(game)
-                    }
-                    return favorites
-                }
-                currentIndex: 0
-                focus: false
-                
-                // === НАСТРОЙКИ СКРОЛЛА (ИДЕНТИЧНЫЕ ВЕЗДЕ) ===
-                boundsBehavior: Flickable.StopAtBounds
-                snapMode: GridView.SnapToRow
-                highlightRangeMode: GridView.NoHighlightRange
-                highlightMoveDuration: 200
-
-                Keys.onPressed: {
-                    if (root.focusZone === 2) {
-                        var columnsCount = Math.floor(width / cellWidth);
-                        if (event.key === Qt.Key_Left) { if (currentIndex > 0) currentIndex--; event.accepted = true; }
-                        else if (event.key === Qt.Key_Right) { if (currentIndex < count - 1) currentIndex++; event.accepted = true; }
-                        else if (event.key === Qt.Key_Up || api.keys.isFilters(event)) { if (currentIndex < columnsCount) { root.goToZone(1); event.accepted = true; } else { currentIndex -= columnsCount; event.accepted = true; } }
-                        else if (event.key === Qt.Key_Down || api.keys.isDetails(event)) { if (currentIndex < count - columnsCount) { currentIndex += columnsCount; event.accepted = true; } }
-                        else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
-                             // Обращаемся к массиву, так как model здесь - массив JS
-                            if (model[currentIndex] && model[currentIndex].launch) { model[currentIndex].launch(); }
-                            event.accepted = true;
-                        }
-                    }
-                }
-
-                // === DELEGATE (ПОЛНАЯ КОПИЯ) ===
-                delegate: Item {
-                    width: gridView.cellWidth 
-                    height: width * 0.467
-                    property bool hasImage: modelData.assets && (modelData.assets.steam)
-                    property bool isFocused: GridView.isCurrentItem && gridView.focus && root.focusZone === 2
-
-                    Rectangle {
-                        id: gameContainer
-                        anchors.fill: parent
-                        color: hasImage ? "transparent" : "#555"                                           
-
-                        Image {
-                            id: gameImage
-                            width: parent.width * 0.9
-                            height: parent.height * 0.9
-                            anchors.centerIn: parent
-                            source: (modelData.assets && modelData.assets.steam) ? modelData.assets.steam : ""
-                            fillMode: Image.PreserveAspectCrop
-                            visible: hasImage
-                        }
-                        
-                        Item {
-                            width: gridView.cellWidth * 1.1
-                            height: gridView.cellHeight * 1.1
-                            anchors.centerIn: parent
-                            clip: false
-                            opacity: isFocused ? 0.2 : 0.0
-                            z: parent.z - 1
-                            Image {
-                                id: blurSource
-                                anchors.fill: parent
-                                source: modelData && modelData.assets.steam
-                                fillMode: Image.PreserveAspectCrop
-                                visible: false
-                                anchors.left: parent.left
-                                anchors.bottom: parent.bottom
-                            }
-                            FastBlur {
-                                anchors.fill: parent
-                                anchors.margins: -20
-                                source: blurSource
-                                radius: 144
-                                transparentBorder: true
-                            }
-                        }
-                        Text {
-                            anchors.centerIn: parent
-                            text: modelData.title || ("Game " + (index + 1))
-                            color: "white"
-                            font.pixelSize: 20
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            wrapMode: Text.WordWrap
-                            width: parent.width * 0.9
-                            visible: !hasImage
-                        }
-                    } 
                     
-                    Row {
-                    anchors.left: parent.left
-                    anchors.top: parent.top 
-                    anchors.bottom: parent.bottom 
-                    anchors.topMargin: 258
-                    anchors.leftMargin: 23
-                    anchors.verticalCenter: parent.verticalCenter
-                    z: 800000
-                    spacing: 17
-                 
-                    Text {
-                        text: "L"
-                        color: "#8C939B"
-                        font.pixelSize: 30
-                        font.family: icons.name
-                        anchors.verticalCenter: parent.verticalCenter
-                    }                  
-                    Text {
-    id: libraryText
-    text: {
-        var collectionName = "";
-        // Ищем в какой коллекции находится игра
-        for (var i = 0; i < api.collections.count; i++) {
-            var coll = api.collections.get(i);
-            for (var j = 0; j < coll.games.count; j++) {
-                if (coll.games.get(j).title === modelData.title) {
-                    collectionName = "From " + coll.name;
-                    break;
-                }
-            }
-            if (collectionName !== "") break;
-        }
-        return collectionName;
-    }
-    color: "#8C939B"
-    font.pixelSize: 30
-    font.family: bold.name
-    anchors.verticalCenter: parent.verticalCenter
-    width: parent.parent.width * 0.85
-    elide: Text.ElideRight
-    maximumLineCount: 1
-}
-                }
-
-                    Rectangle {
-                        id: highlightBorder
-                        width: gameContainer.width * 0.93
-                        height: gameContainer.height * 0.97
-                        anchors.centerIn: parent
-                        color: "transparent"
-                        border.width: 4
-                        border.color: "grey"
-                        radius: 2
-                        opacity: isFocused ? 1.0 : 0.0
-                        visible: isFocused
-                        z: 1000
-                        scale: isFocused ? 1.015 : 1.0
-                        Behavior on scale { NumberAnimation { duration: 150 } }
-
-                        SequentialAnimation {
-                            running: isFocused
-                            loops: 1
-                            ParallelAnimation {
-                                NumberAnimation { target: highlightBorder; property: "border.width"; to: 10; duration: 100; easing.type: Easing.OutBack }
-                                NumberAnimation { target: highlightBorder; property: "radius"; to: 0; duration: 100; easing.type: Easing.OutBack }
-                                NumberAnimation { target: highlightBorder; property: "width"; to: gameContainer.width * 0.92 + 12; duration: 100; easing.type: Easing.OutBack }
-                                NumberAnimation { target: highlightBorder; property: "height"; to: gameContainer.height * 0.97 + 12; duration: 100; easing.type: Easing.OutBack }
-                                ColorAnimation { target: highlightBorder; property: "border.color"; to: "white"; duration: 100 }
-                                NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.5; duration: 100 }
-                            }
-                            ParallelAnimation {
-                                NumberAnimation { target: highlightBorder; property: "radius"; to: 2; duration: 100; easing.type: Easing.InOutQuad }
-                                NumberAnimation { target: highlightBorder; property: "width"; to: gameContainer.width * 0.92; duration: 100; easing.type: Easing.InOutQuad }
-                                NumberAnimation { target: highlightBorder; property: "height"; to: gameContainer.height * 0.97; duration: 100; easing.type: Easing.InOutQuad }
-                                NumberAnimation { target: highlightBorder; property: "border.width"; to: 4; duration: 100; easing.type: Easing.OutBack }
-                            }
-                            SequentialAnimation {
-                                loops: Animation.Infinite
-                                NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.2; duration: 500 }
-                                NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.5; duration: 500 }
-                            }
-                        }
+                    onContentYChanged: {
+                        root.isScrolled = (contentY > 30)
                     }
 
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            if (!isFocused) {
-                                gridView.currentIndex = index
-                                gridView.forceActiveFocus()
-                                root.goToZone(2)
-                            } else {
-                                if (modelData && modelData.launch) modelData.launch()
+                    clip: false
+                    cellWidth: width / theme.searchRows
+                    cellHeight: cellWidth * 1
+                    model: api.collections
+                    currentIndex: 0
+                    focus: false
+
+                    snapMode: GridView.NoSnap
+                    highlightRangeMode: GridView.ApplyRange
+                    highlightMoveDuration: 250
+                    cacheBuffer: cellHeight * 3
+
+                    Keys.onPressed: {
+                        if (root.focusZone === 2) {
+                            var columnsCount = Math.floor(width / cellWidth);
+                            if (event.key === Qt.Key_Left) {
+                                if (currentIndex > 0) { currentIndex--; event.accepted = true; sNav.stop(); sNav.play(); }
                             }
-                        }
-                        onPressAndHold: {
-                            if (root.focusZone === 2) {
-                                root.currentFocusedGame = modelData
-                                root.toggleOptionsMenu()
+                            else if (event.key === Qt.Key_Right) {
+                                if (currentIndex < count - 1) { currentIndex++; event.accepted = true; sNav.stop(); sNav.play(); }
                             }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ============================================================================
-// 3. PAGE COLLECTIONS (Свой стиль, без изменений)
-// ============================================================================
-Component {
-    id: pageCollections
-    FocusScope {
-        width: parent.width
-        height: parent.height
-        property color flickableColor: "#0F1318"
-        property alias gridCollections: gridCollections
-
-        Rectangle {
-            anchors.fill: parent
-            color: flickableColor
-            
-            GridView {
-                id: gridCollections
-                anchors {
-                    fill: parent
-                    leftMargin: parent.width * 0.015
-                    rightMargin: parent.width * 0.015
-                    topMargin: 20
-                    bottomMargin: 20
-                }
-
-                clip: false
-                cellWidth: width / 6
-                cellHeight: cellWidth * 1
-                model: api.collections
-                currentIndex: 0
-                focus: false
-
-                boundsBehavior: Flickable.StopAtBounds
-                snapMode: GridView.SnapToRow
-                highlightRangeMode: GridView.NoHighlightRange
-
-                highlightMoveDuration: 200
-
-                Keys.onPressed: {
-                    if (root.focusZone === 2) {
-                        var columnsCount = Math.floor(width / cellWidth);
-                        if (event.key === Qt.Key_Left) { if (currentIndex > 0) { currentIndex--; event.accepted = true; } }
-                        else if (event.key === Qt.Key_Right) { if (currentIndex < count - 1) { currentIndex++; event.accepted = true; } }
-                        else if (event.key === Qt.Key_Up || api.keys.isFilters(event)) { if (currentIndex < columnsCount) { root.goToZone(1); event.accepted = true; } else { currentIndex -= columnsCount; event.accepted = true; } }
-                        else if (event.key === Qt.Key_Down) { if (currentIndex < count - columnsCount) { currentIndex += columnsCount; event.accepted = true; } }
-                        else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
-                            if (model.get(currentIndex)) {
-                                var selectedCollection = model.get(currentIndex);
-                                collectionGamesLoader.collection = selectedCollection;
-                                collectionGamesLoader.active = true;
-                                Qt.callLater(function() {
-                                    if (collectionGamesLoader.item && collectionGamesLoader.item.gridView) {
-                                        if (collectionGamesLoader.item.gridView.count > 0) {
-                                            collectionGamesLoader.item.gridView.currentIndex = 0;
-                                            collectionGamesLoader.item.gridView.forceActiveFocus();
-                                            root.focusZone = 2;
+                            else if (event.key === Qt.Key_Up) {
+                                if (currentIndex < columnsCount) { root.goToZone(1); event.accepted = true; sNav.stop(); sNav.play(); }
+                                else { currentIndex -= columnsCount; event.accepted = true; sNav.stop(); sNav.play(); }
+                            }
+                            else if (event.key === Qt.Key_Down) {
+                                if (currentIndex < count - columnsCount) { currentIndex += columnsCount; event.accepted = true; sNav.stop(); sNav.play(); }
+                            }
+                            else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
+                                if (model.get(currentIndex)) {
+                                    var selectedCollection = model.get(currentIndex);
+                                    collectionGamesLoader.collection = selectedCollection;
+                                    collectionGamesLoader.active = true;
+                                    Qt.callLater(function() {
+                                        if (collectionGamesLoader.item && collectionGamesLoader.item.gridView) {
+                                            if (collectionGamesLoader.item.gridView.count > 0) {
+                                                collectionGamesLoader.item.gridView.currentIndex = 0;
+                                                collectionGamesLoader.item.gridView.forceActiveFocus();
+                                                root.focusZone = 2;
+                                            }
                                         }
-                                    }
-                                });
+                                    });
+                                }
+                                event.accepted = true;
                             }
-                            event.accepted = true;
                         }
                     }
-                }
 
-                delegate: Item {
-                    width: gridCollections.cellWidth
-                    height: gridCollections.cellHeight 
-                    property bool hasImage: modelData.assets && (modelData.assets.boxFront || modelData.assets.poster)
-                    property bool isFocused: GridView.isCurrentItem && gridCollections.focus && root.focusZone === 2
+                    delegate: Item {
+                        width: gridCollections.cellWidth
+                        height: gridCollections.cellHeight 
+                        property bool hasImage: {
+    if (!modelData) return false;
 
-                    Rectangle {
-                        id: collectionContainer
-                        anchors.fill: parent
-                        color: "transparent"
-                        scale: isFocused ? 1.015 : 1.0
-                        Behavior on scale { NumberAnimation { duration: 150 } }
+    // 1. Проверка наличия веб-ассета (capsule) в api.memory
+    if (typeof api !== "undefined" && api.memory) {
+        var customData = api.memory.get("custom_assets_" + modelData.title);
+        if (customData && customData.assets && (customData.assets.capsule !== "" && customData.assets.capsule !== undefined)) {
+            return true;
+        }
+    }
+
+    // 2. Проверка локальных метаданных (poster или boxFront)
+    return !!(modelData.assets && (modelData.assets.poster || modelData.assets.boxFront));
+}
+
+                        property bool isFocused: GridView.isCurrentItem && gridCollections.focus && root.focusZone === 2
 
                         Rectangle {
-                            width: gridCollections.cellWidth * 0.9
-                            height: gridCollections.cellHeight * 0.9
-                            anchors.centerIn: parent
-                            color: "#555"
-                            visible: !hasImage
-                        }
+                            id: collectionContainer
+                            anchors.fill: parent
+                            color: "transparent"
+                            scale: isFocused ? 1.015 : 1.0
+                            Behavior on scale { NumberAnimation { duration: 150 } }
 
-                        Image {
-                            width: gridCollections.cellWidth * 0.9
-                            height: gridCollections.cellHeight * 0.9
-                            anchors.centerIn: parent
-                            source: {
-                                if (modelData.assets) {
-                                    if (modelData.assets.boxFront) return modelData.assets.boxFront                                    
-                                    if (modelData.assets.poster) return modelData.assets.poster
+                            Rectangle {
+                                width: gridCollections.cellWidth * 0.9
+                                height: gridCollections.cellHeight * 0.9
+                                anchors.centerIn: parent
+                                color: "#555"
+                                visible: !hasImage
+                            }
+
+                            Item {
+                                width: gridCollections.cellWidth * 0.9
+                                height: gridCollections.cellHeight * 0.9
+                                anchors.centerIn: parent
+                                visible: !hasImage
+                                clip: true
+
+                                Item {
+                                    anchors.centerIn: parent
+                                    width: parent.width * 1
+                                    height: parent.height * 1
+                                    transform: [
+                                        Matrix4x4 {
+                                            matrix: {
+                                                var skew = 6.5 * Math.PI / 180
+                                                var rot = -35 * Math.PI / 180
+                                                
+                                                var rotMatrix = Qt.matrix4x4(
+                                                    Math.cos(rot), -Math.sin(rot), 0, 0,
+                                                    Math.sin(rot), Math.cos(rot), 0, 0,
+                                                    0, 0, 1, 0,
+                                                    0, 0, 0, 1
+                                                )
+                                                
+                                                var skewMatrix = Qt.matrix4x4(
+                                                    1, Math.tan(skew), 0, 0,
+                                                    0, 1, 0, 0,
+                                                    0, 0, 1, 0,
+                                                    0, 0, 0, 1
+                                                )
+                                                
+                                                return Qt.matrix4x4(1, 0, 0, width/2, 0, 1, 0, height/2, 0, 0, 1, 0, 0, 0, 0, 1).times(rotMatrix.times(skewMatrix)).times(Qt.matrix4x4(1, 0, 0, -width/2, 0, 1, 0, -height/2, 0, 0, 1, 0, 0, 0, 0, 1))
+                                            }
+                                        }
+                                    ]
+
+                                    Grid {
+                                        id: collectionGrid
+                                        anchors.centerIn: parent 
+                                        columns: gameCount === 1 ? 1 : (gameCount <= 4 ? 2 : 3)
+                                        rows: gameCount <= 2 ? 1 : (gameCount <= 5 ? 2 : 3)
+                                        spacing: 30 
+
+                                        property var gameList: modelData.games
+                                        property int gameCount: gameList ? gameList.count : 0
+
+                                        Repeater {
+                                            model: Math.min(parent.gameCount, 9)
+                                            
+                                            delegate: Item {
+                                                width: {
+                                                    if (parent.gameCount === 1) return (gridCollections.cellHeight * 1.3) / 1.5
+                                                    if (parent.gameCount <= 4) return (gridCollections.cellWidth * 1.3 - parent.spacing) / 2
+                                                    return (gridCollections.cellWidth * 1.3 - parent.spacing * 2) / 3
+                                                }
+                                                height: width * 1.5
+
+                                                Image {
+                                                    anchors.fill: parent
+                                                    anchors.leftMargin: parent.leftPadding
+                                                    source: {
+                                                        var game = parent.parent.gameList.get(index)
+                                                        return (game && game.assets) ? (theme.getAssetSource("poster", game)) : ""
+                                                    }
+                                                    fillMode: Image.PreserveAspectCrop
+                                                    visible: source.toString() !== ""
+                                                    asynchronous: api.memory.has("asyncLoading") ? api.memory.get("asyncLoading") : false
+                                                    
+                                                    layer.enabled: true
+                                                    layer.effect: DropShadow {
+                                                        transparentBorder: true
+                                                        radius: 15
+                                                        samples: 16
+                                                        color: "#80000000"
+                                                        horizontalOffset: -30
+                                                        verticalOffset: 20
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
-                                return ""
                             }
-                            fillMode: Image.PreserveAspectCrop
-                            visible: hasImage
+
+                            Image {
+                                width: gridCollections.cellWidth * 0.9
+                                height: gridCollections.cellHeight * 0.9
+                                anchors.centerIn: parent
+                                source: {
+                                    if (modelData.assets) {
+                                        if (modelData.assets.boxFront) return modelData.assets.boxFront                                    
+                                        if (modelData.assets.poster) return modelData.assets.poster
+                                    }
+                                    return ""
+                                }
+                                fillMode: Image.PreserveAspectCrop
+                                visible: hasImage
+                            }
+                            
+                            Rectangle {
+                                id: textSpot
+                                width: gridCollections.cellWidth * 0.9
+                                height: gridCollections.cellHeight * 0.9
+                                anchors.centerIn: parent
+                                color: "transparent"
+                                clip: true
+                                opacity: 0.7
+                                z: 9
+                                visible: !hasImage
+
+                                Image {
+                                    id: blurImg
+                                    width: 2
+                                    height: 2
+                                    anchors.centerIn: parent
+                                    source: {
+    if (modelData && modelData.games && modelData.games.count > 0) {
+        var firstGame = modelData.games.get(0);
+        return theme.getAssetSource("poster", firstGame);
+    }
+    return "";
+}
+                                    fillMode: Image.PreserveAspectCrop
+                                    visible: false 
+                                }
+
+                                FastBlur {
+                                    id: blurredImage
+                                    anchors.fill: parent 
+                                    source: blurImg
+                                    radius: 144
+                                    visible: false 
+                                }
+
+                                layer.enabled: true
+                                layer.effect: OpacityMask {
+                                    source: blurredImage 
+                                    maskSource: Item {
+                                        width: textSpot.width 
+                                        height: textSpot.height 
+                                        
+                                        Canvas {
+                                            anchors.fill: parent
+                                            onPaint: {
+                                                var ctx = getContext("2d")
+                                                ctx.reset()
+                                                
+                                                var textY = countText.y + countText.height / 2
+
+                                                var globalGlow = ctx.createRadialGradient(width/2, height/2, 0, width/2, height/2, width * 0.9)
+                                                globalGlow.addColorStop(0.0, "#90FFFFFF") 
+                                                globalGlow.addColorStop(0.6, "#30FFFFFF") 
+                                                globalGlow.addColorStop(1.0, "transparent")
+                                                ctx.fillStyle = globalGlow
+                                                ctx.fillRect(0, 0, width, height)
+
+                                                var bottomGlow = ctx.createRadialGradient(width/2, textY, 0, width/2, textY, width * 0.8)
+                                                bottomGlow.addColorStop(0.0, "white")
+                                                bottomGlow.addColorStop(0.2, "#E0FFFFFF")
+                                                bottomGlow.addColorStop(0.5, "#60FFFFFF")
+                                                bottomGlow.addColorStop(0.9, "transparent")
+                                                
+                                                ctx.fillStyle = bottomGlow
+                                                ctx.fillRect(0, 0, width, height)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text {
+                                id: countText
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.bottom: parent.bottom 
+                                anchors.bottomMargin: 60
+
+                                text: "( " + (modelData.games ? modelData.games.count : 0) + " )"
+                                color: "grey"
+                                font.pixelSize: 30    
+                                font.family: bold.name
+                                
+                                visible: !hasImage
+                                z: 10
+                                layer.enabled: true
+                                layer.effect: DropShadow { transparentBorder: true; radius: 0; samples: 16; color: "black"; verticalOffset: 2; horizontalOffset: -2}
+                            }
+
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.bottom: countText.top
+                                anchors.bottomMargin: 20
+                                
+                                text: modelData.name || ("Collection " + (index + 1))
+                                color: "white"
+                                font.pixelSize: 30
+                                font.capitalization: Font.AllUppercase
+                                font.family: bold.name
+                                layer.enabled: true
+                                layer.effect: DropShadow { transparentBorder: true; radius: 0; samples: 16; color: "black"; verticalOffset: 2; horizontalOffset: -2}
+                                
+                                width: parent.width * 0.9
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.WordWrap
+                                maximumLineCount: 3 
+                                elide: Text.ElideRight
+                                
+                                visible: !hasImage
+                                z: 10 
+                            }
                         }
 
-                        Text {
+                        Rectangle {
+                            id: highlightBorderCollection
+                            width: gridCollections.cellWidth * 0.93
+                            height: gridCollections.cellHeight * 0.93
                             anchors.centerIn: parent
-                            text: modelData.name || ("Collection " + (index + 1))
-                            color: "white"
-                            font.pixelSize: 20
-                            font.family: bold.name
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            wrapMode: Text.WordWrap
-                            width: parent.width * 0.9
-                            visible: !hasImage
-                        }
-                    }
+                            color: "transparent"
+                            border.width: 5
+                            border.color: "grey"
+                            radius: 2
+                            opacity: isFocused ? 1.0 : 0.0
+                            z: 1000
+                            scale: isFocused ? 1.028 : 1.0
+                            Behavior on scale { NumberAnimation { duration: 150 } }
 
-                    Rectangle {
-                        id: highlightBorderCollection
-                        width: gridCollections.cellWidth * 0.93
-                        height: gridCollections.cellHeight * 0.93
-                        anchors.centerIn: parent
-                        color: "transparent"
-                        border.width: 4
-                        border.color: "grey"
-                        radius: 2
-                        opacity: isFocused ? 1.0 : 0.0
-                        z: 1000
-                        scale: isFocused ? 1.028 : 1.0
-                        Behavior on scale { NumberAnimation { duration: 150 } }
-
-                        SequentialAnimation {
-                            running: isFocused
-                            loops: 1
-                            ParallelAnimation {
-                                NumberAnimation { target: highlightBorderCollection; property: "border.width"; to: 10; duration: 100; easing.type: Easing.OutBack }
-                                NumberAnimation { target: highlightBorderCollection; property: "radius"; to: 0; duration: 100; easing.type: Easing.OutBack }
-                                NumberAnimation { target: highlightBorderCollection; property: "width"; to: gridCollections.cellWidth * 0.93 + 12; duration: 100; easing.type: Easing.OutBack }
-                                NumberAnimation { target: highlightBorderCollection; property: "height"; to: gridCollections.cellHeight * 0.93 + 12; duration: 100; easing.type: Easing.OutBack }
-                                ColorAnimation { target: highlightBorderCollection; property: "border.color"; to: "white"; duration: 100 }
-                                NumberAnimation { target: highlightBorderCollection; property: "opacity"; to: 0.5; duration: 100 }
-                            }
-                            ParallelAnimation {
-                                NumberAnimation { target: highlightBorderCollection; property: "radius"; to: 2; duration: 100; easing.type: Easing.InOutQuad }
-                                NumberAnimation { target: highlightBorderCollection; property: "width"; to: gridCollections.cellWidth * 0.93; duration: 100; easing.type: Easing.InOutQuad }
-                                NumberAnimation { target: highlightBorderCollection; property: "height"; to: gridCollections.cellHeight * 0.93; duration: 100; easing.type: Easing.InOutQuad }
-                                NumberAnimation { target: highlightBorderCollection; property: "border.width"; to: 4; duration: 100; easing.type: Easing.OutBack }
-                            }
                             SequentialAnimation {
-                                loops: Animation.Infinite
-                                NumberAnimation { target: highlightBorderCollection; property: "opacity"; to: 0.2; duration: 500 }
-                                NumberAnimation { target: highlightBorderCollection; property: "opacity"; to: 0.5; duration: 500 }
+                                running: isFocused
+                                loops: 1
+                                ParallelAnimation {
+                                    NumberAnimation { target: highlightBorderCollection; property: "border.width"; to: 10; duration: 200; easing.type: Easing.OutBack }
+                                    NumberAnimation { target: highlightBorderCollection; property: "radius"; to: 0; duration: 200; easing.type: Easing.OutBack }
+                                    NumberAnimation { target: highlightBorderCollection; property: "width"; to: gridCollections.cellWidth * 0.93 + 12; duration: 200; easing.type: Easing.OutBack }
+                                    NumberAnimation { target: highlightBorderCollection; property: "height"; to: gridCollections.cellHeight * 0.93 + 12; duration: 200; easing.type: Easing.OutBack }
+                                    ColorAnimation { target: highlightBorderCollection; property: "border.color"; to: "white"; duration: 200 }
+                                    NumberAnimation { target: highlightBorderCollection; property: "opacity"; to: 0.5; duration: 200 }
+                                }
+                                ParallelAnimation {
+                                    NumberAnimation { target: highlightBorderCollection; property: "radius"; to: 2; duration: 200; easing.type: Easing.InOutQuad }
+                                    NumberAnimation { target: highlightBorderCollection; property: "width"; to: gridCollections.cellWidth * 0.93; duration: 200; easing.type: Easing.InOutQuad }
+                                    NumberAnimation { target: highlightBorderCollection; property: "height"; to: gridCollections.cellHeight * 0.93; duration: 200; easing.type: Easing.InOutQuad }
+                                    NumberAnimation { target: highlightBorderCollection; property: "border.width"; to: 4; duration: 200; easing.type: Easing.OutBack }
+                                }
+                                SequentialAnimation {
+                                    loops: Animation.Infinite
+                                    NumberAnimation { target: highlightBorderCollection; property: "opacity"; to: 0.2; duration: 500 }
+                                    NumberAnimation { target: highlightBorderCollection; property: "opacity"; to: 0.5; duration: 500 }
+                                }
                             }
                         }
-                    }
 
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            if (!isFocused) {
-                                gridCollections.currentIndex = index
-                                gridCollections.forceActiveFocus()
-                                root.goToZone(2)
-                            } else {
-                                collectionGamesLoader.collection = modelData
-                                collectionGamesLoader.active = true
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                if (!isFocused) {
+                                    gridCollections.currentIndex = index
+                                    gridCollections.forceActiveFocus()
+                                    root.goToZone(2)
+                                    sNav.stop(); sNav.play();
+                                } else {
+                                    collectionGamesLoader.collection = modelData
+                                    collectionGamesLoader.active = true
+                                }
                             }
                         }
                     }
@@ -1069,478 +1413,82 @@ Component {
             }
         }
     }
-}
 
-// ============================================================================
-// 4. LOADER (ВНУТРИ - ПОЛНАЯ КОПИЯ ALL GAMES)
-// ============================================================================
-Loader {
-    id: collectionGamesLoader
-    y: topZone.y + topZone.height
-    width: parent.width
-    height: parent.height - (topZone.y + topZone.height + bottomBar.height)
-    active: false
-    property var collection
-    
-    sourceComponent: FocusScope {
+    // ============================================================================
+    // 4. LOADER ДЛЯ ИГР КОЛЛЕКЦИИ (использует общий компонент)
+    // ============================================================================
+    Loader {
+        id: collectionGamesLoader
+        y: topZone.y + topZone.height
         width: parent.width
-        height: parent.height
-        property color flickableColor: "#0F1318"
-        property alias gridView: gridView
+        height: parent.height - (topZone.y + topZone.height + bottomBar.height)
+        active: false
+        asynchronous: api.memory.has("asyncLoading") ? api.memory.get("asyncLoading") : false
+        property var collection
+        
+        sourceComponent: FocusScope {
+            width: parent.width
+            height: parent.height
+            property var gridView: gridLoader.item ? gridLoader.item.gridView : null
 
-        Rectangle {
-            anchors.fill: parent
-            color: flickableColor
-            z: 1
-            clip: false
-
-            GridView {
-                id: gridView
-                anchors {
-                    fill: parent
-                    leftMargin: parent.width * 0.015
-                    rightMargin: parent.width * 0.015
-                    topMargin: 20
-                    bottomMargin: 20                        
-                }
-
-                clip: false
-                cellWidth: width / 5
-                cellHeight: cellWidth * 0.6
-                
-                // *** ЕДИНСТВЕННОЕ ИЗМЕНЕНИЕ: MODEL ***
-                model: {
+            Loader {
+                id: gridLoader
+                anchors.fill: parent
+                asynchronous: api.memory.has("asyncLoading") ? api.memory.get("asyncLoading") : false
+                sourceComponent: gameGridComponent
+                onLoaded: {
+                    // Модель: если есть поиск, фильтруем игры коллекции
                     if (root.searchQuery === "") {
-                        return collectionGamesLoader.collection ? collectionGamesLoader.collection.games : null
+                        item.model = collectionGamesLoader.collection ? collectionGamesLoader.collection.games : null
                     } else {
-                        var collectionGames = collectionGamesLoader.collection ? collectionGamesLoader.collection.games : null
-                        if (!collectionGames) return null
                         var filtered = []
-                        for (var i = 0; i < collectionGames.count; i++) {
-                            var game = collectionGames.get(i)
-                            if (game.title && game.title.toLowerCase().includes(root.searchQuery.toLowerCase())) {
-                                filtered.push(game)
+                        var games = collectionGamesLoader.collection ? collectionGamesLoader.collection.games : null
+                        if (games) {
+                            for (var i = 0; i < games.count; i++) {
+                                var game = games.get(i)
+                                if (root.matchesSearchQuery(game.title)) {
+                                    filtered.push(game)
+                                }
                             }
                         }
-                        return filtered
+                        item.model = filtered
                     }
-                }
-                
-                currentIndex: 0
-                focus: false
-                
-                // === НАСТРОЙКИ СКРОЛЛА (КОПИЯ) ===
-                boundsBehavior: Flickable.StopAtBounds
-                snapMode: GridView.SnapToRow
-                highlightRangeMode: GridView.NoHighlightRange
-
-                highlightMoveDuration: 200
-
-                Keys.onPressed: {
-                    if (root.focusZone === 2) {
-                        var columnsCount = Math.floor(width / cellWidth);
-                        if (event.key === Qt.Key_Left) { if (currentIndex > 0) { currentIndex--; event.accepted = true; } }
-                        else if (event.key === Qt.Key_Right) { if (currentIndex < count - 1) { currentIndex++; event.accepted = true; } }
-                        else if (event.key === Qt.Key_Up || api.keys.isFilters(event)) { if (currentIndex < columnsCount) { root.goToZone(1); event.accepted = true; } else { currentIndex -= columnsCount; event.accepted = true; } }
-                        else if (event.key === Qt.Key_Down || api.keys.isDetails(event)) { if (currentIndex < count - columnsCount) { currentIndex += columnsCount; event.accepted = true; } }
-                        else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
-                            if (model.get(currentIndex) && model.get(currentIndex).launch) { model.get(currentIndex).launch(); }
-                            event.accepted = true;
-                        }
-                    }
-                }
-
-                // === DELEGATE (ПОЛНАЯ КОПИЯ) ===
-                delegate: Item {
-                    width: gridView.cellWidth 
-                    height: width * 0.467
-                    property bool hasImage: modelData.assets && (modelData.assets.steam)
-                    property bool isFocused: GridView.isCurrentItem && gridView.focus && root.focusZone === 2
-
-                    Rectangle {
-                        id: gameContainer
-                        anchors.fill: parent
-                        color: hasImage ? "transparent" : "#555"                                           
-
-                        Image {
-                            id: gameImage
-                            width: parent.width * 0.9
-                            height: parent.height * 0.9
-                            anchors.centerIn: parent
-                            source: (modelData.assets && modelData.assets.steam) ? modelData.assets.steam : ""
-                            fillMode: Image.PreserveAspectCrop
-                            visible: hasImage
-                        }
-                        
-                        Item {
-                            width: gridView.cellWidth * 1.1
-                            height: gridView.cellHeight * 1.1
-                            anchors.centerIn: parent
-                            clip: false
-                            opacity: isFocused ? 0.2 : 0.0
-                            z: parent.z - 1
-                            Image {
-                                id: blurSource
-                                anchors.fill: parent
-                                source: modelData && modelData.assets.steam
-                                fillMode: Image.PreserveAspectCrop
-                                visible: false
-                                anchors.left: parent.left
-                                anchors.bottom: parent.bottom
-                            }
-                            FastBlur {
-                                anchors.fill: parent
-                                anchors.margins: -20
-                                source: blurSource
-                                radius: 144
-                                transparentBorder: true
-                            }
-                        }
-                        Text {
-                            anchors.centerIn: parent
-                            text: modelData.title || ("Game " + (index + 1))
-                            color: "white"
-                            font.pixelSize: 20
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            wrapMode: Text.WordWrap
-                            width: parent.width * 0.9
-                            visible: !hasImage
-                        }
-                    } 
-                    
-                    Row {
-                    anchors.left: parent.left
-                    anchors.top: parent.top 
-                    anchors.bottom: parent.bottom 
-                    anchors.topMargin: 258
-                    anchors.leftMargin: 23
-                    anchors.verticalCenter: parent.verticalCenter
-                    z: 800000
-                    spacing: 17
-                 
-                    Text {
-                        text: "L"
-                        color: "#8C939B"
-                        font.pixelSize: 30
-                        font.family: icons.name
-                        anchors.verticalCenter: parent.verticalCenter
-                    }                  
-                    Text {
-    id: libraryText
-    text: {
-        var collectionName = "";
-        // Ищем в какой коллекции находится игра
-        for (var i = 0; i < api.collections.count; i++) {
-            var coll = api.collections.get(i);
-            for (var j = 0; j < coll.games.count; j++) {
-                if (coll.games.get(j).title === modelData.title) {
-                    collectionName = "From " + coll.name;
-                    break;
-                }
-            }
-            if (collectionName !== "") break;
-        }
-        return collectionName;
-    }
-    color: "#8C939B"
-    font.pixelSize: 30
-    font.family: bold.name
-    anchors.verticalCenter: parent.verticalCenter
-    width: parent.parent.width * 0.85
-    elide: Text.ElideRight
-    maximumLineCount: 1
-}
-                }
-
-                    Rectangle {
-                        id: highlightBorder
-                        width: gameContainer.width * 0.93
-                        height: gameContainer.height * 0.97
-                        anchors.centerIn: parent
-                        color: "transparent"
-                        border.width: 4
-                        border.color: "grey"
-                        radius: 2
-                        opacity: isFocused ? 1.0 : 0.0
-                        visible: isFocused
-                        z: 1000
-                        scale: isFocused ? 1.015 : 1.0
-                        Behavior on scale { NumberAnimation { duration: 150 } }
-
-                        SequentialAnimation {
-                            running: isFocused
-                            loops: 1
-                            ParallelAnimation {
-                                NumberAnimation { target: highlightBorder; property: "border.width"; to: 10; duration: 100; easing.type: Easing.OutBack }
-                                NumberAnimation { target: highlightBorder; property: "radius"; to: 0; duration: 100; easing.type: Easing.OutBack }
-                                NumberAnimation { target: highlightBorder; property: "width"; to: gameContainer.width * 0.92 + 12; duration: 100; easing.type: Easing.OutBack }
-                                NumberAnimation { target: highlightBorder; property: "height"; to: gameContainer.height * 0.97 + 12; duration: 100; easing.type: Easing.OutBack }
-                                ColorAnimation { target: highlightBorder; property: "border.color"; to: "white"; duration: 100 }
-                                NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.5; duration: 100 }
-                            }
-                            ParallelAnimation {
-                                NumberAnimation { target: highlightBorder; property: "radius"; to: 2; duration: 100; easing.type: Easing.InOutQuad }
-                                NumberAnimation { target: highlightBorder; property: "width"; to: gameContainer.width * 0.92; duration: 100; easing.type: Easing.InOutQuad }
-                                NumberAnimation { target: highlightBorder; property: "height"; to: gameContainer.height * 0.97; duration: 100; easing.type: Easing.InOutQuad }
-                                NumberAnimation { target: highlightBorder; property: "border.width"; to: 4; duration: 100; easing.type: Easing.OutBack }
-                            }
-                            SequentialAnimation {
-                                loops: Animation.Infinite
-                                NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.2; duration: 500 }
-                                NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.5; duration: 500 }
-                            }
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            if (!isFocused) {
-                                gridView.currentIndex = index
-                                gridView.forceActiveFocus()
-                                root.goToZone(2)
-                            } else {
-                                if (modelData && modelData.launch) modelData.launch()
-                            }
-                        }
-                        onPressAndHold: {
-                            if (root.focusZone === 2) {
-                                root.currentFocusedGame = modelData
-                                root.toggleOptionsMenu()
-                            }
-                        }
-                    }
+                    item.gameSelected.connect(function(game) {
+                        theme.currentGame = game;
+                        theme.openPage(8);
+                    })
                 }
             }
         }
     }
-}
 
-// ============================================================================
-// 5. PAGE OTHER (ПОЛНАЯ КОПИЯ ALL GAMES)
-// ============================================================================
-Component {
-    id: pageOther
-    FocusScope {
-        width: parent.width
-        height: parent.height
-        property color flickableColor: "#0F1318"
-        property alias gridView: gridView
+    // ============================================================================
+    // 5. PAGE OTHER
+    // ============================================================================
+    Component {
+        id: pageOther
+        FocusScope {
+            width: parent.width
+            height: parent.height
+            property var gridView: gridLoader.item ? gridLoader.item.gridView : null
 
-        Rectangle {
-            anchors.fill: parent
-            color: flickableColor
-            z: 1
-            clip: false
-
-            GridView {
-                id: gridView
-                anchors {
-                    fill: parent
-                    leftMargin: parent.width * 0.015
-                    rightMargin: parent.width * 0.015
-                    topMargin: 20
-                    bottomMargin: 20                        
-                }
-
-                clip: false
-                cellWidth: width / 5
-                cellHeight: cellWidth * 0.6
-                model: root.searchQuery === "" ? api.allGames : searchModel // Используем базовый поиск
-                currentIndex: 0
-                focus: false
-                
-                // === НАСТРОЙКИ СКРОЛЛА (КОПИЯ) ===
-                boundsBehavior: Flickable.StopAtBounds
-                snapMode: GridView.SnapToRow
-                highlightRangeMode: GridView.NoHighlightRange
-                highlightMoveDuration: 200
-
-                Keys.onPressed: {
-                    if (root.focusZone === 2) {
-                        var columnsCount = Math.floor(width / cellWidth);
-                        if (event.key === Qt.Key_Left) { if (currentIndex > 0) { currentIndex--; event.accepted = true; } }
-                        else if (event.key === Qt.Key_Right) { if (currentIndex < count - 1) { currentIndex++; event.accepted = true; } }
-                        else if (event.key === Qt.Key_Up || api.keys.isFilters(event)) { if (currentIndex < columnsCount) { root.goToZone(1); event.accepted = true; } else { currentIndex -= columnsCount; event.accepted = true; } }
-                        else if (event.key === Qt.Key_Down || api.keys.isDetails(event)) { if (currentIndex < count - columnsCount) { currentIndex += columnsCount; event.accepted = true; } }
-                        else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
-                            if (model.get(currentIndex) && model.get(currentIndex).launch) { model.get(currentIndex).launch(); }
-                            event.accepted = true;
-                        }
-                    }
-                }
-
-                // === DELEGATE (ПОЛНАЯ КОПИЯ) ===
-                delegate: Item {
-                    width: gridView.cellWidth 
-                    height: width * 0.467
-                    property bool hasImage: modelData.assets && (modelData.assets.steam)
-                    property bool isFocused: GridView.isCurrentItem && gridView.focus && root.focusZone === 2
-
-                    Rectangle {
-                        id: gameContainer
-                        anchors.fill: parent
-                        color: hasImage ? "transparent" : "#555"                                           
-
-                        Image {
-                            id: gameImage
-                            width: parent.width * 0.9
-                            height: parent.height * 0.9
-                            anchors.centerIn: parent
-                            source: (modelData.assets && modelData.assets.steam) ? modelData.assets.steam : ""
-                            fillMode: Image.PreserveAspectCrop
-                            visible: hasImage
-                        }
-                        
-                        Item {
-                            width: gridView.cellWidth * 1.1
-                            height: gridView.cellHeight * 1.1
-                            anchors.centerIn: parent
-                            clip: false
-                            opacity: isFocused ? 0.2 : 0.0
-                            z: parent.z - 1
-                            Image {
-                                id: blurSource
-                                anchors.fill: parent
-                                source: modelData && modelData.assets.steam
-                                fillMode: Image.PreserveAspectCrop
-                                visible: false
-                                anchors.left: parent.left
-                                anchors.bottom: parent.bottom
-                            }
-                            FastBlur {
-                                anchors.fill: parent
-                                anchors.margins: -20
-                                source: blurSource
-                                radius: 144
-                                transparentBorder: true
-                            }
-                        }
-                        Text {
-                            anchors.centerIn: parent
-                            text: modelData.title || ("Game " + (index + 1))
-                            color: "white"
-                            font.pixelSize: 20
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            wrapMode: Text.WordWrap
-                            width: parent.width * 0.9
-                            visible: !hasImage
-                        }
-                    } 
-                    
-                    Row {
-                    anchors.left: parent.left
-                    anchors.top: parent.top 
-                    anchors.bottom: parent.bottom 
-                    anchors.topMargin: 258
-                    anchors.leftMargin: 23
-                    anchors.verticalCenter: parent.verticalCenter
-                    z: 800000
-                    spacing: 17
-                 
-                    Text {
-                        text: "L"
-                        color: "#8C939B"
-                        font.pixelSize: 30
-                        font.family: icons.name
-                        anchors.verticalCenter: parent.verticalCenter
-                    }                  
-                    Text {
-    id: libraryText
-    text: {
-        var collectionName = "";
-        // Ищем в какой коллекции находится игра
-        for (var i = 0; i < api.collections.count; i++) {
-            var coll = api.collections.get(i);
-            for (var j = 0; j < coll.games.count; j++) {
-                if (coll.games.get(j).title === modelData.title) {
-                    collectionName = "From " + coll.name;
-                    break;
-                }
-            }
-            if (collectionName !== "") break;
-        }
-        return collectionName;
-    }
-    color: "#8C939B"
-    font.pixelSize: 30
-    font.family: bold.name
-    anchors.verticalCenter: parent.verticalCenter
-    width: parent.parent.width * 0.85
-    elide: Text.ElideRight
-    maximumLineCount: 1
-}
-                }
-
-                    Rectangle {
-                        id: highlightBorder
-                        width: gameContainer.width * 0.93
-                        height: gameContainer.height * 0.97
-                        anchors.centerIn: parent
-                        color: "transparent"
-                        border.width: 4
-                        border.color: "grey"
-                        radius: 2
-                        opacity: isFocused ? 1.0 : 0.0
-                        visible: isFocused
-                        z: 1000
-                        scale: isFocused ? 1.015 : 1.0
-                        Behavior on scale { NumberAnimation { duration: 150 } }
-
-                        SequentialAnimation {
-                            running: isFocused
-                            loops: 1
-                            ParallelAnimation {
-                                NumberAnimation { target: highlightBorder; property: "border.width"; to: 10; duration: 100; easing.type: Easing.OutBack }
-                                NumberAnimation { target: highlightBorder; property: "radius"; to: 0; duration: 100; easing.type: Easing.OutBack }
-                                NumberAnimation { target: highlightBorder; property: "width"; to: gameContainer.width * 0.92 + 12; duration: 100; easing.type: Easing.OutBack }
-                                NumberAnimation { target: highlightBorder; property: "height"; to: gameContainer.height * 0.97 + 12; duration: 100; easing.type: Easing.OutBack }
-                                ColorAnimation { target: highlightBorder; property: "border.color"; to: "white"; duration: 100 }
-                                NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.5; duration: 100 }
-                            }
-                            ParallelAnimation {
-                                NumberAnimation { target: highlightBorder; property: "radius"; to: 2; duration: 100; easing.type: Easing.InOutQuad }
-                                NumberAnimation { target: highlightBorder; property: "width"; to: gameContainer.width * 0.92; duration: 100; easing.type: Easing.InOutQuad }
-                                NumberAnimation { target: highlightBorder; property: "height"; to: gameContainer.height * 0.97; duration: 100; easing.type: Easing.InOutQuad }
-                                NumberAnimation { target: highlightBorder; property: "border.width"; to: 4; duration: 100; easing.type: Easing.OutBack }
-                            }
-                            SequentialAnimation {
-                                loops: Animation.Infinite
-                                NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.2; duration: 500 }
-                                NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.5; duration: 500 }
-                            }
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            if (!isFocused) {
-                                gridView.currentIndex = index
-                                gridView.forceActiveFocus()
-                                root.goToZone(2)
-                            } else {
-                                if (modelData && modelData.launch) modelData.launch()
-                            }
-                        }
-                        onPressAndHold: {
-                            if (root.focusZone === 2) {
-                                root.currentFocusedGame = modelData
-                                root.toggleOptionsMenu()
-                            }
-                        }
-                    }
+            Loader {
+                id: gridLoader
+                anchors.fill: parent
+                asynchronous: api.memory.has("asyncLoading") ? api.memory.get("asyncLoading") : false
+                sourceComponent: gameGridComponent
+                onLoaded: {
+                    item.model = root.searchQuery === "" ? api.allGames : searchModel
+                    item.gameSelected.connect(function(game) {
+                        theme.currentGame = game;                        
+                        theme.openPage(8);
+                    })
                 }
             }
         }
     }
-}
-}
-    
 
-        /* ================= TOP BAR ================= */
+    /* ================= TOP BAR ================= */
     Rectangle {
         id: topBar
         anchors.left: root.left   
@@ -1549,14 +1497,12 @@ Component {
         color: "transparent"
         z: 10000
 
-        // Фоновая подложка бара
         Rectangle {
             anchors.fill: parent
             color: "black"
             z: -1
         }
 
-        // ======= ROW: TOP BUTTONS =======
         Row {
             id: topButtonsNames
             anchors {
@@ -1570,44 +1516,40 @@ Component {
             spacing: 0
             focus: false
 
-            // Внутри Row { id: topButtonsNames ... }
-// Внутри Row { id: topButtonsNames ... }
-Keys.onPressed: {
-    // Если мы в поиске и он АКТИВЕН (фокус на нем)
-    if (currentIndex === 0 && root.focusZone === 0) {
-        if (root.keyboardOpen) {
-            // Если клава открыта - стрелки двигают курсор
-            if (event.key === Qt.Key_Left && keyboardContainer.cursorPosition > 0) {
-                keyboardContainer.cursorPosition--;
-                event.accepted = true;
-            } else if (event.key === Qt.Key_Right && keyboardContainer.cursorPosition < root.searchQuery.length) {
-                keyboardContainer.cursorPosition++;
-                event.accepted = true;
+            Keys.onPressed: {
+                if (currentIndex === 0 && root.focusZone === 0) {
+                    if (root.keyboardOpen) {
+                        if (event.key === Qt.Key_Left && keyboardContainer.cursorPosition > 0) {
+                            sNav.stop(); sNav.play();
+                            keyboardContainer.cursorPosition--;
+                            event.accepted = true;
+                        } else if (event.key === Qt.Key_Right && keyboardContainer.cursorPosition < root.searchQuery.length) {
+                            sNav.stop(); sNav.play();
+                            keyboardContainer.cursorPosition++;
+                            event.accepted = true;
+                        }
+                    } else {
+                        if (event.key === Qt.Key_Right) { currentIndex = 1; event.accepted = true; sNav.stop(); sNav.play();}
+                    }
+                    
+                    if (api.keys.isAccept(event)) { root.openKeyboard(); event.accepted = true;}
+                } 
+                else if (root.focusZone === 0) {
+                    if (event.key === Qt.Key_Left) { 
+                        currentIndex--; 
+                        event.accepted = true; 
+                        sNav.stop(); sNav.play();
+                    } else if (event.key === Qt.Key_Right && currentIndex < 3) { 
+                        currentIndex++; 
+                        event.accepted = true; 
+                        sNav.stop(); sNav.play();
+                    }
+                }
             }
-        } else {
-            // Если клава закрыта - стрелки ПЕРЕКЛЮЧАЮТ кнопки в баре
-            if (event.key === Qt.Key_Right) { currentIndex = 1; event.accepted = true; }
-        }
-        
-        if (api.keys.isAccept(event)) { root.openKeyboard(); event.accepted = true; }
-    } 
-    // Навигация по остальным кнопкам (Сеть, Батарея и т.д.)
-    else if (root.focusZone === 0) {
-        if (event.key === Qt.Key_Left) { 
-            currentIndex--; 
-            event.accepted = true; 
-        } else if (event.key === Qt.Key_Right && currentIndex < 3) { 
-            currentIndex++; 
-            event.accepted = true; 
-        }
-    }
-}
-
 
             // ===== 0. SEARCH =====
             Rectangle {
                 id: topBtnSearch
-                // Авто-ширина: занимает всё место, кроме остальных кнопок
                 width: topBar.width - (topBtnNet.width + topBarBattery.width + topBtnClock.width + topBtnUser.width + (topButtonsNames.spacing * 4) + (topButtonsNames.anchors.rightMargin * 2))
                 height: root.topH
                 color: (topButtonsNames.currentIndex === 0 && root.focusZone === 0) ? "white" : "transparent"
@@ -1615,7 +1557,6 @@ Keys.onPressed: {
                 border.color: "transparent"
                 Behavior on color { ColorAnimation { duration: 150 } }
                 
-                // Иконка Лупы
                 Text {
                     id: searchIcon
                     anchors.verticalCenter: parent.verticalCenter
@@ -1627,51 +1568,116 @@ Keys.onPressed: {
                     readonly property real posRight: topBtnSearch.width - 50
                     readonly property real posLeft: 15
                     
-                    // Позиция зависит от фокуса
                     x: posLeft 
                 }
   
-                // Текст поиска в верхнем баре
-Text {
-    id: searchText
-    anchors.verticalCenter: parent.verticalCenter
-    x: 15 + 50
-    // Текст: подсказка видна только если поисковый запрос пуст И клавиатура закрыта
-    text: (root.searchQuery === "" && !root.keyboardOpen) ? "Search games in your Library..." : root.searchQuery
-    font.pixelSize: 30
-    font.family: bold.name
-    color: (root.searchQuery === "" && !root.keyboardOpen) ? "#8C939B" : ((topButtonsNames.currentIndex === 0 && root.focusZone === 0) ? "black" : "white")
+                            // Обрезающая обертка для текста поиска
+            Item {
+                id: searchInputWrapper
+                anchors.verticalCenter: parent.verticalCenter
+                height: parent.height
+                // Защищаем правый край от наползания на другие кнопки
+                width: parent.width - targetX - 20 
+                clip: true // 1. Текст не выходит за рамки
+                
+                readonly property real targetX: 15 + 50
+                x: targetX + 20 // начальная позиция для анимации появления
+                
+                opacity: 0
+                visible: false
 
-    // Мигающий курсор
-    Rectangle {
-        id: cursorBar
-        width: 3; height: 35
-        color: parent.color
-        visible: root.keyboardOpen && topButtonsNames.currentIndex === 0 && root.focusZone === 0
-        x: cursorWidthProvider.width // Текст до позиции курсора
-        anchors.verticalCenter: parent.verticalCenter
-        
-        SequentialAnimation on opacity {
-            running: cursorBar.visible; loops: Animation.Infinite
-            NumberAnimation { from: 1; to: 0; duration: 500 }
-            NumberAnimation { from: 0; to: 1; duration: 500 }
-        }
-    }
-    Text { id: cursorWidthProvider; visible: false; text: root.searchQuery.substring(0, keyboardContainer.cursorPosition); font: parent.font }
-}
+                Item {
+                    id: searchScrollable
+                    height: parent.height
+                    
+                    // Локальная позиция курсора
+                    property real cursorLocalX: searchCursorProvider.width
+                    
+                    // 2. Центрируем текст на курсоре, если он длинный
+                    property real idealX: (searchInputWrapper.width / 2) - cursorLocalX
+                    
+                    // x здесь от 0, так как отступ от иконки лупы уже задан самой оберткой
+                    x: Math.min(0, idealX) 
+                    Behavior on x { NumberAnimation { duration: 100 } }
+                    
+                    Text {
+                        id: searchTextInner
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: (root.searchQuery === "" && !root.keyboardOpen) ? "Search games in your Library..." : root.searchQuery
+                        font.pixelSize: 30
+                        font.family: bold.name
+                        color: (root.searchQuery === "" && !root.keyboardOpen) ? "#8C939B" : ((topButtonsNames.currentIndex === 0 && root.focusZone === 0) ? "black" : "white")
+                    }
+
+                    Rectangle {
+                        id: cursorBarSearch
+                        width: 3; height: 35
+                        color: searchTextInner.color
+                        visible: root.keyboardOpen && topButtonsNames.currentIndex === 0 && root.focusZone === 0
+                        x: searchScrollable.cursorLocalX
+                        anchors.verticalCenter: parent.verticalCenter
+                        
+                        SequentialAnimation on opacity {
+                            running: cursorBarSearch.visible; loops: Animation.Infinite
+                            NumberAnimation { from: 1; to: 0; duration: 500 }
+                            NumberAnimation { from: 0; to: 1; duration: 500 }
+                        }
+                    }
+                    
+                    Text { 
+                        id: searchCursorProvider; visible: false; 
+                        font: searchTextInner.font; 
+                        text: root.searchQuery.substring(0, keyboardContainer.cursorPosition) 
+                    }
+                }
+
+                // Сохраняем логику анимации появления поиска при фокусе
+                states: [
+                    State {
+                        name: "focused"
+                        when: topButtonsNames.currentIndex === 0 && root.focusZone === 0
+                        PropertyChanges { target: searchInputWrapper; x: searchInputWrapper.targetX; opacity: 1; visible: true }
+                    }
+                ]
+
+                transitions: [
+                    Transition {
+                        from: "*"; to: "focused"
+                        SequentialAnimation {
+                            PropertyAction { target: searchInputWrapper; property: "visible"; value: true }
+                            PauseAnimation { duration: 150 }
+                            ParallelAnimation {
+                                NumberAnimation { target: searchInputWrapper; property: "opacity"; to: 1; duration: 200; easing.type: Easing.OutCubic }
+                                NumberAnimation { target: searchInputWrapper; property: "x"; to: searchInputWrapper.targetX; duration: 200; easing.type: Easing.OutCubic }
+                            }
+                        }
+                    },
+                    Transition {
+                        from: "focused"; to: "*"
+                        SequentialAnimation {
+                            ParallelAnimation {
+                                NumberAnimation { target: searchInputWrapper; property: "opacity"; to: 0; duration: 150; easing.type: Easing.InCubic }
+                                NumberAnimation { target: searchInputWrapper; property: "x"; to: searchInputWrapper.targetX + 20; duration: 150; easing.type: Easing.InCubic }
+                            }
+                            PropertyAction { target: searchInputWrapper; property: "visible"; value: false }
+                        }
+                    }
+                ]
+            }
 
 
                 MouseArea { 
-    anchors.fill: parent
-    onClicked: {
-        if (root.focusZone === 0 && topButtonsNames.currentIndex === 0) {
-            openKeyboard(); // Второе нажатие открывает клавиатуру
-        } else {
-            root.goToZone(0);
-            topButtonsNames.currentIndex = 0;
-        }
-    }
-}
+                    anchors.fill: parent
+                    onClicked: if (!root.closeMenuVisible) {
+                        if (root.focusZone === 0 && topButtonsNames.currentIndex === 0) {
+                            openKeyboard();
+                        } else {
+                            root.goToZone(0);
+                            sNav.stop(); sNav.play();
+                            topButtonsNames.currentIndex = 0;
+                        }
+                    }
+                }
             }
 
             // ===== 1. NETWORK =====
@@ -1685,7 +1691,7 @@ Text {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "o"
+                    text: theme.isOnline ? "°" : "o" 
                     font.pixelSize: 35
                     font.family: icons.name
                     color: (topButtonsNames.currentIndex === 1 && root.focusZone === 0) ? "black" : "white"
@@ -1693,8 +1699,9 @@ Text {
 
                 MouseArea { 
                     anchors.fill: parent; 
-                    onClicked: {
+                    onClicked: if (!root.closeMenuVisible) {
                         root.goToZone(0)
+                        sNav.stop(); sNav.play();
                         topButtonsNames.currentIndex = 1
                     }
                 }
@@ -1703,7 +1710,7 @@ Text {
             // ===== 2. BATTERY =====
             Item {
                 id: topBarBattery
-                width: 170
+                width: theme.showBatteryPercent ? 170 : 70
                 height: root.topH
 
                 Rectangle {
@@ -1739,6 +1746,7 @@ Text {
                         color: (topButtonsNames.currentIndex === 2 && root.focusZone === 0) ? "black" : "white"
                         font.family: bold.name
                         font.pixelSize: 36
+                        visible: theme.showBatteryPercent // Скрываем текст, если выключено
                         verticalAlignment: Text.AlignVCenter
                     }
 
@@ -1763,23 +1771,29 @@ Text {
 
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: {
+                    onClicked: if (!root.closeMenuVisible) {
                         root.goToZone(0)
+                        sNav.stop(); sNav.play();
                         topButtonsNames.currentIndex = 2
                     }
                 }
             }
 
-            // ===== CLOCK (Static) =====
+            // ===== CLOCK =====
             Rectangle {
                 id: topBtnClock
-                width: 200; height: root.topH
+                width: theme.use24HourFormat ? 130 : 200; height: root.topH
                 color: "transparent"
+                border.color: "transparent"               
+
+                // Динамически определяем формат времени на основе настройки
+                property string timeFormat: theme.use24HourFormat ? "HH:mm" : "hh:mm AP"
 
                 Text {
                     id: clockText
                     anchors.centerIn: parent
-                    text: Qt.formatDateTime(new Date(), "hh:mm AP")
+                    // Инициализация при загрузке
+                    text: Qt.formatTime(new Date(), topBtnClock.timeFormat)
                     font.pixelSize: 35
                     font.family: bold.name
                     color: "white"
@@ -1787,8 +1801,11 @@ Text {
 
                 Timer {
                     interval: 1000; running: true; repeat: true
-                    onTriggered: clockText.text = Qt.formatDateTime(new Date(), "hh:mm AP")
+                    onTriggered: clockText.text = Qt.formatTime(new Date(), topBtnClock.timeFormat)
                 }                
+                
+                // Мгновенно обновляем текст, если переключатель нажали
+                onTimeFormatChanged: clockText.text = Qt.formatTime(new Date(), topBtnClock.timeFormat)
             }
 
             // ===== 3. USER =====
@@ -1805,7 +1822,7 @@ Text {
                     anchors.centerIn: parent
                     width: parent.width * 0.85
                     height: parent.height * 0.8
-                    source: "../assets/logo/logo.jpg"
+                    source: (root.theme && root.theme.profilePictureSource !== "") ? root.theme.profilePictureSource : "../assets/logo/logo.jpg" /* DECKOS */
                     fillMode: Image.PreserveAspectFit
                 }
 
@@ -1817,8 +1834,9 @@ Text {
 
                 MouseArea { 
                     anchors.fill: parent; 
-                    onClicked: {
+                    onClicked: if (!root.closeMenuVisible) {
                         root.goToZone(0)
+                        sNav.stop(); sNav.play();
                         topButtonsNames.currentIndex = 3
                     }
                 }
@@ -1826,392 +1844,601 @@ Text {
         }
     }
 
-
-
     /* ================= BOTTOM BAR ================= */
-Rectangle {
+    Item {
     id: bottomBar
     width: parent.width
-    height: topH
-    color: "black"
-    z: 10000000
+    height: root.topH
     anchors.bottom: parent.bottom
+    z: 50000
+    clip: true
 
-    // ====== Левая кнопка MENU ======
-    Rectangle {
-        id: btnMenu
-        width: 180; height: parent.height
-        anchors.left: parent.left
-        anchors.leftMargin: 35
-        color: "transparent"
+    // Захватываем фрагмент фона строго под bottomBar (не весь экран!)
+    ShaderEffectSource {
+        id: bottomAreaSource
+        sourceItem: globalBlurSource
+        // Координаты bottomBar в системе координат globalBlurSource (размер root)
+        sourceRect: Qt.rect(0, root.height - root.topH, root.width, root.topH)
+        live: true
+        visible: false
+    }
 
-        Row {
-            anchors.centerIn: parent
-            spacing: 6
-            Text { text: ":"; font.family: icons.name; font.pixelSize: 54; color: "white" }
-            Text { text: "MENU"; font.family: bold.name; font.pixelSize: 28; color: "white";y:parent.height *0.21 }
-        }
-
-        MouseArea { anchors.fill: parent; onClicked: leftBar.toggle() }MouseArea {
+   GaussianBlur {
     anchors.fill: parent
-    onClicked: {
-        // Открываем/закрываем меню
-        leftBar.toggle()
-
-        // Сразу выставляем фокус на кнопку с индексом 0
-        leftBar.currentIndex = 1
-        leftBar.updateFocus()
-    }
-}
-    }
-
-    // ====== Правая часть (подсказки + BACK) ======
-    Row {
-        id: rightGroup
-        anchors.right: parent.right
-        anchors.rightMargin: 35
-        anchors.verticalCenter: parent.verticalCenter
-        spacing: 38
-
-        // --- Подсказка OPTIONS ---
-        Row {
-            spacing: 18
-            anchors.verticalCenter: parent.verticalCenter
-            Text { text: "X"; font.family: icons.name; font.pixelSize: 53; color: "white";y:parent.height * -0.025 }
-            Text { text: "OPTIONS"; font.family: bold.name; font.pixelSize: 25; color: "white";y:parent.height *0.23 }
-        }
-
-        // --- Подсказка SELECT ---
-        Row {
-            spacing: 18
-            anchors.verticalCenter: parent.verticalCenter
-            Text { text: "A"; font.family: icons.name; font.pixelSize: 53; color: "white";y:parent.height * -0.025}
-            Text { text: "SELECT"; font.family: bold.name; font.pixelSize: 25; color: "white";y:parent.height *0.23}
-        }
-
-        // --- Кнопка BACK ---
-        Rectangle {
-            id: btnBack
-            width: 140; height: parent.height
-            color: "transparent"
-            Row {
-                anchors.centerIn: parent
-                spacing: 18
-                Text { text: "B"; font.family: icons.name; font.pixelSize: 53; color: "white";y:parent.height * -0.025}
-                Text { text: "BACK"; font.family: bold.name; font.pixelSize: 25; color: "white";y:parent.height *0.23 }
-            }
-            MouseArea { 
-anchors.fill: parent
-onClicked: 
-if (collectionGamesLoader.active) {
-                // Выход из вложенных игр коллекции
-                console.log("Back from collection games")
-                collectionGamesLoader.active = false
-                // Возвращаем фокус в основную сетку коллекций
-                goToZone(2)
-                event.accepted = true
-            }
-            else if (focusZone === 2) {
-                // Из основного контента возвращаемся к верхним кнопкам
-                console.log("Back from grid to top buttons")
-                goToZone(1)
-                event.accepted = true
-            }
-            else if (focusZone === 0) {
-                // Из верхних кнопок возвращаемся к навигатору
-                console.log("Back from top buttons to nav")
-                goToZone(1)
-                event.accepted = true
-            }
-            else if (focusZone === 1) {
-                // В верхнем навигаторе - открываем меню
-                console.log("Open menu from top nav")
-                theme.openPage(0)
-                event.accepted = true
-            }
- }
-        }
-    }
+    source: bottomAreaSource
+    radius: 150          
+    visible: !theme.highContrastBottomBar               // до любого нужного значения
+    samples: 64        // количество сэмплов для качества
+    transparentBorder: false
 }
 
-// ФОН
+    // Полупрозрачный чёрный (50%)
     Rectangle {
-        id: dimLayer
         anchors.fill: parent
         color: "black"
-        opacity: leftBar.isOpen ? 0.7 : 0.0
-        visible: leftBar.visible
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutQuad } }
+        opacity: theme.highContrastBottomBar ? 1.0 : (leftBar.isOpen || root.closeMenuVisible || root.optionsMenuVisible ? 0.9 : 0.6)
 
-        MouseArea {
-            anchors.fill: parent
-            onClicked: leftBar.toggle()
-        }
+        Behavior on opacity { NumberAnimation { duration: 150 } }
     }
 
+        // Левая кнопка MENU
+        Rectangle {
+            id: btnMenu
+            width: 180; height: parent.height
+            anchors.left: parent.left
+            anchors.leftMargin: 18
+            color: "transparent"
 
-/* ================= LEFT BAR ================= */
-FocusScope {
-    id: leftBar
-    width: parent.width
-    height: parent.height
-    visible: false
-    focus: false
-    z: 999
-    x: leftBar.isOpen ? 0 : -width
-    Behavior on x {
-    NumberAnimation {
-        duration: 300
-        easing.type: Easing.OutCubic
-    }
-}
-
-    property bool isOpen: false
-    property int currentIndex: 0
-    property var buttons: []
-    
-   
-    // Исправленный блок внутри leftBar
-Keys.onPressed: {
-    if (leftBar.isOpen && leftBar.focus) {
-        if (event.key === Qt.Key_Up) {
-            // НОВОЕ: Убираем переход на topbar. Фокус остается внутри меню
-            if (currentIndex > 0) {
-                currentIndex--
-                updateFocus()
-                event.accepted = true
-                ////sNav.stop();
-            ////sNav.play();
-            } else {
-                // Если уже на верхней кнопке - остаемся на ней
-                // Никакого перехода на topbar
-                event.accepted = true
-            }
-        }
-        else if (event.key === Qt.Key_Down) {
-            if (currentIndex < buttons.length - 1) {
-                currentIndex++
-                updateFocus()
-                event.accepted = true
-                ////sNav.stop();
-            ////sNav.play();
-            } else {
-                // Если уже на нижней кнопке - остаемся на ней
-                event.accepted = true
-            }
-        }
-        else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
-            theme.openPage(currentIndex)
-            toggle()
-            event.accepted = true
-        }
-        else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape) {
-            toggle()
-            focusTimer.start()
-            event.accepted = true
-        }
-        else {
-            // Блокируем все другие клавиши, чтобы не было случайных переходов
-            event.accepted = true
-        }
-    }
-}
-    
-    // ПАНЕЛЬ МЕНЮ
-    Rectangle {
-        id: menuPanel
-        width: parent.width * 0.25
-        height: parent.height
-        color: "#181B20"
-        radius: 0
-        anchors.left: parent.left
-        z: 1000
-        x: leftBar.isOpen ? width * 0.2: 0
-        opacity: leftBar.isOpen ? 1 : 0
-        Behavior on x { NumberAnimation { duration: 800; easing.type: Easing.OutBack } }
-        Behavior on opacity { NumberAnimation { duration: 0 } }
-
-        Column {
-            id: buttonColumn
-            anchors {
-                left: parent.left
-                top: parent.top
-                leftMargin: 0
-                topMargin: parent.height * 0.11
-            }
-            spacing: 0
-        }
-    }
-
-    // КОМПОНЕНТ КНОПКИ
-    Component {
-        id: menuButtonComponent
-
-        FocusScope {
-            id: buttonScope
-            property string title: ""
-            property int buttonIndex: 0
-            width: menuPanel.width
-            height: 106
-            
-            // СВОЙСТВО ДЛЯ ПРОВЕРКИ ФОКУСА
-            property bool isFocused: activeFocus
-            
-            onIsFocusedChanged: {
-                if (isFocused) {
-                    bgColor = "#27303A"  // цвет при фокусе
-                    textColor = "white"
-                } else {
-                    bgColor = "transparent"  // обычный цвет
-                    textColor = "#AAA"
+            Row {
+                anchors.verticalCenter: parent.verticalCenter 
+                spacing: 6
+                Text { text: ":"; font.family: icons.name; font.pixelSize: 54; color: "white" }
+                Text { 
+                    text: root.closeMenuVisible ? "PEGASUS MENU" : "MENU"
+                    font.family: bold.name 
+                    font.pixelSize: 28 
+                    color: "white"
+                    y: parent.height * 0.21 
                 }
             }
-            
-            property color bgColor: "transparent"
-            property color textColor: "#AAA"
-            property string icon: ""
-
-            Rectangle {
-                anchors.fill: parent
-                color: bgColor
-                Behavior on color { ColorAnimation { duration: 150 } }
-                
-                // ГОЛУБОЙ ПРЯМОУГОЛЬНИК - ТОЛЬКО ДЛЯ ТЕКУЩЕЙ СТРАНИЦЫ
-Item {
-    anchors {
-        left: parent.left
-        top: parent.top
-        bottom: parent.bottom
-        topMargin: 20
-        bottomMargin: 20
-    }
-    width: 11
-    visible: theme.currentPage === buttonIndex   
-    
-    // 2. Закруглённая правая часть
-    Rectangle {
-        anchors {
-            right: parent.right
-            top: parent.top
-            bottom: parent.bottom
-        }
-        width: 27  // Ширина радиуса × 2
-        color: "#1A9EFF"
-        radius: 40  // ЛЮБОЙ радиус
-    }
-}
-                
-        Row {
-    anchors.verticalCenter: parent.verticalCenter  // центр по вертикали
-    anchors.left: parent.left                       // прижимаем к левому краю
-    anchors.leftMargin: 50                         // отступ слева, можно менять
-    spacing: 38                                // расстояние между иконкой и текстом
-
-    // Иконка
-    Text {
-        text: icon
-        font.family: icons.name
-        font.pixelSize: Math.min(43, menuPanel.width / 7)
-        color: "white"
-        verticalAlignment: Text.AlignVCenter
-        horizontalAlignment: Text.AlignHCenter
-    }
-
-    // Основной текст
-    Text {
-        text: title
-        font.family: bold.name
-        font.pixelSize: Math.min(43, menuPanel.width / 7)
-        color: "white"
-        verticalAlignment: Text.AlignVCenter
-        horizontalAlignment: Text.AlignHCenter
-    }
-}
-}
 
             MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    leftBar.toggle()
+                    leftBar.currentIndex = 1
+                    leftBar.updateFocus()
+                }
+            }
+        }
+
+        Row {
+            id: rightGroup
+            anchors.right: parent.right
+            anchors.rightMargin: 35
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 38
+            
+            Item {
+    id: sortBtn
+    width: sortLayout.width
+    height: 53 // Высота иконки для правильного центрирования
+    anchors.verticalCenter: parent.verticalCenter
+    visible: !root.closeMenuVisible && !root.optionsMenuVisible && !leftBar.isOpen
+
+    Row {
+        id: sortLayout
+        spacing: 18
+        anchors.verticalCenter: parent.verticalCenter
+
+        Text {
+            text: theme.nintendoLayout ? (theme.universalIcons ? "Х" : "X") : (theme.universalIcons ? "У" : "Y")
+            font.family: icons.name
+            font.pixelSize: 53
+            color: "white"
+            // Центрируем иконку и чуть приподнимаем, если шрифт "сидит" низко
+            y: parent.height * -0.025
+        }
+
+        Text {
+            text: "SORT BY"
+            font.family: bold.name
+            font.pixelSize: 25
+            color: "white"
+            y: parent.height * 0.23 
+        }
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        onClicked: {
+            root.toggleSortMenu();
+        }
+    }
+}
+
+            Row {
+                spacing: 18
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.closeMenuVisible ? 0 : 1 && !root.optionsMenuVisible && !leftBar.isOpen
+                Text { text: theme.nintendoLayout ? (theme.universalIcons ? "У" : "Y") : (theme.universalIcons ? "Х" : "X")
+; font.family: icons.name; font.pixelSize: 53; color: "white"; y: parent.height * -0.025 }
+                Text { text: "OPTIONS"; font.family: bold.name; font.pixelSize: 25; color: "white"; y: parent.height *0.23 }
+            }
+
+            Row {
+                spacing: 18
+                anchors.verticalCenter: parent.verticalCenter
+                Text { text: theme.nintendoLayout ? (theme.universalIcons ? "В" : "B") : (theme.universalIcons ? "А" : "A")
+; font.family: icons.name; font.pixelSize: 53; color: "white"; y: parent.height * -0.025}
+                Text { text: "SELECT"; font.family: bold.name; font.pixelSize: 25; color: "white"; y: parent.height *0.23}
+            }
+
+            Rectangle {
+                id: btnBack
+                width: 140; height: parent.height
+                color: "transparent"
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 18
+                    Text { text: theme.nintendoLayout ? (theme.universalIcons ? "А" : "A") : (theme.universalIcons ? "В" : "B")
+; font.family: icons.name; font.pixelSize: 53; color: "white"; y: parent.height * -0.025}
+                    Text { text: "BACK"; font.family: bold.name; font.pixelSize: 25; color: "white"; y: parent.height *0.23 }
+                }
+                MouseArea { 
+                    anchors.fill: parent
+                    onClicked: 
+                        if (collectionGamesLoader.active) {
+                            console.log("Back from collection games")
+                            collectionGamesLoader.active = false
+                            goToZone(2)
+                            event.accepted = true
+                        }
+                        else if (focusZone === 2) {
+                            goToZone(1)
+                            event.accepted = true
+                        }
+                        else if (focusZone === 0) {
+                            goToZone(1)
+                            event.accepted = true
+                        }
+                        else if (focusZone === 1) {
+                            theme.openPage(0)
+                            event.accepted = true
+                        }
+                }
+            }
+        }
+    }
+
+    /* LEFT BAR ФОН */ 
+Item {
+    id: leftOverlay
     anchors.fill: parent
-    hoverEnabled: true
-    onClicked: {
-    console.log("Нажатие на кнопку:", buttonIndex)
+    z: 0 
+    
+    // Прямая привязка к движению панели для синхронной анимации
+    opacity: (leftBar.x + leftBar.width) / leftBar.width
+    visible: opacity > 0
 
-    if (leftBar.currentIndex === buttonIndex) {
-        // Второе нажатие — запускаем страницу
-        theme.openPage(buttonIndex)
-        leftBar.toggle()
-    } else {
-        // Первое нажатие — переводим фокус
-        leftBar.currentIndex = buttonIndex
-        leftBar.updateFocus()
-    }
-}
-}
+    MouseArea {
+        anchors.fill: parent
+        enabled: leftBar.isOpen
+        onClicked: {
+            leftBar.toggle()
+            focusTimer.start()
         }
     }
 
-    // СОЗДАЕМ КНОПКИ
-    Component.onCompleted: {
-        var btn1 = menuButtonComponent.createObject(buttonColumn, { 
-            "title": "Home", 
-            "buttonIndex": 0,
-            "icon": "^"
-        })
-        var btn2 = menuButtonComponent.createObject(buttonColumn, { 
-            "title": "Library", 
-            "buttonIndex": 1,
-            "icon": "L",
-        })
-        var btn3 = menuButtonComponent.createObject(buttonColumn, { 
-            "title": "Store", 
-            "buttonIndex": 2,
-            "icon": "€"
-        })
-        var btn4 = menuButtonComponent.createObject(buttonColumn, { 
-            "title": "Friends and Chat", 
-            "buttonIndex": 3,
-            "icon": "F"
-            })
-        var btn5 = menuButtonComponent.createObject(buttonColumn, { 
-            "title": "Media", 
-            "buttonIndex": 4,
-            "icon": "M"
-        })
-        var btn6 = menuButtonComponent.createObject(buttonColumn, { 
-            "title": "Downloads", 
-            "buttonIndex": 5,
-            "icon": "♠︎"
-        })
-        var btn7 = menuButtonComponent.createObject(buttonColumn, { 
-            "title": "Settings", 
-            "buttonIndex": 6,
-            "icon": "w"
-        })
-        var btn8 = menuButtonComponent.createObject(buttonColumn, { 
-            "title": "Close", 
-            "buttonIndex": 7,
-            "icon": "C"
-        })
-        leftBar.buttons = [btn1, btn2, btn3, btn4, btn5, btn6, btn7, btn8]
+    FastBlur {
+        anchors.fill: parent
+        source: globalBlurSource
+        radius: 50
+        transparentBorder: false
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        color: "black"
+        opacity: 0.7
+    }
+}
+
+/* ================= SORT MENU ================= */
+FocusScope {
+    id: sortMenu
+    width: parent.width
+    height: parent.height
+    visible: sortMenuVisible
+    focus: sortMenuVisible
+    enabled: visible
+    z: 9999
+
+    opacity: sortMenuVisible ? 1 : 0
+    Behavior on opacity { NumberAnimation { duration: 150 } }
+
+    property int currentButtonIndex: 0
+
+    Item {
+        anchors.fill: parent
+        z: 0
+        visible: sortMenu.visible
+
+        MouseArea { anchors.fill: parent }
+
+        FastBlur {
+            anchors.fill: parent
+            source: globalBlurSource
+            radius: 50
+            transparentBorder: false
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: "black"
+            opacity: 0.7
+        }
+    }
+
+    Rectangle {
+        width: 550
+        height: 220
+        anchors.centerIn: parent
+        color: "#181B20"
+
+        Column {
+            anchors.fill: parent
+            spacing: 0
+
+            // ===== 0. ALPHABETICAL =====
+            Rectangle {
+                width: parent.width
+                height: parent.height / 2
+                color: sortMenu.currentButtonIndex === 0 ? "white" : "transparent"
+
+                Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 40
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 30
+
+                    Text {
+                        text: "Alphabetical"
+                        color: sortMenu.currentButtonIndex === 0 ? "black" : "white"
+                        font.pixelSize: 35
+                        font.family: bold.name
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        if (sortMenu.currentButtonIndex !== 0) {
+                            sortMenu.currentButtonIndex = 0;
+                            sNav.stop(); sNav.play();
+                        } else {
+                            root.applySortMode("alphabetical");
+                            root.toggleSortMenu();
+                        }
+                    }
+                }
+            }
+
+            // ===== 1. LAST PLAYED =====
+            Rectangle {
+                width: parent.width
+                height: parent.height / 2
+                color: sortMenu.currentButtonIndex === 1 ? "white" : "transparent"
+
+                Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 40
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 30
+
+                    Text {
+                        text: "Last Played"
+                        color: sortMenu.currentButtonIndex === 1 ? "black" : "white"
+                        font.pixelSize: 35
+                        font.family: bold.name
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        if (sortMenu.currentButtonIndex !== 1) {
+                            sortMenu.currentButtonIndex = 1;
+                            sNav.stop(); sNav.play();
+                        } else {
+                            root.applySortMode("lastPlayed");
+                            root.toggleSortMenu();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Keys.onPressed: {
+        if (sortMenuVisible && sortMenu.focus) {
+            if (event.key === Qt.Key_Up) {
+                if (currentButtonIndex > 0) { currentButtonIndex--; sNav.stop(); sNav.play(); }
+                event.accepted = true;
+            }
+            else if (event.key === Qt.Key_Down) {
+                if (currentButtonIndex < 1) { currentButtonIndex++; sNav.stop(); sNav.play(); }
+                event.accepted = true;
+            }
+            else if (api.keys.isAccept(event) || event.key === Qt.Key_Return) {
+                if (currentButtonIndex === 0) {
+                    root.applySortMode("alphabetical");
+                } else {
+                    root.applySortMode("lastPlayed");
+                }
+                root.toggleSortMenu();
+                event.accepted = true;
+            }
+            else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape) {
+                root.toggleSortMenu();
+                sLeftClose.play();
+                event.accepted = true;
+            }
+            else if (event.key === Qt.Key_Y) {
+                root.toggleSortMenu();
+                event.accepted = true;
+            }
+        }
+    }
+
+    onVisibleChanged: {
+        if (visible) {
+            forceActiveFocus();
+            sShowui.play();
+        }
+    }
+}
+
+
+
+    /* ================= LEFT BAR ================= */
+    FocusScope {
+        id: leftBar
+        width: parent.width
+        height: parent.height
+        visible: false
+        focus: false
+        z: 999
+        x: leftBar.isOpen ? 0 : -width
+        Behavior on x {
+            NumberAnimation {
+                duration: 300
+                easing.type: Easing.OutCubic
+            }
+        }
+
+        property bool isOpen: false
+        property int currentIndex: 0
+        property var buttons: []
         
-        // Устанавливаем начальный фокус
-        currentIndex = 1
-        updateFocus()
-    }
+        Keys.onPressed: {
+            if (leftBar.isOpen && leftBar.focus) {
+                if (event.key === Qt.Key_Up) {
+                    if (currentIndex > 0) {
+                        currentIndex--
+                        updateFocus()
+                        event.accepted = true
+                        sNav.stop(); sNav.play();
+                    } else {
+                        event.accepted = true
+                    }
+                }
+                else if (event.key === Qt.Key_Down) {
+                    if (currentIndex < buttons.length - 1) {
+                        currentIndex++
+                        updateFocus()
+                        event.accepted = true
+                        sNav.stop(); sNav.play();
+                    } else {
+                        event.accepted = true
+                    }
+                }
+                else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
+                    if (currentIndex === 7) { // Close button
+                        toggle()
+                        root.closeMenuVisible = true
+                        focusTimer.start()
+                    } else {
+                        theme.openPage(currentIndex)
+                        toggle()
+                        if (currentIndex === 6) {
+                            sShowui.play()
+                        }
+                    }
+                    event.accepted = true
+                }
+                else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape) {
+                    toggle()
+                    focusTimer.start()
+                    event.accepted = true
+                }
+                else if (api.keys.isMenu(event)) {
+                    toggle()
+                    focusTimer.start()
+                    event.accepted = true
+                }
+                else {
+                    event.accepted = true
+                }
+            }
+        }
+        
+        Rectangle {
+            id: menuPanel
+            width: parent.width * 0.25
+            height: parent.height
+            color: "#181B20"
+            radius: 0
+            anchors.left: parent.left
+            z: 1000
+            x: leftBar.isOpen ? width * 0.2: 0
+            opacity: leftBar.isOpen ? 1 : 0
+            Behavior on x { NumberAnimation { duration: 800; easing.type: Easing.OutBack } }
+            Behavior on opacity { NumberAnimation { duration: 0 } }
 
-    // ОБНОВЛЕНИЕ ФОКУСА
-    function updateFocus() {
-        if (currentIndex >= 0 && currentIndex < buttons.length) {
-            buttons[currentIndex].forceActiveFocus()
+            ProfileBadge { // DECKOS: user picture + name (Settings > Profile)
+                theme: root.theme
+                anchors.left: parent.left; anchors.leftMargin: 40
+                anchors.right: parent.right; anchors.rightMargin: 20
+                y: parent.height * 0.105; height: parent.height * 0.075
+            }
+            Column {
+                id: buttonColumn
+                anchors {
+                    left: parent.left
+                    top: parent.top
+                    leftMargin: 0
+                    topMargin: parent.height * 0.2 /* DECKOS: was 0.11, room for the profile */
+                }
+                spacing: 0
+            }
+        }
+
+        Component {
+            id: menuButtonComponent
+
+            FocusScope {
+                id: buttonScope
+                property string title: ""
+                property int buttonIndex: 0
+                width: menuPanel.width
+                height: Math.min(106, menuPanel.height * 0.085) /* DECKOS: was 106 */
+                
+                property bool isFocused: activeFocus
+                
+                onIsFocusedChanged: {
+                    if (isFocused) {
+                        bgColor = "#27303A"
+                        textColor = "white"
+                    } else {
+                        bgColor = "transparent"
+                        textColor = "#AAA"
+                    }
+                }
+                
+                property color bgColor: "transparent"
+                property color textColor: "#AAA"
+                property string icon: ""
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: bgColor
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                    
+                    Item {
+                        anchors {
+                            left: parent.left
+                            top: parent.top
+                            bottom: parent.bottom
+                            topMargin: 20
+                            bottomMargin: 20
+                        }
+                        width: 11
+                        visible: buttonIndex === 1
+                        
+                        Rectangle {
+                            anchors {
+                                right: parent.right
+                                top: parent.top
+                                bottom: parent.bottom
+                            }
+                            width: 27
+                            color: "#1A9EFF"
+                            radius: 40
+                        }
+                    }
+                            
+                    Row {
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.left: parent.left
+                        anchors.leftMargin: menuPanel.width * 0.083
+                        spacing: 38
+
+                        Text {
+                            text: icon
+                            font.family: icons.name
+                            font.pixelSize: menuPanel.width * 0.075
+                            color: "white"
+                            verticalAlignment: Text.AlignVCenter // DECKOS: was parent.verticalCenter (an anchor line)
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+
+                        Text {
+                            text: title
+                            font.family: bold.name
+                            font.pixelSize: menuPanel.width * 0.075
+                            color: "white"
+                            verticalAlignment: Text.AlignVCenter // DECKOS: was parent.verticalCenter (an anchor line)
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                    }
+                }         
+
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: {
+                        if (leftBar.currentIndex === buttonIndex) {
+                            if (buttonIndex === 7) {
+                                leftBar.toggle()
+                                closeMenu.forceActiveFocus()
+                                closeMenuVisible = true
+                            } else {
+                                theme.openPage(buttonIndex)
+                                leftBar.toggle()
+                                if (buttonIndex === 6) {
+                                    sShowui.play()
+                                }
+                            }
+                        } else {
+                            leftBar.currentIndex = buttonIndex
+                            leftBar.updateFocus()
+                            sNav.play()
+                        }
+                    }
+                } 
+            }
+        }
+
+        Component.onCompleted: {
+            var btn1 = menuButtonComponent.createObject(buttonColumn, { "title": "Home", "buttonIndex": 0, "icon": "^" })
+            var btn2 = menuButtonComponent.createObject(buttonColumn, { "title": "Library", "buttonIndex": 1, "icon": "L" })
+            var btn3 = menuButtonComponent.createObject(buttonColumn, { "title": "Store", "buttonIndex": 2, "icon": "€" })
+            var btn4 = menuButtonComponent.createObject(buttonColumn, { "title": "Friends and Chat", "buttonIndex": 3, "icon": "F" })
+            var btn5 = menuButtonComponent.createObject(buttonColumn, { "title": "Media", "buttonIndex": 4, "icon": "M" })
+            var btn6 = menuButtonComponent.createObject(buttonColumn, { "title": "Downloads", "buttonIndex": 5, "icon": "♠︎" })
+            var btn7 = menuButtonComponent.createObject(buttonColumn, { "title": "Settings", "buttonIndex": 6, "icon": "w" })
+            var btn8 = menuButtonComponent.createObject(buttonColumn, { "title": "Close", "buttonIndex": 7, "icon": "C" })
+            leftBar.buttons = [btn1, btn2, btn3, btn4, btn5, btn6, btn7, btn8]
+            
+            currentIndex = 1
+        }
+
+        function updateFocus() {
+            if (currentIndex >= 0 && currentIndex < buttons.length) {
+                buttons[currentIndex].forceActiveFocus()
+            }
+        }
+
+        function toggle() {
+            theme.toggleLeftBar(leftBar);
         }
     }
-
-    // ОТКРЫТИЕ/ЗАКРЫТИЕ МЕНЮ
-    function toggle() {
-        theme.toggleLeftBar(leftBar);
-    }
-}
-
-/* ================= OPTIONS MENU ================= */
+   
+   
+   /* ================= OPTIONS MENU ================= */
 FocusScope {
     id: optionsMenu
     width: parent.width
@@ -2220,32 +2447,44 @@ FocusScope {
     focus: optionsMenuVisible
     enabled: visible
     z: 9999
+    
+    opacity: optionsMenuVisible ? 1 : 0
+    Behavior on opacity { NumberAnimation { duration: 150 } }
 
     property int currentButtonIndex: 0
-    property var buttons: [playButton, favoriteButton, propertiesButton, cancelButton]
+    property var buttons: [playButton, favoriteButton, propertiesButton, artworkButton, cancelButton]
 
-    // ФОН (полупрозрачный оверлей)
-    Rectangle {
+    /* OPTIONS MENU ФОН */
+    Item {
+        id: optionsOverlay
         anchors.fill: parent
-        color: "black"
-        opacity: 0.5       
-    }
-    
-    MouseArea {
-        anchors.fill: parent
-        onClicked: {
-            // Пусто - просто блокирует
+        z: 0 
+        visible: optionsMenu.visible
+
+        MouseArea {
+            anchors.fill: parent
+        }
+
+        FastBlur {
+            anchors.fill: parent
+            source: globalBlurSource
+            radius: 50
+            transparentBorder: false
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: "black"
+            opacity: 0.7
         }
     }
 
-    // Серый прямоугольник посередине
     Rectangle {
         width: 550
-        height: 450
+        height: 550 
         anchors.centerIn: parent
         color: "#181B20"
         
-        // Название игры сверху
         Text {
             anchors {
                 horizontalCenter: parent.horizontalCenter
@@ -2256,20 +2495,20 @@ FocusScope {
             color: "white"
             font.pixelSize: 38
             font.family: bold.name
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideRight
         }
         
-        // Контейнер для кнопок
         Column {
-            anchors.centerIn: parent
-            width: parent.width
-            height: parent.height
+            anchors.fill: parent
             spacing: 0
             
-            // ===== 1. КНОПКА "ИГРАТЬ" =====
+            // ===== 0. PLAY =====
             Rectangle {
                 id: playButton
                 width: parent.width
-                height: parent.height / 4
+                height: parent.height / 5
                 color: optionsMenu.currentButtonIndex === 0 ? "#54B63D" : "transparent"
                 
                 Row {
@@ -2285,9 +2524,8 @@ FocusScope {
                         anchors.verticalCenter: parent.verticalCenter
                     }                  
                     Text {
-                        id: playText
                         text: "Play"
-                        color: optionsMenu.currentButtonIndex === 0 ? "white" : "white"
+                        color: "white"
                         font.pixelSize: 35
                         font.family: bold.name
                         anchors.verticalCenter: parent.verticalCenter
@@ -2299,32 +2537,25 @@ FocusScope {
                     onClicked: {
                         if (optionsMenu.currentButtonIndex !== 0) {
                             optionsMenu.currentButtonIndex = 0
-                        } else {
-                            if (currentFocusedGame) {
-                                currentFocusedGame.launch()
-                                root.toggleOptionsMenu()
-                            }
+                            sNav.stop(); sNav.play();
+                        } else if (currentFocusedGame) {
+                            if (typeof sGame !== "undefined") sGame.play();
+                            currentFocusedGame.launch()
+                            root.toggleOptionsMenu()
                         }
                     }
                 }
             }
             
-            // ===== 2. КНОПКА "ДОБАВИТЬ В ИЗБРАННОЕ" =====
+            // ===== 1. FAVORITE =====
             Rectangle {
                 id: favoriteButton
                 width: parent.width
-                height: parent.height / 4
+                height: parent.height / 5
                 color: optionsMenu.currentButtonIndex === 1 ? "white" : "transparent"
                 
                 Text {
-                    id: favoriteText
-                    text: {
-                        if (currentFocusedGame) {
-                            return currentFocusedGame.favorite ? 
-                                "   Delete from favorites" : "   Add to favorites"
-                        }
-                        return "   Add to favorites"
-                    }
+                    text: currentFocusedGame ? (currentFocusedGame.favorite ? "   Delete from favorites" : "   Add to favorites") : "   Add to favorites"
                     color: optionsMenu.currentButtonIndex === 1 ? "black" : "white"
                     font.pixelSize: 35
                     font.family: bold.name
@@ -2336,21 +2567,20 @@ FocusScope {
                     onClicked: {
                         if (optionsMenu.currentButtonIndex !== 1) {
                             optionsMenu.currentButtonIndex = 1
-                        } else {
-                            if (currentFocusedGame) {
-                                currentFocusedGame.favorite = !currentFocusedGame.favorite
-                                root.toggleOptionsMenu()
-                            }
+                            sNav.stop(); sNav.play();
+                        } else if (currentFocusedGame) {
+                            currentFocusedGame.favorite = !currentFocusedGame.favorite
+                            root.toggleOptionsMenu()
                         }
                     }
                 }
             }
             
-            // ===== 3. КНОПКА "СВОЙСТВА" =====
+            // ===== 2. PROPERTIES =====
             Rectangle {
                 id: propertiesButton
                 width: parent.width
-                height: parent.height / 4
+                height: parent.height / 5
                 color: optionsMenu.currentButtonIndex === 2 ? "white" : "transparent"
                 
                 Text {
@@ -2362,26 +2592,34 @@ FocusScope {
                 }
                 
                 MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        if (optionsMenu.currentButtonIndex !== 2) {
-                            optionsMenu.currentButtonIndex = 2
-                        } else {
-                            // Properties - ничего не делаем
-                        }
-                    }
-                }
+    anchors.fill: parent
+    onClicked: {
+        if (optionsMenu.currentButtonIndex !== 2) {
+            optionsMenu.currentButtonIndex = 2
+            sNav.stop(); sNav.play();
+        } else {
+            if (currentFocusedGame) {
+                theme.currentGame = currentFocusedGame;
+                // ВАЖНО: Добавляем запись в память!
+                api.memory.set("targetGameName", currentFocusedGame.title);
             }
-            
-            // ===== 4. КНОПКА "ОТМЕНА" =====
+            root.toggleOptionsMenu()
+            theme.openPage(14)
+        }
+    }
+}
+
+            }
+
+            // ===== 3. CHANGE ARTWORK =====
             Rectangle {
-                id: cancelButton
+                id: artworkButton
                 width: parent.width
-                height: parent.height / 4
+                height: parent.height / 5
                 color: optionsMenu.currentButtonIndex === 3 ? "white" : "transparent"
                 
                 Text {
-                    text: "   Cancel"
+                    text: "   Change artwork..."
                     color: optionsMenu.currentButtonIndex === 3 ? "black" : "white"
                     font.pixelSize: 35
                     font.family: bold.name
@@ -2393,530 +2631,909 @@ FocusScope {
                     onClicked: {
                         if (optionsMenu.currentButtonIndex !== 3) {
                             optionsMenu.currentButtonIndex = 3
+                            sNav.stop(); sNav.play();
+                        } else if (currentFocusedGame) {
+                            theme.currentGame = currentFocusedGame;
+                            api.memory.set("targetGameName", currentFocusedGame.title);
+                            root.toggleOptionsMenu();
+                            theme.openPage(12);
+                        }
+                    }
+                }                
+            }
+            
+            // ===== 4. CANCEL =====
+            Rectangle {
+                id: cancelButton
+                width: parent.width
+                height: parent.height / 5
+                color: optionsMenu.currentButtonIndex === 4 ? "white" : "transparent"
+                
+                Text {
+                    text: "   Cancel"
+                    color: optionsMenu.currentButtonIndex === 4 ? "black" : "white"
+                    font.pixelSize: 35
+                    font.family: bold.name
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        if (optionsMenu.currentButtonIndex !== 4) {
+                            optionsMenu.currentButtonIndex = 4
+                            sNav.stop(); sNav.play();
                         } else {
                             root.toggleOptionsMenu()
+                            sLeftClose.play()
                         }
                     }
                 }
             }
         }
     }
-    // ОБРАБОТКА КЛАВИШ
+
     Keys.onPressed: {
         if (optionsMenuVisible && optionsMenu.focus) {
             if (event.key === Qt.Key_Up) {
-                // Навигация вверх
                 if (currentButtonIndex > 0) {
                     currentButtonIndex--
+                    sNav.stop(); sNav.play(); 
                 }
                 event.accepted = true
             }
             else if (event.key === Qt.Key_Down) {
-                // Навигация вниз
-                if (currentButtonIndex < 3) {
+                if (currentButtonIndex < 4) {
                     currentButtonIndex++
+                    sNav.stop(); sNav.play(); 
                 }
                 event.accepted = true
             }
             else if (api.keys.isAccept(event) || event.key === Qt.Key_Return || event.key === Qt.Key_Space) {
-                // Активация выбранной кнопки
                 if (currentButtonIndex === 0) {
-                    // Play
                     if (currentFocusedGame) {
-                        currentFocusedGame.launch()
-                        root.toggleOptionsMenu()
+                        if (typeof sGame !== "undefined") sGame.play();
+                        currentFocusedGame.launch();
+                        root.toggleOptionsMenu();
                     }
                 } else if (currentButtonIndex === 1) {
-                    // Favorite
                     if (currentFocusedGame) {
-                        currentFocusedGame.favorite = !currentFocusedGame.favorite
-                        root.toggleOptionsMenu()
+                        currentFocusedGame.favorite = !currentFocusedGame.favorite;
+                        root.toggleOptionsMenu();
                     }
                 } else if (currentButtonIndex === 2) {
-                    // Properties - ничего не делаем
+                    // Properties
                 } else if (currentButtonIndex === 3) {
-                    // Cancel - закрываем меню
-                    root.toggleOptionsMenu()
+                    if (currentFocusedGame) {
+                        theme.currentGame = currentFocusedGame;
+                        api.memory.set("targetGameName", currentFocusedGame.title);
+                    }
+                    root.toggleOptionsMenu();
+                    theme.openPage(12);
+                } else if (currentButtonIndex === 4) {
+                    root.toggleOptionsMenu();
+                    sLeftClose.play();
                 }
                 event.accepted = true
             }
             else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape || event.key === Qt.Key_B) {
-                // Нажатие B/Back - закрываем меню
-                root.toggleOptionsMenu()
+                root.toggleOptionsMenu();
+                sLeftClose.play();
                 event.accepted = true
             }
         }
     }
     
-    // При открытии устанавливаем фокус на первую кнопку
     onVisibleChanged: {
         if (visible) {
             currentButtonIndex = 0
-            forceActiveFocus() // Важно: берем фокус при открытии
+            forceActiveFocus()
+            sShowui.play()
         }
     }
 }
 
 
-// ===============================
-// === КЛАВИАТУРА STEAM DECK STYLE ===
-// ===============================
-FocusScope {
-    id: keyboardContainer
+
+    /* ================= CLOSE MENU ================= */
+    FocusScope {
+        id: closeMenu
+        width: parent.width
+        height: parent.height
+        visible: closeMenuVisible
+        focus: closeMenuVisible
+        enabled: visible
+        z: 9999
+        
+        opacity: closeMenuVisible ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 150 } }
+
+        property int currentButtonIndex: 0
+        property var buttons: [exitButton, cancelButton1]
+
+        /* CLOSE MENU ФОН */
+Item {
+    id: closeMenuOverlay
     anchors.fill: parent
-    visible: keyboardOpen
-    focus: keyboardOpen
-    z: 10000001
+    z: 0 
+    visible: root.closeMenuVisible // Используем твой флаг видимости
 
-    property int r: 2 
-    property int c: 5 
-    property bool isCaps: false
-    property int cursorPosition: 0
-
-    // Зона закрытия кликом
     MouseArea {
         anchors.fill: parent
-        onClicked: {
-            root.keyboardOpen = false;
-            root.goToZone(2); 
-        }
     }
 
-    function processInput(v) {
-        if (!v || v === "") return;
-        if (v === "Done") {
-            root.keyboardOpen = false;
-            root.goToZone(2);
-            return;
-        }
-        
-        var cur = root.searchQuery;
-        if (v === "caps") {
-            isCaps = !isCaps;
-        } else if (v === "backspace") {
-            if (cursorPosition > 0) {
-                root.searchQuery = cur.substring(0, cursorPosition - 1) + cur.substring(cursorPosition);
-                cursorPosition--;
-            }
-        } else if (v === "left") {
-            if (cursorPosition > 0) cursorPosition--;
-        } else if (v === "right") {
-            if (cursorPosition < cur.length) cursorPosition++;
-        } else {
-            var letter = (v.length === 1 && isCaps) ? v.toUpperCase() : v;
-            root.searchQuery = cur.substring(0, cursorPosition) + letter + cur.substring(cursorPosition);
-            cursorPosition += letter.length;
-        }
+    FastBlur {
+        anchors.fill: parent
+        source: globalBlurSource
+        radius: 50
+        transparentBorder: false
     }
 
     Rectangle {
-        id: kbPanel
-        width: parent.width; height: 405; color: "#22262F"; anchors.bottom: parent.bottom
-        
-        MouseArea { anchors.fill: parent; onClicked: { /* стоп клик */ } }
-
-        Column {
-            anchors.fill: parent; anchors.margins: 5; spacing: 4
-            Repeater {
-                model: [
-                    {row:0, wSum:15, keys:[{l:"`",v:"`"},{l:"1",v:"1"},{l:"2",v:"2"},{l:"3",v:"3"},{l:"4",v:"4"},{l:"5",v:"5"},{l:"6",v:"6"},{l:"7",v:"7"},{l:"8",v:"8"},{l:"9",v:"9"},{l:"0",v:"0"},{l:"-",v:"-"},{l:"=",v:"="},{l:"X",v:"backspace",w:2,isBS:true,isSpec:true}]},
-                    {row:1, wSum:15, keys:[{l:"Tab",v:"   ",w:1.5,isSpec:true},{l:"Q",v:"q"},{l:"W",v:"w"},{l:"E",v:"e"},{l:"R",v:"r"},{l:"T",v:"t"},{l:"Y",v:"y"},{l:"U",v:"u"},{l:"I",v:"i"},{l:"O",v:"o"},{l:"P",v:"p"},{l:"[",v:"["},{l:"]",v:"]"},{l:"\\",v:"\\",w:1.5}]},
-                    {row:2, wSum:15, keys:[{l:"Caps",v:"caps",w:1.8,isSpec:true},{l:"A",v:"a"},{l:"S",v:"s"},{l:"D",v:"d"},{l:"F",v:"f"},{l:"G",v:"g"},{l:"H",v:"h"},{l:"J",v:"j"},{l:"K",v:"k"},{l:"L",v:"l"},{l:";",v:";"},{l:"'",v:"'"},{l:"Enter",v:"Done",w:2.2,c:"#1A9EFF",isSpec:true}]},
-                    {row:3, wSum:15, keys:[{l:"Shift",v:"caps",w:2.5,isSpec:true},{l:"Z",v:"z"},{l:"X",v:"x"},{l:"C",v:"c"},{l:"V",v:"v"},{l:"B",v:"b"},{l:"N",v:"n"},{l:"M",v:"m"},{l:",",v:","},{l:".",v:"."},{l:"/",v:"/"},{l:"Shift",v:"caps",w:2.5,isSpec:true}]},
-                    {row:4, wSum:13.1, keys:[{l:"☺",v:"",w:1.2,isSpec:true},{l:" ",v:" ",w:6.5},{l:"🌐",v:"",w:1.2,isSpec:true},{l:"<",v:"left",w:1.2,isSpec:true},{l:">",v:"right",w:1.2,isSpec:true},{l:"Hide",v:"Done",w:1.8,isSpec:true}]}
-                ]
-                delegate: Row {
-                    width: kbPanel.width - 10; height: 75; spacing: 4
-                    property int rowIndex: modelData.row
-                    property real tWeight: modelData.wSum
-                    Repeater {
-                        model: modelData.keys
-                        delegate: Rectangle {
-                            width: (parent.width / parent.tWeight) * (modelData.w || 1.0) - parent.spacing
-                            height: parent.height
-                            color: (keyboardContainer.r === parent.rowIndex && keyboardContainer.c === index) ? "white" : (modelData.isSpec ? "black" : "#0F1318")
-                            
-                            MouseArea { 
-                                anchors.fill: parent
-                                onClicked: {
-                                    keyboardContainer.r = parent.parent.rowIndex;
-                                    keyboardContainer.c = index;
-                                    keyboardContainer.processInput(modelData.v);
-                                }
-                            }
-
-                            Item {
-    anchors.fill: parent
-    
-    // 1. Space (только иконка Y справа)
-    Text {
-        id: spaceIcon
-        font.family: icons.name
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        visible: modelData.v === " "
-        
-        font.pixelSize: 40
-        text: "Y"
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10
-        anchors.left: parent.left
-        anchors.leftMargin: 20
-    }
-    
-    // 2. Backspace (иконка слева, текст справа)
-    Text {
-        id: backspaceIcon
-        font.family: icons.name
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        visible: modelData.v === "backspace"
-        
-        font.pixelSize: 40
-        text: "X"
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10
-        anchors.left: parent.left
-        anchors.leftMargin: 15
-    }
-    
-    Text {
-        id: backspaceText
-        font.family: bold.name
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        visible: modelData.v === "backspace"
-        
-        font.pixelSize: 22
-        text: "Backspace"
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10
-        anchors.right: parent.right
-        anchors.rightMargin: 15
-        width: Math.min(implicitWidth, parent.width - anchors.leftMargin - 15)
-        elide: Text.ElideRight
-    }
-    
-    // 3. Enter (иконка слева, текст справа)
-    Text {
-        id: enterIcon
-        font.family: icons.name
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        visible: modelData.l === "Enter"
-        
-        font.pixelSize: 45
-        text: ">"
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10
-        anchors.left: parent.left
-        anchors.leftMargin: 15
-    }
-    
-    Text {
-        id: enterText
-        font.family: bold.name
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        visible: modelData.l === "Enter"
-        
-        font.pixelSize: 26
-        text: "Enter"
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10
-        anchors.right: parent.right
-        anchors.rightMargin: 15
-        width: Math.min(implicitWidth, parent.width - anchors.leftMargin - 15)
-        elide: Text.ElideRight
-    }
-    
-    // 4. Hide (иконка слева, текст справа)
-    Text {
-        id: hideIcon
-        font.family: icons.name
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        visible: modelData.l === "Hide" && modelData.v === "Done"
-        
-        font.pixelSize: 40
-        text: "B"
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10
-        anchors.left: parent.left
-        anchors.leftMargin: 15
-    }
-    
-    Text {
-        id: hideText
-        font.family: bold.name
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        visible: modelData.l === "Hide" && modelData.v === "Done"
-        
-        font.pixelSize: 24
-        text: "Hide"
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10
-        anchors.right: parent.right
-        anchors.rightMargin: 15
-        width: Math.min(implicitWidth, parent.width - anchors.leftMargin - 15)
-        elide: Text.ElideRight
-    }
-    
-    // 5. Левый Shift (текст слева, иконка справа) - row 3, index 0
-    Text {
-        id: leftShiftText
-        font.family: bold.name
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        visible: modelData.l === "Shift" && index === 0
-        
-        font.pixelSize: 26
-        text: "Shift"
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10
-        anchors.left: parent.left
-        anchors.leftMargin: 15
-        width: Math.min(implicitWidth, parent.width * 0.5 - anchors.leftMargin)
-        elide: Text.ElideRight
-    }
-    
-    Text {
-        id: leftShiftIcon
-        font.family: icons.name
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        visible: modelData.l === "Shift" && index === 0
-        
-        font.pixelSize: 45
-        text: "<"
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10
-        anchors.right: parent.right
-        anchors.rightMargin: 15
-    }
-    
-    // 6. Caps (текст слева, иконка справа)
-    Text {
-        id: capsText
-        font.family: bold.name
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        visible: modelData.v === "caps" && modelData.l !== "Shift"
-        
-        font.pixelSize: 26
-        text: "Caps"
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10
-        anchors.left: parent.left
-        anchors.leftMargin: 15
-        width: Math.min(implicitWidth, parent.width * 0.5 - anchors.leftMargin)
-        elide: Text.ElideRight
-    }
-    
-    Text {
-        id: capsIcon
-        font.family: icons.name
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        visible: modelData.v === "caps" && modelData.l !== "Shift"
-        
-        font.pixelSize: 45
-        text: "<"
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10
-        anchors.right: parent.right
-        anchors.rightMargin: 15
-    }
-    
-    // 7. Правый Shift (row 3, index 11) - иконка слева, текст справа
-    Text {
-        id: rightShiftIcon
-        font.family: icons.name
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        visible: modelData.l === "Shift" && index === 11
-        
-        font.pixelSize: 45
-        text: "<"
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10
-        anchors.left: parent.left
-        anchors.leftMargin: 15
-    }
-    
-    Text {
-        id: rightShiftText
-        font.family: bold.name
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        visible: modelData.l === "Shift" && index === 11
-        
-        font.pixelSize: 26
-        text: "Shift"
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10
-        anchors.right: parent.right
-        anchors.rightMargin: 15
-        width: Math.min(implicitWidth, parent.width - anchors.leftMargin - 15)
-        elide: Text.ElideRight
-    }
-    
-    // 8. Кнопки со стрелками
-    Text {
-        id: arrowText
-        font.family: bold.name
-        font.pixelSize: 30
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        
-        text: {
-            if (modelData.v === "left") return "<";
-            if (modelData.v === "right") return ">";
-            return "";
-        }
-        
-        visible: modelData.v === "left" || modelData.v === "right"
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10
-        anchors.horizontalCenter: parent.horizontalCenter
-    }
-    
-    // 9. Emoji и Globe
-    Text {
-        id: emojiGlobeText
-        font.family: (modelData.l === "☺") ? icons.name : bold.name
-        font.pixelSize: (modelData.l === "☺") ? 45:26
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        
-        text: {
-            if (modelData.l === "☺") return "😀";
-            if (modelData.l === "🌐") return "Paste";
-            return "";
-        }
-        
-        visible: modelData.l === "☺" || modelData.l === "🌐"
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: (modelData.l === "☺") ? 13:20
-        anchors.horizontalCenter: parent.horizontalCenter
-    }
-    
-    // 10. Tab и другие текстовые спецкнопки без иконки
-    Text {
-        id: specTextOnly
-        font.family: bold.name
-        font.pixelSize: 26
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        
-        text: {
-            if (modelData.l === "Tab") return "Tab";
-            if (modelData.l === "   ") return "   ";
-            return "";
-        }
-        
-        visible: modelData.isSpec && !spaceIcon.visible && !backspaceIcon.visible && 
-                !enterIcon.visible && !hideIcon.visible && !leftShiftText.visible &&
-                !capsText.visible && !rightShiftIcon.visible && !arrowText.visible &&
-                !emojiGlobeText.visible
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10
-        anchors.left: parent.left
-        anchors.leftMargin: 15
-    }
-    
-    // 11. Обычные кнопки (НЕ специальные)
-    Text {
-        id: normalKeyText
-        font.family: bold.name
-        font.pixelSize: 26
-        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
-        
-        text: {
-            if (modelData.isSpec) return "";
-            if (modelData.v.length === 1) {
-                return keyboardContainer.isCaps ? modelData.l.toUpperCase() : modelData.l.toLowerCase();
-            }
-            return modelData.l;
-        }
-        
-        visible: !modelData.isSpec
-        
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: parent.height * 0.3
-        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.fill: parent
+        color: "black"
+        opacity: 0.7
     }
 }
+
+
+        Rectangle {
+            width: 550
+            height: 240
+            anchors.centerIn: parent
+            color: "#181B20"
+            
+            Text {
+                anchors {
+                    horizontalCenter: parent.horizontalCenter
+                    top: parent.top
+                    topMargin: -65
+                }
+                text: "Close"
+                color: "white"
+                font.pixelSize: 38
+                font.family: bold.name
+            }
+            
+            Column {
+                anchors.centerIn: parent
+                width: parent.width
+                height: parent.height
+                spacing: 0
+                
+                Rectangle {
+                    id: exitButton
+                    width: parent.width
+                    height: parent.height / 2
+                    color: closeMenu.currentButtonIndex === 0 ? "#DE3619" : "transparent"
+                                  
+                    Text {
+                        text: "   Exit"
+                        color: "white"
+                        font.pixelSize: 35
+                        font.family: bold.name
+                        anchors.verticalCenter: parent.verticalCenter
+                    }               
+                    
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            if (closeMenu.currentButtonIndex !== 0) {
+                                closeMenu.currentButtonIndex = 0
+                                sNav.stop(); sNav.play();
+                            } else {
+                                Internal.system.quit() /* DECKOS: was Qt.quit(), which skips DeckOS's shutdown (saving play time etc.) */
+                            }
+                        }
+                    }
+                }
+                
+                Rectangle {
+                    id: cancelButton1
+                    width: parent.width
+                    height: parent.height / 2
+                    color: closeMenu.currentButtonIndex === 1 ? "white" : "transparent"
+                    
+                    Text {
+                        text: "   Cancel"
+                        color: closeMenu.currentButtonIndex === 1 ? "black" : "white"
+                        font.pixelSize: 35
+                        font.family: bold.name
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            if (closeMenu.currentButtonIndex !== 1) {
+                                closeMenu.currentButtonIndex = 1
+                                sNav.stop(); sNav.play();
+                            } else {
+                                closeMenuVisible = false
+                                sLeftClose.play()
+                                focusTimer.start()
+                            }
                         }
                     }
                 }
             }
         }
-    }
-
-    // Внутреннее управление клавишами
-    Keys.onPressed: {
-        var rowCounts = [14, 14, 13, 12, 6];
-        if (api.keys.isLeft(event)) { if (c > 0) c--; event.accepted = true; }
-        else if (api.keys.isRight(event)) { if (c < rowCounts[r] - 1) c++; event.accepted = true; }
-        else if (api.keys.isUp(event)) { if (r > 0) { r--; c = Math.min(c, rowCounts[r] - 1); } event.accepted = true; }
-        else if (api.keys.isDown(event)) { if (r < 4) { r++; c = Math.min(c, rowCounts[r] - 1); } event.accepted = true; }
-        else if (api.keys.isDetails(event)) { processInput("backspace"); event.accepted = true; }
-        else if (api.keys.isFilters(event)) { processInput(" "); event.accepted = true; }
-        else if (api.keys.isNextPage(event)) { processInput("Done"); event.accepted = true; }
-        else if (api.keys.isPrevPage(event)) { isCaps = !isCaps; event.accepted = true; }
-        else if (api.keys.isCancel(event)) { processInput("Done"); event.accepted = true; }
-        else if (api.keys.isAccept(event)) {
-            var values = [
-                ["`","1","2","3","4","5","6","7","8","9","0","-","=","backspace"],
-                ["   ","q","w","e","r","t","y","u","i","o","p","[","]","\\"],
-                ["caps","a","s","d","f","g","h","j","k","l",";","'","Done"],
-                ["caps","z","x","c","v","b","n","m",",",".","/","caps"],
-                ["",""," ","left","right","Done"]
-            ];
-            processInput(values[r][c]);
-            event.accepted = true;
+        
+        Keys.onPressed: {
+            if (closeMenuVisible) {
+                if (event.key === Qt.Key_Up) {
+                    if (currentButtonIndex > 0) {
+                        currentButtonIndex--
+                        sNav.stop(); sNav.play();
+                    }
+                    event.accepted = true
+                }
+                else if (event.key === Qt.Key_Down) {
+                    if (currentButtonIndex < 1) {
+                        currentButtonIndex++
+                        sNav.stop(); sNav.play(); 
+                    }
+                    event.accepted = true
+                }
+                else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) {
+                    event.accepted = true
+                }
+                else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape){
+                }
+                else if (api.keys.isMenu(event)) {    
+                }
+                else if (api.keys.isAccept(event) || event.key === Qt.Key_Return || event.key === Qt.Key_Space) {
+                    if (currentButtonIndex === 0) {
+                        event.accepted = true
+                        Internal.system.quit() /* DECKOS: was Qt.quit(), which skips DeckOS's shutdown (saving play time etc.) */
+                        return
+                    } else if (currentButtonIndex === 1) {
+                        closeMenuVisible = false
+                        sLeftClose.play()
+                        focusTimer.start()
+                    }
+                    event.accepted = true
+                }            
+            }
+        }
+        
+        onVisibleChanged: {
+            if (visible) {
+                currentButtonIndex = 0
+                sShowui.play()
+                forceActiveFocus()
+            }
         }
     }
-}
+
+    // ===============================
+    // === КЛАВИАТУРА ===
+    // ===============================
+    FocusScope {
+        id: keyboardContainer
+        anchors.fill: parent
+        visible: keyboardOpen
+        focus: keyboardOpen
+        z: 10000001
+        opacity: 0
+
+        Behavior on opacity {
+            NumberAnimation { duration: 200 }
+        }
+
+        property int r: 2 
+        property int c: 5 
+        property bool isCaps: false
+        property int cursorPosition: 0
+        
+        onVisibleChanged: {
+            if (visible) {
+                opacity = 1;
+                kbPanel.anchors.bottomMargin = 0;
+                root.goToZone(0);
+                topButtonsNames.currentIndex = 0;
+            } else {
+                opacity = 0;
+                kbPanel.anchors.bottomMargin = -kbPanel.height;
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: {
+                root.keyboardOpen = false;
+                root.goToZone(2)
+                sNav.stop(); sNav.play();
+            }
+        }
+
+                                function processInput(v) {
+            if (!v || v === "") return;
+            if (v === "Done") {
+                root.keyboardOpen = false;
+                root.goToZone(2)
+                if (typeof sNav !== "undefined") { sNav.stop(); sNav.play(); }
+                return;
+            }
+            
+            var cur = root.searchQuery;
+            var maxLength = 35; // Лимит длины для поиска
+            
+            if (v === "paste") {
+                var clipboardText = clipboardHelper.getClipboard();
+                if (clipboardText) {
+                    // В поиске заменяем переносы на пробелы, чтобы слова не слепились в одно
+                    clipboardText = clipboardText.replace(/[\r\n\t]+/g, " ");
+                    
+                    var availableSpace = Math.max(0, maxLength - cur.length);
+                    var textToInsert = clipboardText.substring(0, availableSpace);
+                    
+                    root.searchQuery = cur.substring(0, cursorPosition) + textToInsert + cur.substring(cursorPosition);
+                    cursorPosition += textToInsert.length;
+                }
+                return;
+            }
+
+            if (v === "caps") {
+                isCaps = !isCaps;
+            } else if (v === "backspace") {
+                if (cursorPosition > 0) {
+                    root.searchQuery = cur.substring(0, cursorPosition - 1) + cur.substring(cursorPosition);
+                    cursorPosition--;
+                }
+            } else if (v === "left") {
+                if (cursorPosition > 0) cursorPosition--;
+            } else if (v === "right") {
+                if (cursorPosition < cur.length) cursorPosition++;
+            } else {
+                if (cur.length < maxLength) {
+                    var letter = (v.length === 1 && isCaps) ? v.toUpperCase() : v;
+                    root.searchQuery = cur.substring(0, cursorPosition) + letter + cur.substring(cursorPosition);
+                    cursorPosition += letter.length;
+                }
+            }
+        }
 
 
 
 
-SortFilterProxyModel {
+        Rectangle {
+            id: kbPanel
+            width: parent.width; height: 405; color: "#22262F"
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: -height
+            
+            Behavior on anchors.bottomMargin {
+                NumberAnimation { duration: 100; easing.type: Easing.OutQuad }
+            }
+            
+            MouseArea { anchors.fill: parent; onClicked: {} }
+
+            Column {
+                anchors.fill: parent; anchors.margins: 5; spacing: 4
+                Repeater {
+                    model: [
+                        {row:0, wSum:15, keys:[{l:"`",v:"`"},{l:"1",v:"1"},{l:"2",v:"2"},{l:"3",v:"3"},{l:"4",v:"4"},{l:"5",v:"5"},{l:"6",v:"6"},{l:"7",v:"7"},{l:"8",v:"8"},{l:"9",v:"9"},{l:"0",v:"0"},{l:"-",v:"-"},{l:"=",v:"="},{l:"X",v:"backspace",w:2,isBS:true,isSpec:true}]},
+                        {row:1, wSum:15, keys:[{l:"Tab",v:"   ",w:1.5,isSpec:true},{l:"Q",v:"q"},{l:"W",v:"w"},{l:"E",v:"e"},{l:"R",v:"r"},{l:"T",v:"t"},{l:"Y",v:"y"},{l:"U",v:"u"},{l:"I",v:"i"},{l:"O",v:"o"},{l:"P",v:"p"},{l:"[",v:"["},{l:"]",v:"]"},{l:"\\",v:"\\",w:1.5}]},
+                        {row:2, wSum:15, keys:[{l:"Caps",v:"caps",w:1.8,isSpec:true},{l:"A",v:"a"},{l:"S",v:"s"},{l:"D",v:"d"},{l:"F",v:"f"},{l:"G",v:"g"},{l:"H",v:"h"},{l:"J",v:"j"},{l:"K",v:"k"},{l:"L",v:"l"},{l:";",v:";"},{l:"'",v:"'"},{l:"Enter",v:"Done",w:2.2,c:"#1A9EFF",isSpec:true}]},
+                        {row:3, wSum:15, keys:[{l:"Shift",v:"caps",w:2.5,isSpec:true},{l:"Z",v:"z"},{l:"X",v:"x"},{l:"C",v:"c"},{l:"V",v:"v"},{l:"B",v:"b"},{l:"N",v:"n"},{l:"M",v:"m"},{l:",",v:","},{l:".",v:"."},{l:"/",v:"/"},{l:"Shift",v:"caps",w:2.5,isSpec:true}]},
+                        {row:4, wSum:13.1, keys:[{l:"☺",v:"",w:1.2,isSpec:true},{l:" ",v:" ",w:6.5},{l:"🌐",v:"paste",w:1.2,isSpec:true},{l:"<",v:"left",w:1.2,isSpec:true},{l:">",v:"right",w:1.2,isSpec:true},{l:"Hide",v:"Done",w:1.8,isSpec:true}]}
+                    ]
+                    delegate: Row {
+                        width: kbPanel.width - 10; height: 75; spacing: 4
+                        property int rowIndex: modelData.row
+                        property real tWeight: modelData.wSum
+                        Repeater {
+                            model: modelData.keys
+                            delegate: Rectangle {
+                                width: (parent.width / parent.tWeight) * (modelData.w || 1.0) - parent.spacing
+                                height: parent.height
+                                color: (keyboardContainer.r === parent.rowIndex && keyboardContainer.c === index) ? "white" : (modelData.isSpec ? "black" : "#0F1318")
+                                
+                                                                MouseArea {
+                                    id: keyMa
+                                    anchors.fill: parent
+                                    
+                                    onPressed: {
+                                        keyboardContainer.r = parent.parent.rowIndex;
+                                        keyboardContainer.c = index;
+                                        
+                                        // Цикл повтора только для букв, backspace и стрелок
+                                        if (modelData.v !== "Done" && modelData.v !== "caps" && modelData.v !== "paste") {
+                                            autoRepeatAnim.start();
+                                        } else {
+                                            // Спец-кнопки срабатывают ровно один раз
+                                            keyboardContainer.processInput(modelData.v);
+                                        }
+                                    }
+                                    
+                                    onReleased: autoRepeatAnim.stop()
+                                    onExited: autoRepeatAnim.stop()
+                                    onCanceled: autoRepeatAnim.stop() // <-- КРИТИЧЕСКИ ВАЖНО: вырубает цикл при скрытии клавиатуры!
+
+                                    SequentialAnimation {
+                                        id: autoRepeatAnim
+                                        ScriptAction { script: keyboardContainer.processInput(modelData.v) }
+                                        PauseAnimation { duration: 500 }
+                                        SequentialAnimation {
+                                            loops: Animation.Infinite
+                                            ScriptAction { script: keyboardContainer.processInput(modelData.v) }
+                                            PauseAnimation { duration: 60 } 
+                                        }
+                                    }
+                                }
+
+
+
+                                Item {
+                                    anchors.fill: parent
+                                    
+                                    Text {
+                                        id: spaceIcon
+                                        font.family: icons.name
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        visible: modelData.v === " "
+                                        
+                                        font.pixelSize: 40
+                                        text: "Y"
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 10
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 20
+                                    }
+                                    
+                                    Text {
+                                        id: backspaceIcon
+                                        font.family: icons.name
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        visible: modelData.v === "backspace"
+                                        
+                                        font.pixelSize: 40
+                                        text: theme.nintendoLayout ? (theme.universalIcons ? "У" : "Y") : (theme.universalIcons ? "Х" : "X")
+
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 10
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 15
+                                    }
+                                    
+                                    Text {
+                                        id: backspaceText
+                                        font.family: bold.name
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        visible: modelData.v === "backspace"
+                                        
+                                        font.pixelSize: 22
+                                        text: "Backspace"
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 10
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 15
+                                        width: Math.min(implicitWidth, parent.width - anchors.leftMargin - 15)
+                                        elide: Text.ElideRight
+                                    }
+                                    
+                                    Text {
+                                        id: enterIcon
+                                        font.family: icons.name
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        visible: modelData.l === "Enter"
+                                        
+                                        font.pixelSize: 45
+                                        text: ">"
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 10
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 15
+                                    }
+                                    
+                                    Text {
+                                        id: enterText
+                                        font.family: bold.name
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        visible: modelData.l === "Enter"
+                                        
+                                        font.pixelSize: 26
+                                        text: "Enter"
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 10
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 15
+                                        width: Math.min(implicitWidth, parent.width - anchors.leftMargin - 15)
+                                        elide: Text.ElideRight
+                                    }
+                                    
+                                    Text {
+                                        id: hideIcon
+                                        font.family: icons.name
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        visible: modelData.l === "Hide" && modelData.v === "Done"
+                                        
+                                        font.pixelSize: 40
+                                        text: theme.nintendoLayout ? (theme.universalIcons ? "А" : "A") : (theme.universalIcons ? "В" : "B")
+
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 10
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 15
+                                    }
+                                    
+                                    Text {
+                                        id: hideText
+                                        font.family: bold.name
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        visible: modelData.l === "Hide" && modelData.v === "Done"
+                                        
+                                        font.pixelSize: 24
+                                        text: "Hide"
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 10
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 15
+                                        width: Math.min(implicitWidth, parent.width - anchors.leftMargin - 15)
+                                        elide: Text.ElideRight
+                                    }
+                                    
+                                    Text {
+                                        id: leftShiftText
+                                        font.family: bold.name
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        visible: modelData.l === "Shift" && index === 0
+                                        
+                                        font.pixelSize: 26
+                                        text: "Shift"
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 10
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 15
+                                        width: Math.min(implicitWidth, parent.width * 0.5 - anchors.leftMargin)
+                                        elide: Text.ElideRight
+                                    }
+                                    
+                                    Text {
+                                        id: leftShiftIcon
+                                        font.family: icons.name
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        visible: modelData.l === "Shift" && index === 0
+                                        
+                                        font.pixelSize: 45
+                                        text: "<"
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 10
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 15
+                                    }
+                                    
+                                    Text {
+                                        id: capsText
+                                        font.family: bold.name
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        visible: modelData.v === "caps" && modelData.l !== "Shift"
+                                        
+                                        font.pixelSize: 26
+                                        text: "Caps"
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 10
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 15
+                                        width: Math.min(implicitWidth, parent.width * 0.5 - anchors.leftMargin)
+                                        elide: Text.ElideRight
+                                    }
+                                    
+                                    Text {
+                                        id: capsIcon
+                                        font.family: icons.name
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        visible: modelData.v === "caps" && modelData.l !== "Shift"
+                                        
+                                        font.pixelSize: 45
+                                        text: "<"
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 10
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 15
+                                    }
+                                    
+                                    Text {
+                                        id: rightShiftIcon
+                                        font.family: icons.name
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        visible: modelData.l === "Shift" && index === 11
+                                        
+                                        font.pixelSize: 45
+                                        text: "<"
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 10
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 15
+                                    }
+                                    
+                                    Text {
+                                        id: rightShiftText
+                                        font.family: bold.name
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        visible: modelData.l === "Shift" && index === 11
+                                        
+                                        font.pixelSize: 26
+                                        text: "Shift"
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 10
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 15
+                                        width: Math.min(implicitWidth, parent.width - anchors.leftMargin - 15)
+                                        elide: Text.ElideRight
+                                    }
+                                    
+                                    Text {
+                                        id: arrowText
+                                        font.family: bold.name
+                                        font.pixelSize: 30
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        
+                                        text: {
+                                            if (modelData.v === "left") return "<";
+                                            if (modelData.v === "right") return ">";
+                                            return "";
+                                        }
+                                        
+                                        visible: modelData.v === "left" || modelData.v === "right"
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 10
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                    }
+                                    
+                                    Text {
+                                        id: emojiGlobeText
+                                        font.family: (modelData.l === "☺") ? icons.name : bold.name
+                                        font.pixelSize: (modelData.l === "☺") ? 45:26
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        
+                                        text: {
+                                            if (modelData.l === "☺") return "😀";
+                                            if (modelData.l === "🌐") return "Paste";
+                                            return "";
+                                        }
+                                        
+                                        visible: modelData.l === "☺" || modelData.l === "🌐"
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: (modelData.l === "☺") ? 13:20
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                    }
+                                    
+                                    Text {
+                                        id: specTextOnly
+                                        font.family: bold.name
+                                        font.pixelSize: 26
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        
+                                        text: {
+                                            if (modelData.l === "Tab") return "Tab";
+                                            if (modelData.l === "   ") return "   ";
+                                            return "";
+                                        }
+                                        
+                                        visible: !!modelData.isSpec && !spaceIcon.visible && !backspaceIcon.visible && 
+                                                !enterIcon.visible && !hideIcon.visible && !leftShiftText.visible &&
+                                                !capsText.visible && !rightShiftIcon.visible && !arrowText.visible &&
+                                                !emojiGlobeText.visible
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 10
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 15
+                                    }
+                                    
+                                    Text {
+                                        id: normalKeyText
+                                        font.family: bold.name
+                                        font.pixelSize: 26
+                                        color: (keyboardContainer.r === parent.parent.parent.rowIndex && keyboardContainer.c === index) ? "black" : "white"
+                                        
+                                        text: {
+                                            if (modelData.isSpec) return "";
+                                            if (modelData.v.length === 1) {
+                                                return keyboardContainer.isCaps ? modelData.l.toUpperCase() : modelData.l.toLowerCase();
+                                            }
+                                            return modelData.l;
+                                        }
+                                        
+                                        visible: !modelData.isSpec
+                                        
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: parent.height * 0.3
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Keys.onPressed: {
+            var rowCounts = [14, 14, 13, 12, 6];
+            if (api.keys.isLeft(event)) { 
+                if (c > 0) {
+                    c--;
+                    sNav.stop(); sNav.play();
+                }
+                event.accepted = true; 
+            }
+            else if (api.keys.isRight(event)) { 
+                if (c < rowCounts[r] - 1) {
+                    c++;
+                    sNav.stop(); sNav.play();
+                }
+                event.accepted = true; 
+            }
+            else if (api.keys.isUp(event)) { 
+                if (r > 0) { 
+                    r--; 
+                    c = Math.min(c, rowCounts[r] - 1); 
+                    sNav.stop(); sNav.play();
+                }
+                event.accepted = true; 
+            }
+            else if (api.keys.isDown(event)) { 
+                if (r < 4) { 
+                    r++; 
+                    c = Math.min(c, rowCounts[r] - 1); 
+                    sNav.stop(); sNav.play();
+                }
+                event.accepted = true; 
+            }
+            else if (api.keys.isDetails(event)) { processInput("backspace"); event.accepted = true; }
+            else if (api.keys.isFilters(event)) { processInput(" "); event.accepted = true; }
+            else if (api.keys.isNextPage(event)) { processInput("Done"); event.accepted = true; }
+            else if (api.keys.isPrevPage(event)) { isCaps = !isCaps; event.accepted = true; }
+            else if (api.keys.isCancel(event)) { processInput("Done"); event.accepted = true; }
+            else if (api.keys.isAccept(event)) {
+                var values = [
+                    ["`","1","2","3","4","5","6","7","8","9","0","-","=","backspace"],
+                    ["   ","q","w","e","r","t","y","u","i","o","p","[","]","\\"],
+                    ["caps","a","s","d","f","g","h","j","k","l",";","'","Done"],
+                    ["caps","z","x","c","v","b","n","m",",",".","/","caps"],
+                    ["",""," ","left","right","Done"]
+                ];
+                sType.play()
+                processInput(values[r][c]);
+                event.accepted = true;
+            }
+        }
+    }
+
+    SortFilterProxyModel {
     id: searchModel
     sourceModel: api.allGames
-    filters: RegExpFilter {
+    filters: ExpressionFilter {
+        // title — это роль из модели, root.matchesSearchQuery доступен по id
+        expression: root.matchesSearchQuery(title)
+    }
+    sorters: RoleSorter {
+        id: allGamesSorter
         roleName: "title"
-        pattern: root.searchQuery // Привязка к строке поиска
-        caseSensitivity: Qt.CaseInsensitive
+        ascendingOrder: true
     }
 }
 
+SortFilterProxyModel {
+    id: sortedFavoritesModel
+    sourceModel: api.allGames
+    dynamicSortFilter: true
+    filters: [
+        ValueFilter {
+            roleName: "favorite"
+            value: true
+        },
+        ExpressionFilter {
+            expression: root.matchesSearchQuery(title)
+        }
+    ]
+    sorters: RoleSorter {
+        id: favoritesSorter
+        roleName: "title"
+        ascendingOrder: true
+    }
+}
 
-
-        property int nextPageIndex: 0
+    property int nextPageIndex: 0
 
     function startExitAnimation(index) {
-        nextPageIndex = index
-        exitAnim.start()
+    if (index === 8 || index === 12) {
+        var gv = getCurrentGridView()
+        var collPage = contentContainer.loadedPages[2]
+        var cIdx = (collPage && collPage.gridCollections) ? collPage.gridCollections.currentIndex : 0
+  
+        api.memory.set("searchReturnContext", {
+            tab: root.currentPage,
+            gridIndex: gv ? gv.currentIndex : 0,
+            contentY: gv ? gv.contentY : 0, 
+            query: root.searchQuery,
+            isCollection: collectionGamesLoader.active,
+            collectionIndex: cIdx
+        })
+        if (index === 12 || index === 14) {
+            api.memory.set("steamGridSource", 9)
+        }
     }
-
-    Component.onCompleted: {
-enterAnim.start()
-    topNavRow.currentIndex = currentPage
-    root.goToZone(2)
-    focusTimer.start()
+    nextPageIndex = index
+    exitAnim.start()
 }
 
-    // Появление: страница идет «вперед» (из глубины на пользователя)
+
+    Component.onCompleted: {
+    applySortMode(sortMode)
+    enterAnim.start()
+    topNavRow.currentIndex = currentPage
+
+    var ctx = api.memory.has("searchReturnContext") ? api.memory.get("searchReturnContext") : null
+    if (ctx) {
+        api.memory.set("searchReturnContext", null)
+        root.searchQuery = (ctx.query !== undefined) ? ctx.query : ""
+                var tab = (ctx.tab !== undefined) ? ctx.tab : 0
+        var gridIdx = (ctx.gridIndex !== undefined) ? ctx.gridIndex : 0
+        var savedY = (ctx.contentY !== undefined) ? ctx.contentY : 0 
+        var isColl = (ctx.isCollection !== undefined) ? ctx.isCollection : false
+        var cIdx = (ctx.collectionIndex !== undefined) ? ctx.collectionIndex : 0
+
+        root.currentPage = tab
+        topNavRow.currentIndex = tab
+
+        if (tab === 2 && isColl) {
+            var collPage = contentContainer.loadedPages[2]
+            if (collPage && collPage.gridCollections) {
+                collPage.gridCollections.currentIndex = cIdx
+            }
+            collectionGamesLoader.collection = api.collections.get(cIdx)
+            collectionGamesLoader.active = true
+        }
+
+        Qt.callLater(function() {
+            var gv = getCurrentGridView()
+            if (gv) {
+                gv.currentIndex = gridIdx
+                gv.positionViewAtIndex(gridIdx, GridView.Contain)
+                gv.contentY = savedY
+                gv.forceActiveFocus()
+            }
+            root.focusZone = 2
+        })
+
+    } else if (fromGameMenu) {
+        topNavRow.currentIndex = currentPage
+        root.goToZone(2)
+        focusTimer.start()
+    } else {
+        enterAnim.start()
+        openKeyboard();
+        event.accepted = true;
+        root.goToZone(0)
+        topButtonsNames.currentIndex = 0
+    }
+}
+
     SequentialAnimation {
         id: enterAnim
         ScriptAction { 
             script: { 
                 animatedContent.opacity = 0
-                animatedContent.scale = 0.95 // Начинаем из глубины
+                animatedContent.scale = 0.95
             } 
         }
         ParallelAnimation {
@@ -2925,7 +3542,6 @@ enterAnim.start()
         }
     }
 
-    // Уход: страница идет «назад» (от пользователя вглубь)
     SequentialAnimation {
         id: exitAnim
         ParallelAnimation {
@@ -2936,21 +3552,20 @@ enterAnim.start()
             script: theme.finalizeNavigation(nextPageIndex)
         }
     }
-
-
-Timer {
-    id: focusTimer
-    interval: 50
-    running: false
-    repeat: false
-    onTriggered: {
-        var gridView = root.getCurrentGridView()
-        if (gridView) {
-            if (gridView.count > 0) {
-                gridView.currentIndex = 0
-                gridView.forceActiveFocus()
+    
+    Timer {
+        id: focusTimer
+        interval: 50
+        running: false
+        repeat: false
+        onTriggered: {
+            var gridView = root.getCurrentGridView()
+            if (gridView) {
+                if (!root.closeMenuVisible && gridView.count > 0) {
+                    gridView.currentIndex = gridView.currentIndex
+                    gridView.forceActiveFocus()
+                }
             }
         }
     }
-}
 }

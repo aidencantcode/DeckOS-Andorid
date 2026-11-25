@@ -28,8 +28,12 @@ ApiObject::ApiObject(const backend::CliArgs&, QObject* parent)
     , m_collections(new CollectionListModel(this))
     , m_all_games(new GameListModel(this))
 {
+    // DECKOS: queued - themes save settings from inside property change handlers (StMini does it
+    // everywhere); a synchronous notification re-ran every `api.memory` binding while the binding that
+    // caused the save was still updating, which Qt reports as a binding loop. get()/has() still see
+    // new values immediately; only bindings update one event-loop turn later.
     connect(&m_memory, &model::Memory::dataChanged,
-            this, &ApiObject::memoryChanged);
+            this, &ApiObject::memoryChanged, Qt::QueuedConnection);
 }
 
 void ApiObject::clearGameData()

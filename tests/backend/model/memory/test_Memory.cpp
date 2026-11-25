@@ -35,6 +35,7 @@ private slots:
     void set_new();
     void set_overwrite();
     void unset();
+    void unchanged_is_silent();
 
     void invalid();
 
@@ -94,6 +95,28 @@ void test_Memory::unset()
     QCOMPARE(changed.count(), 2);
     QCOMPARE(c.memory()->has("test"), false);
     QCOMPARE(c.memory()->get("test"), QVariant());
+}
+
+// DECKOS: re-storing the same value (or removing a missing key) must not notify bindings
+void test_Memory::unchanged_is_silent()
+{
+    Container c;
+    QSignalSpy changed(&c, &Container::memoryChanged);
+    QVERIFY(changed.isValid());
+
+    c.memory()->set("test", "myvalue");
+    c.memory()->set("test", "myvalue");
+    QCOMPARE(changed.count(), 1);
+
+    c.memory()->set("num", 3);
+    c.memory()->set("num", 3.0); // QML numbers arrive as double, stored ones may be int
+    QCOMPARE(changed.count(), 2);
+
+    c.memory()->unset("missing");
+    QCOMPARE(changed.count(), 2);
+
+    c.memory()->set("test", "other");
+    QCOMPARE(changed.count(), 3);
 }
 
 void test_Memory::invalid()

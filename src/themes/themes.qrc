@@ -99,16 +99,24 @@
         <file>pegasus-theme-grid/assets/logos/zmachine.svg</file>
         <file>pegasus-theme-grid/assets/logos/zxspectrum.svg</file>
         <!-- DECKOS: built-in default theme (StMini + BigScreenFE RetroAchievements, private build) -->
+        <file>deckos/CREDITS.md</file>
         <file>deckos/assets/audio/accept.wav</file>
         <file>deckos/assets/audio/back.wav</file>
         <file>deckos/assets/audio/deck_ui_show_ui.wav</file>
         <file>deckos/assets/audio/deck_ui_side_menu_fly_in.wav</file>
         <file>deckos/assets/audio/deck_ui_side_menu_fly_out.wav</file>
+        <file>deckos/assets/audio/favorite.wav</file>
+        <file>deckos/assets/audio/game.wav</file>
         <file>deckos/assets/audio/nav.wav</file>
+        <file>deckos/assets/audio/tab.wav</file>
+        <file>deckos/assets/audio/type.wav</file>
         <file>deckos/assets/font/ARIALBD.TTF</file>
         <file>deckos/assets/font/Gilroy-ExtraBold.otf</file>
         <file>deckos/assets/font/settings_icon.ttf</file>
+        <file>deckos/assets/logo/16_9.gif</file>
         <file>deckos/assets/logo/logo.jpg</file>
+        <file>deckos/assets/news/new.jpg</file>
+        <file>deckos/assets/qr.png</file>
         <file>deckos/assets/theme-icons/20.png</file>
         <file>deckos/assets/theme-icons/20B.png</file>
         <file>deckos/assets/theme-icons/40.png</file>
@@ -121,29 +129,54 @@
         <file>deckos/assets/theme-icons/batteryB.png</file>
         <file>deckos/assets/theme-icons/charging.png</file>
         <file>deckos/assets/theme-icons/chargingB.png</file>
-        <file>deckos/CREDITS.md</file>
-        <file>deckos/Localization.qml</file>
-        <file>deckos/ra/assets/icons/delete.svg</file>
-        <file>deckos/ra/assets/icons/hide.svg</file>
-        <file>deckos/ra/assets/icons/icon_0.png</file>
-        <file>deckos/ra/assets/icons/NO_RA.svg</file>
-        <file>deckos/ra/assets/icons/RA.svg</file>
-        <file>deckos/ra/assets/icons/retroachievements.svg</file>
-        <file>deckos/ra/qmldir</file>
+        <file>deckos/assets/video/bouncing.gif</file>
+        <file>deckos/assets/video/loading.webp</file>
+        <file>deckos/javascript/RetroAchievementsApi.js</file>
+        <file>deckos/javascript/news.js</file>
+        <file>deckos/javascript/steamApi.js</file>
         <file>deckos/ra/RACredentialsPopup.qml</file>
         <file>deckos/ra/RAGameInfoSection.qml</file>
         <file>deckos/ra/RALogin.qml</file>
         <file>deckos/ra/VirtualKeyboard.qml</file>
+        <file>deckos/ra/assets/icons/NO_RA.svg</file>
+        <file>deckos/ra/assets/icons/RA.svg</file>
+        <file>deckos/ra/assets/icons/delete.svg</file>
+        <file>deckos/ra/assets/icons/hide.svg</file>
+        <file>deckos/ra/assets/icons/icon_0.png</file>
+        <file>deckos/ra/assets/icons/retroachievements.svg</file>
+        <file>deckos/ra/qmldir</file>
+        <file>deckos/screens/ProfileBadge.qml</file>
         <file>deckos/screens/downloads.qml</file>
+        <file>deckos/screens/exit.qml</file>
         <file>deckos/screens/friends.qml</file>
+        <file>deckos/screens/gamedata.qml</file>
+        <file>deckos/screens/gamedata/customization.qml</file>
+        <file>deckos/screens/gamedata/files.qml</file>
+        <file>deckos/screens/gamedata/shortcut.qml</file>
         <file>deckos/screens/gamemenu.qml</file>
         <file>deckos/screens/home.qml</file>
         <file>deckos/screens/library.qml</file>
         <file>deckos/screens/media.qml</file>
+        <file>deckos/screens/newspage.qml</file>
         <file>deckos/screens/nothing.qml</file>
         <file>deckos/screens/search.qml</file>
         <file>deckos/screens/settings.qml</file>
+        <file>deckos/screens/settings/accessibility.qml</file>
+        <file>deckos/screens/settings/controller.qml</file>
+        <file>deckos/screens/settings/customization.qml</file>
+        <file>deckos/screens/settings/general.qml</file>
+        <file>deckos/screens/settings/highcontrast.qml</file>
+        <file>deckos/screens/settings/library.qml</file>
+        <file>deckos/screens/settings/parts/DeckSettingsPage.qml</file>
+        <file>deckos/screens/settings/parts/FolderPicker.qml</file>
+        <file>deckos/screens/settings/power.qml</file>
+        <file>deckos/screens/settings/profile.qml</file>
+        <file>deckos/screens/settings/sound.qml</file>
+        <file>deckos/screens/settings/system.qml</file>
         <file>deckos/screens/store.qml</file>
+        <file>deckos/screens/webscreen/profile.qml</file>
+        <file>deckos/screens/webscreen/signup.qml</file>
+        <file>deckos/screens/webscreen/steamgriddb.qml</file>
         <file>deckos/theme.cfg</file>
         <file>deckos/theme.qml</file>
     </qresource>

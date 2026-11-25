@@ -177,3 +177,16 @@ void FolderListModel::setExtensions(QStringList list)
     emit extensionsChanged();
     cd(QStringLiteral("."));
 }
+
+// DECKOS
+QVariantMap FolderListModel::get(int row) const
+{
+    if (row < 0 || count() <= row)
+        return {};
+
+    const FolderListEntry& entry = m_files.at(static_cast<size_t>(row));
+    return {
+        { QStringLiteral("name"), entry.name },
+        { QStringLiteral("isDir"), entry.is_dir },
+    };
+}

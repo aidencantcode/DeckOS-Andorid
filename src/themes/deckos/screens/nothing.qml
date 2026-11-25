@@ -7,6 +7,19 @@ FocusScope {
     id: root
     anchors.fill: parent
     focus: true
+    
+    ShaderEffectSource {
+    id: globalBlurSource
+    anchors.fill: parent
+    sourceItem: animatedContent
+    live: true
+    visible: false
+    // ClampToEdge гарантирует отсутствие щелей при размытии
+    wrapMode: ShaderEffectSource.ClampToEdge
+}
+
+
+
 
     // --- свойства ---
     property var theme
@@ -14,6 +27,7 @@ FocusScope {
     property real bottomH: topH
     property bool hasFocus: activeFocus
     property bool isReady: true
+    property bool closeMenuVisible: false
 
     // ============================================
     // ГЛАВНЫЙ ОБРАБОТЧИК КЛАВИШ
@@ -25,6 +39,11 @@ FocusScope {
             leftBar.toggle()
             event.accepted = true
         }
+        else if (api.keys.isMenu(event)) {
+        // Кнопка Menu (левый нижний угол) - открытие левого меню
+        leftBar.toggle()
+        event.accepted = true
+    }
     }
     
     Item {
@@ -50,7 +69,7 @@ FocusScope {
     /* ================= TOP BAR ================= */
     Rectangle {
         id: topBar
-        width: content.width
+        width: parent.width 
         height: root.topH
         color: "transparent"
         z: 10000
@@ -114,36 +133,65 @@ Rectangle {
         }
     ]
 
-    // Описание самой анимации перехода
+        // Описание самой анимации перехода
     transitions: [
         Transition {
-            from: "*"; to: "*"
+            from: "default"; to: "focused" // Явный переход ТУДА
             SequentialAnimation {
-                // 1. Уход (движение на 20 ед. и исчезновение)
                 ParallelAnimation {
                     NumberAnimation { 
                         target: searchIcon
                         property: "x"
-                        to: (searchIcon.state === "focused") ? searchIcon.posRight - 20 : searchIcon.posLeft + 20
+                        to: searchIcon.posRight - 20
                         duration: 200
                         easing.type: Easing.OutCubic
                     }
                     NumberAnimation { target: searchIcon; property: "opacity"; to: 0; duration: 200 }
                 }
 
-                // 2. Телепорт (пока иконка невидима)
                 PropertyAction { 
                     target: searchIcon
                     property: "x"
-                    value: (searchIcon.state === "focused") ? searchIcon.posLeft + 20 : searchIcon.posRight - 20
+                    value: searchIcon.posLeft + 20
                 }
 
-                // 3. Появление (доводка на 20 ед. и проявление)
                 ParallelAnimation {
                     NumberAnimation { 
                         target: searchIcon
                         property: "x"
-                        to: (searchIcon.state === "focused") ? searchIcon.posLeft : searchIcon.posRight
+                        to: searchIcon.posLeft
+                        duration: 200
+                        easing.type: Easing.OutQuad
+                    }
+                    NumberAnimation { target: searchIcon; property: "opacity"; to: 1; duration: 200 }
+                }
+            }
+        },
+        Transition {
+            from: "focused"; to: "default" // Явный переход ОБРАТНО
+            SequentialAnimation {
+                ParallelAnimation {
+                    NumberAnimation { 
+                        target: searchIcon
+                        property: "x"
+                        to: searchIcon.posLeft + 20
+                        duration: 200
+                        easing.type: Easing.OutCubic
+                    }
+                    NumberAnimation { target: searchIcon; property: "opacity"; to: 0; duration: 200 }
+                }
+
+                PropertyAction { 
+                    target: searchIcon
+                    property: "x"
+                    value: searchIcon.posRight - 20
+                }
+
+                ParallelAnimation {
+                    NumberAnimation { 
+                        target: searchIcon
+                        property: "x"
+                        to: searchIcon.posRight
                         duration: 200
                         easing.type: Easing.OutQuad
                     }
@@ -210,7 +258,7 @@ Rectangle {
 
     MouseArea { 
         anchors.fill: parent
-        onClicked: {
+        onClicked: if (!root.closeMenuVisible) {
             root.goToZone(0)
             topButtonsRow.currentIndex = 0
         }
@@ -228,7 +276,7 @@ Rectangle {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "o"
+                    text: theme.isOnline ? "°" : "o"   // ← вот здесь меняем    
                     font.pixelSize: 35
                     font.family: icons.name
                     color: (topButtonsRow.currentIndex === 1 && topButtonsRow.focus) ? "black" : "white"
@@ -236,7 +284,7 @@ Rectangle {
 
                 MouseArea { 
                     anchors.fill: parent; 
-                    onClicked: {
+                    onClicked: if (!root.closeMenuVisible) {
                         root.goToZone(0)
                         topButtonsRow.currentIndex = 1
                     }
@@ -247,7 +295,7 @@ Rectangle {
           // Battery icon           
 Item {
     id: topBarBattery
-    width: 170
+    width: theme.showBatteryPercent ? 170 : 70
     height: root.topH
 
     // === Фон (реагирует на фокус) ===
@@ -304,6 +352,7 @@ Item {
             font.family: bold.name
             font.pixelSize: 36
             verticalAlignment: Text.AlignVCenter
+            visible: theme.showBatteryPercent // Скрываем текст, если выключено
         }
 
         // === Контейнер для иконок (основная батарея + зарядка) ===
@@ -334,7 +383,7 @@ Item {
     // === Область клика ===
     MouseArea {
         anchors.fill: parent
-        onClicked: {
+        onClicked: if (!root.closeMenuVisible) {
             root.goToZone(0)
             topButtonsRow.currentIndex = 2
         }
@@ -345,14 +394,18 @@ Item {
             // ===== CLOCK =====
             Rectangle {
                 id: topBtnClock
-                width: 200; height: root.topH
+                width: theme.use24HourFormat ? 130 : 200; height: root.topH
                 color: "transparent"
                 border.color: "transparent"               
+
+                // Динамически определяем формат времени на основе настройки
+                property string timeFormat: theme.use24HourFormat ? "HH:mm" : "hh:mm AP"
 
                 Text {
                     id: clockText
                     anchors.centerIn: parent
-                    text: Qt.formatTime(new Date(), "hh:mm AP")
+                    // Инициализация при загрузке
+                    text: Qt.formatTime(new Date(), topBtnClock.timeFormat)
                     font.pixelSize: 35
                     font.family: bold.name
                     color: "white"
@@ -360,8 +413,11 @@ Item {
 
                 Timer {
                     interval: 1000; running: true; repeat: true
-                    onTriggered: clockText.text = Qt.formatTime(new Date(), "hh:mm AP")
+                    onTriggered: clockText.text = Qt.formatTime(new Date(), topBtnClock.timeFormat)
                 }                
+                
+                // Мгновенно обновляем текст, если переключатель нажали
+                onTimeFormatChanged: clockText.text = Qt.formatTime(new Date(), topBtnClock.timeFormat)
             }
 
             // ===== USER =====
@@ -378,7 +434,7 @@ Item {
                     anchors.centerIn: parent
                     width: parent.width * 0.85
                     height: parent.height * 0.8
-                    source: "../assets/logo/logo.jpg"
+                    source: (root.theme && root.theme.profilePictureSource !== "") ? root.theme.profilePictureSource : "../assets/logo/logo.jpg" /* DECKOS */
                     fillMode: Image.PreserveAspectFit
                 }
 
@@ -394,7 +450,7 @@ Item {
 
                 MouseArea { 
                     anchors.fill: parent; 
-                    onClicked: {
+                    onClicked: if (!root.closeMenuVisible) {
                         root.goToZone(0)
                         topButtonsRow.currentIndex = 3
                     }
@@ -417,32 +473,70 @@ Item {
     }
 
     /* ================= BOTTOM BAR ================= */
+    Item {
+    id: bottomBar
+    width: parent.width
+    height: root.topH
+    anchors.bottom: parent.bottom
+    z: 100000000000
+    clip: true
+
+    // Захватываем фрагмент фона строго под bottomBar (не весь экран!)
+    ShaderEffectSource {
+        id: bottomAreaSource
+        sourceItem: globalBlurSource
+        // Координаты bottomBar в системе координат globalBlurSource (размер root)
+        sourceRect: Qt.rect(0, root.height - root.topH, root.width, root.topH)
+        live: true
+        visible: false
+    }
+
+   GaussianBlur {
+    anchors.fill: parent
+    source: bottomAreaSource
+    radius: 150          
+    visible: !theme.highContrastBottomBar               // до любого нужного значения
+    samples: 64        // количество сэмплов для качества
+    transparentBorder: false
+}
+
+    // Полупрозрачный чёрный (50%)
     Rectangle {
-        id: bottomBar
-        width: parent.width
-        height: topH
+        anchors.fill: parent
         color: "black"
-        z: 1000
-        anchors.bottom: parent.bottom
+        opacity: theme.highContrastBottomBar ? 1.0 : (leftBar.isOpen || root.closeMenuVisible || root.optionsMenuVisible ? 0.9 : 0.6)
+  
+        Behavior on opacity { NumberAnimation { duration: 150 } }
+    }
 
-        // ====== Левая кнопка MENU ======
-        Rectangle {
-            id: btnMenu
-            width: 180; height: parent.height
-            anchors.left: parent.left
-            anchors.leftMargin: 35
-            color: "transparent"
+          // ====== Левая кнопка MENU ======
+    Rectangle {
+        id: btnMenu
+        width: 180; height: parent.height
+        anchors.left: parent.left
+        anchors.leftMargin: 18
+        color: "transparent"
 
-            Row {
-                anchors.centerIn: parent
-                spacing: 6
-                Text { text: ":"; font.family: icons.name; font.pixelSize: 54; color: "white" }
-                Text { text: "MENU"; font.family: bold.name; font.pixelSize: 28; color: "white"; y: parent.height * 0.21 }
-            }
+        Row {
+            anchors.verticalCenter: parent.verticalCenter 
+            spacing: 6
+            Text { text: ":"; font.family: icons.name; font.pixelSize: 54; color: "white" }
+            Text { 
+    text: root.closeMenuVisible ? "PEGASUS MENU" : "MENU"
+    font.family: bold.name 
+    font.pixelSize: 28 
+    color: "white"
+    y: parent.height * 0.21 
+}
+        }
 
             MouseArea { 
                 anchors.fill: parent; 
-                onClicked: leftBar.toggle() 
+                onClicked: if (!root.closeMenuVisible) { 
+leftBar.toggle() 
+leftBar.currentIndex = currentPage
+leftBar.updateFocus()
+}
             }
         }
 
@@ -454,19 +548,12 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 38
 
-        // --- Подсказка OPTIONS ---
-        Row {
-            spacing: 18
-            anchors.verticalCenter: parent.verticalCenter
-            Text { text: "X"; font.family: icons.name; font.pixelSize: 53; color: "white";y:parent.height * -0.025 }
-            Text { text: "OPTIONS"; font.family: bold.name; font.pixelSize: 25; color: "white";y:parent.height *0.23 }
-        }
-
         // --- Подсказка SELECT ---
         Row {
             spacing: 18
             anchors.verticalCenter: parent.verticalCenter
-            Text { text: "A"; font.family: icons.name; font.pixelSize: 53; color: "white";y:parent.height * -0.025}
+            Text { text: theme.nintendoLayout ? (theme.universalIcons ? "В" : "B") : (theme.universalIcons ? "А" : "A")
+; font.family: icons.name; font.pixelSize: 53; color: "white";y:parent.height * -0.025}
             Text { text: "SELECT"; font.family: bold.name; font.pixelSize: 25; color: "white";y:parent.height *0.23 }
         }
 
@@ -478,33 +565,235 @@ Item {
                 Row {
                     anchors.centerIn: parent
                     spacing: 18
-                    Text { text: "B"; font.family: icons.name; font.pixelSize: 53; color: "white"; y: parent.height * -0.025}
+                    Text { text: theme.nintendoLayout ? (theme.universalIcons ? "А" : "A") : (theme.universalIcons ? "В" : "B")
+; font.family: icons.name; font.pixelSize: 53; color: "white"; y: parent.height * -0.025}
                     Text { text: "BACK"; font.family: bold.name; font.pixelSize: 25; color: "white"; y: parent.height * 0.23 }
                 }
                 MouseArea { 
                     anchors.fill: parent; 
-                    onClicked: leftBar.toggle() 
+                    onClicked: if (!root.closeMenuVisible) {leftBar.toggle()}
                 }
             }
         }
     }
     
-    // ФОН
-    Rectangle {
-        id: dimLayer
-        anchors.fill: parent
-        color: "black"
-        opacity: leftBar.isOpen ? 0.7 : 0.0
-        visible: leftBar.visible
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutQuad } }
+   /* LEFT BAR ФОН */ 
+Item {
+    id: leftOverlay
+    anchors.fill: parent
+    z: 0 
+    
+    // Прямая привязка к движению панели для синхронной анимации
+    opacity: (leftBar.x + leftBar.width) / leftBar.width
+    visible: opacity > 0
 
-        MouseArea {
-            anchors.fill: parent
-            onClicked: leftBar.toggle()
+    MouseArea {
+        anchors.fill: parent
+        enabled: leftBar.isOpen
+        onClicked: {
+            leftBar.toggle()
+            focusTimer.start()
         }
     }
 
+    FastBlur {
+        anchors.fill: parent
+        source: globalBlurSource
+        radius: 50
+        transparentBorder: false
+    }
 
+    Rectangle {
+        anchors.fill: parent
+        color: "black"
+        opacity: 0.7
+    }
+}
+    
+    /* ================= CLOSE MENU ================= */
+FocusScope {
+    id: closeMenu
+    width: parent.width
+    height: parent.height
+    visible: closeMenuVisible
+    focus: closeMenuVisible
+    enabled: visible
+    z: 99
+    
+    opacity: closeMenuVisible ? 1 : 0
+    Behavior on opacity { NumberAnimation { duration: 150 } }
+
+    property int currentButtonIndex: 0
+    // Массив теперь содержит только 2 кнопки
+    property var buttons: [exitButton, cancelButton]
+
+    /* CLOSE MENU ФОН */
+Item {
+    id: closeMenuOverlay
+    anchors.fill: parent
+    z: 0 
+    visible: root.closeMenuVisible // Используем твой флаг видимости
+
+    MouseArea {
+        anchors.fill: parent
+    }
+
+    FastBlur {
+        anchors.fill: parent
+        source: globalBlurSource
+        radius: 50
+        transparentBorder: false
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        color: "black"
+        opacity: 0.7
+    }
+}
+
+
+    // Серый прямоугольник посередине
+    Rectangle {
+        width: 550
+        height: 240 // Уменьшено, так как кнопок теперь 2
+        anchors.centerIn: parent
+        color: "#181B20"
+        
+        // Текст сверху
+        Text {
+            anchors {
+                horizontalCenter: parent.horizontalCenter
+                top: parent.top
+                topMargin: -65
+            }
+            text: "Close"
+            color: "white"
+            font.pixelSize: 38
+            font.family: bold.name
+        }
+        
+        // Контейнер для кнопок
+        Column {
+            anchors.centerIn: parent
+            width: parent.width
+            height: parent.height
+            spacing: 0
+            
+            // ===== 1. КНОПКА "EXIT" =====
+            Rectangle {
+                id: exitButton
+                width: parent.width
+                height: parent.height / 2
+                color: closeMenu.currentButtonIndex === 0 ? "#DE3619" : "transparent"
+                              
+                Text {
+                    text: "   Exit"
+                    color: "white"
+                    font.pixelSize: 35
+                    font.family: bold.name
+                    anchors.verticalCenter: parent.verticalCenter
+                }               
+                
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        if (closeMenu.currentButtonIndex !== 0) {
+                            closeMenu.currentButtonIndex = 0
+                            sNav.stop();
+                            sNav.play();
+                        } else {
+                            Internal.system.quit() /* DECKOS: was Qt.quit(), which skips DeckOS's shutdown (saving play time etc.) */
+                        }
+                    }
+                }
+            }
+            
+            // ===== 2. КНОПКА "CANCEL" =====
+            Rectangle {
+                id: cancelButton1
+                width: parent.width
+                height: parent.height / 2
+                color: closeMenu.currentButtonIndex === 1 ? "white" : "transparent"
+                
+                Text {
+                    text: "   Cancel"
+                    color: closeMenu.currentButtonIndex === 1 ? "black" : "white"
+                    font.pixelSize: 35
+                    font.family: bold.name
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        if (closeMenu.currentButtonIndex !== 1) {
+                            closeMenu.currentButtonIndex = 1
+                            sNav.stop();
+                            sNav.play();
+                        } else {
+                            closeMenuVisible = false
+                            sLeftClose.play()
+                            focusTimer.start()
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // ОБРАБОТКА КЛАВИШ
+    Keys.onPressed: {
+        if (closeMenuVisible) {
+            if (event.key === Qt.Key_Up) {
+                if (currentButtonIndex > 0) {
+                    currentButtonIndex--
+                    sNav.stop();
+                    sNav.play();
+                }
+                event.accepted = true
+            }
+            else if (event.key === Qt.Key_Down) {
+                if (currentButtonIndex < 1) { // Всего 2 кнопки (0 и 1)
+                    currentButtonIndex++
+                    sNav.stop();
+                    sNav.play(); 
+                }
+                event.accepted = true
+            }
+            else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) {
+                event.accepted = true
+            }
+            else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape){
+            }
+            else if (api.keys.isMenu(event)) {    
+            }
+            else if (api.keys.isAccept(event) || event.key === Qt.Key_Return || event.key === Qt.Key_Space) {
+                if (currentButtonIndex === 0) {
+                    // Активация Exit
+                    event.accepted = true
+                    Internal.system.quit() /* DECKOS: was Qt.quit(), which skips DeckOS's shutdown (saving play time etc.) */
+                    return
+                } else if (currentButtonIndex === 1) {
+                    // Активация Cancel
+                    closeMenuVisible = false
+                    sLeftClose.play()
+                    focusTimer.start()
+                }
+                event.accepted = true
+            }            
+        }
+    }
+    
+    onVisibleChanged: {
+        if (visible) {
+            currentButtonIndex = 0
+            sShowui.play()
+            forceActiveFocus()
+        }
+    }
+}
+    
     /* ================= LEFT BAR ================= */
     FocusScope {
         id: leftBar
@@ -534,8 +823,8 @@ Keys.onPressed: {
                 currentIndex--
                 updateFocus()
                 event.accepted = true
-                ////sNav.stop();
-            ////sNav.play();
+                sNav.stop();
+            sNav.play();
             } else {
                 // Если уже на верхней кнопке - остаемся на ней
                 // Никакого перехода на topbar
@@ -547,23 +836,36 @@ Keys.onPressed: {
                 currentIndex++
                 updateFocus()
                 event.accepted = true
-                ////sNav.stop();
-            ////sNav.play();
+                sNav.stop();
+            sNav.play();
             } else {
                 // Если уже на нижней кнопке - остаемся на ней
                 event.accepted = true
             }
         }
         else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
-            theme.openPage(currentIndex)
-            toggle()
-            event.accepted = true
+    if (currentIndex === 7) { // Close button
+        toggle() // Закрываем левое меню
+        root.closeMenuVisible = true // Открываем CloseMenu
+        focusTimer.start()
+    } else {
+        theme.openPage(currentIndex)
+        toggle()
+        if (currentIndex === 6) {
+            sShowui.play()
         }
+    }
+    event.accepted = true
+}
         else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape) {
             toggle()
             focusTimer.start()
             event.accepted = true
         }
+        else if (api.keys.isMenu(event)) {
+            toggle()
+            event.accepted = true
+        }        
         else {
             // Блокируем все другие клавиши, чтобы не было случайных переходов
             event.accepted = true
@@ -586,13 +888,19 @@ Keys.onPressed: {
             Behavior on x { NumberAnimation { duration: 800; easing.type: Easing.OutBack } }
             Behavior on opacity { NumberAnimation { duration: 0 } }
 
+            ProfileBadge { // DECKOS: user picture + name (Settings > Profile)
+                theme: root.theme
+                anchors.left: parent.left; anchors.leftMargin: 40
+                anchors.right: parent.right; anchors.rightMargin: 20
+                y: parent.height * 0.105; height: parent.height * 0.075
+            }
             Column {
                 id: buttonColumn
                 anchors {
                     left: parent.left
                     top: parent.top
                     leftMargin: 0
-                    topMargin: parent.height * 0.11
+                    topMargin: parent.height * 0.2 /* DECKOS: was 0.11, room for the profile */
                 }
                 spacing: 0
             }
@@ -607,7 +915,7 @@ Keys.onPressed: {
                 property string title: ""
                 property int buttonIndex: 0
                 width: menuPanel.width
-                height: 106
+                height: Math.min(106, menuPanel.height * 0.085) /* DECKOS: was 106 */
                 
                 property bool isFocused: activeFocus
                 
@@ -656,46 +964,58 @@ Item {
 }
                     
                     Row {
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: parent.left
-                        anchors.leftMargin: 50
-                        spacing: 38
+    anchors.verticalCenter: parent.verticalCenter  // центр по вертикали
+    anchors.left: parent.left                       // прижимаем к левому краю
+    anchors.leftMargin: menuPanel.width * 0.083                     // отступ слева, можно менять
+    spacing: 38                                // расстояние между иконкой и текстом
 
-                        Text {
-                            text: icon
-                            font.family: icons.name
-                            font.pixelSize: Math.min(43, menuPanel.width / 7)
-                            color: "white"
-                            verticalAlignment: Text.AlignVCenter
-                            horizontalAlignment: Text.AlignHCenter
-                        }
+    // Иконка
+    Text {
+        text: icon
+        font.family: icons.name
+        font.pixelSize: menuPanel.width * 0.075
+        color: "white"
+        verticalAlignment: Text.AlignVCenter // DECKOS: was parent.verticalCenter (an anchor line)
+        horizontalAlignment: Text.AlignHCenter
+    }
 
-                        Text {
-                            text: title
-                            font.family: bold.name
-                            font.pixelSize: Math.min(43, menuPanel.width / 7)
-                            color: "white"
-                            verticalAlignment: Text.AlignVCenter
-                            horizontalAlignment: Text.AlignHCenter
-                        }
-                    }
-                }
+    // Основной текст
+    Text {
+        text: title
+        font.family: bold.name
+        font.pixelSize: menuPanel.width * 0.075
+        color: "white"
+        verticalAlignment: Text.AlignVCenter // DECKOS: was parent.verticalCenter (an anchor line)
+        horizontalAlignment: Text.AlignHCenter
+    }
+}
+}         
 
                 MouseArea {
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: {
-                        if (leftBar.currentIndex === buttonIndex) {
-                            if (theme && theme.openPage) {
-                                theme.openPage(buttonIndex)
-                            }
-                            leftBar.toggle()
-                        } else {
-                            leftBar.currentIndex = buttonIndex
-                            leftBar.updateFocus()
-                        }
-                    }
+    anchors.fill: parent
+    hoverEnabled: true
+    onClicked: {
+        if (leftBar.currentIndex === buttonIndex) {
+            // Второе нажатие
+            if (buttonIndex === 7) { // Close button
+                leftBar.toggle() // Закрываем левое меню
+                closeMenu.forceActiveFocus()
+                closeMenuVisible = true // Открываем CloseMenu
+            } else {
+                theme.openPage(buttonIndex)
+                leftBar.toggle()
+                if (buttonIndex === 6) {
+                    sShowui.play()
                 }
+            }
+        } else {
+            // Первое нажатие — переводим фокус
+            leftBar.currentIndex = buttonIndex
+            leftBar.updateFocus()
+            sNav.play()
+        }
+    }
+}
             }
         }
 
@@ -744,7 +1064,7 @@ Item {
             leftBar.buttons = [btn1, btn2, btn3, btn4, btn5, btn6, btn7, btn8]
             
             // Устанавливаем начальный фокус
-        currentIndex = theme.currentPage
+        currentIndex = theme ? theme.currentPage : 0 // DECKOS: theme is assigned after creation
         updateFocus()
         }
 

@@ -4,17 +4,57 @@ import QtQuick.Layouts 1.15
 import QtGraphicalEffects 1.15
 import QtQuick.Window 2.15
 import SortFilterProxyModel 0.2 
+import "../javascript/news.js" as NewsJS
 
 FocusScope {
     id: root
     anchors.fill: parent
     focus: true
+    
+    ShaderEffectSource {
+    id: globalBlurSource
+    anchors.fill: parent
+    sourceItem: animatedContent
+    live: true
+    visible: false
+    // ClampToEdge гарантирует отсутствие щелей при размытии
+    wrapMode: ShaderEffectSource.ClampToEdge
+}
+
+property bool hasImage: {
+    if (typeof gameData === "undefined" || !gameData) return false; // DECKOS: no gameData at page level
+
+    // 1. Проверка веб-ассетов (capsule или wideCapsule)
+    if (typeof api !== "undefined" && api.memory) {
+        var customData = api.memory.get("custom_assets_" + gameData.title);
+        if (customData && customData.assets) {
+            var hasWebCapsule = customData.assets.capsule !== "" && customData.assets.capsule !== undefined;
+            var hasWebWide = customData.assets.wideCapsule !== "" && customData.assets.wideCapsule !== undefined;
+            if (hasWebCapsule || hasWebWide) return true;
+        }
+    }
+
+    // 2. Проверка локальных метаданных
+    var hasLocalPoster = !!(gameData.assets && (gameData.assets.poster || gameData.assets.boxFront));
+    var hasLocalSteam = !!(gameData.assets && gameData.assets.steam);
+
+    return hasLocalPoster || hasLocalSteam;
+}
+
+
+    
     // Виртуальная высота страницы теперь 1.5 экрана
 property real pageHeight: root.height * 1.9
 property real topH: 95
-property real middleH: root.height * 0.715
+property bool safeAltHomeScreen: theme ? theme.alternativeHomeScreen : false
+property int safeGameListSize: theme ? theme.gameListSize : 2
+property real middleH: root.safeAltHomeScreen ? (root.height * 0.91) : (root.height * (0.635 + (root.safeGameListSize - 1.5) * 0.08125))
 property real bottomH: pageHeight - topH - middleH
 
+// Свойства для анимации переключения табов в нижней зоне
+property int bottomCurrentTab: 0
+property real bottomAnimX: 0
+property real bottomAnimOpacity: 1.0
 
     // current focus zone: 0 = top, 1 = middle, 2 = bottom
     property int focusZone: 1
@@ -23,8 +63,19 @@ property real bottomH: pageHeight - topH - middleH
 property int newsListFocusHelper: 1
     
     // меню опций
-    property bool optionsMenuVisible: false
+property bool optionsMenuVisible: false
 property var currentFocusedGame: null
+
+// меню закрытия (новое)
+property bool closeMenuVisible: false
+property var newsData: []
+
+property bool isBottomZoneMerged: false
+
+
+
+
+
 
     SoundEffect { id: sNav; source: "../assets/audio/nav.wav"; volume: 1.0 }
     SoundEffect { id: sAccept; source: "../assets/audio/accept.wav"; volume: 1.0 }
@@ -33,7 +84,68 @@ property var currentFocusedGame: null
     SoundEffect { id: sLeftClose; source: "../assets/audio/deck_ui_side_menu_fly_out.wav"; volume: 1.0 }
     SoundEffect { id: sShowui; source: "../assets/audio/deck_ui_show_ui.wav"; volume: 1.0 }
 
+// Анимация переключения табов в BottomZone
+SequentialAnimation {
+    id: bottomTabAnim
+    property int targetIdx: 0
+    property int direction: 1 // 1 для Next, -1 для Prev
+    
+    // Кадр 1: Старый контент уходит
+    ParallelAnimation {
+        NumberAnimation { 
+            target: root; 
+            property: "bottomAnimOpacity"; 
+            to: 0.2; 
+            duration: 100
+        }
+        NumberAnimation { 
+            target: root; 
+            property: "bottomAnimX"; 
+            to: -listsContainer.width * 0.2 * bottomTabAnim.direction; 
+            duration: 150; 
+            easing.type: Easing.OutQuad 
+        }        
+    }
+    
+    // Кадр 2: Мгновенная подмена
+    ScriptAction {
+        script: {
+            root.bottomCurrentTab = bottomTabAnim.targetIdx
+            bottomTabsRow.currentIndex = bottomTabAnim.targetIdx
+            root.bottomAnimX = listsContainer.width * 0.2 * bottomTabAnim.direction
+        }
+    }
+    
+    // Кадр 3: Новый контент встает на место
+    ParallelAnimation {
+        NumberAnimation { 
+            target: root; 
+            property: "bottomAnimOpacity"; 
+            to: 1.0; 
+            duration: 250
+        }
+        NumberAnimation { 
+            target: root; 
+            property: "bottomAnimX"; 
+            to: 0; 
+            duration: 500; 
+            easing.type: Easing.OutExpo
+        }
+    }
+}
 
+// Функция для безопасного переключения табов
+function safeBottomNav(newIdx) {
+    if (newIdx === bottomCurrentTab) return;
+    
+    if (bottomTabAnim.running) {
+        bottomTabAnim.stop();
+    }
+    
+    bottomTabAnim.direction = (newIdx > bottomCurrentTab) ? 1 : -1;
+    bottomTabAnim.targetIdx = newIdx;
+    bottomTabAnim.start();
+}
 
 function toggleOptionsMenu() {
     if (optionsMenuVisible) {
@@ -45,20 +157,19 @@ function toggleOptionsMenu() {
         if (focusZone === 1) {
             gameList.forceActiveFocus()
         }
-    } else if (focusZone === 1 && gameList.currentIndex !== 10) { // 10 - плейсхолдер
-        // ОТКРЫТИЕ
-        if (gameList.model && gameList.model.count > 0) {
+    } else if (focusZone === 1 && gameList.focus) {
+        // ОТКРЫТИЕ — только если в фокусе список игр
+        // Проверяем, что есть игры и текущий индекс не указывает на плейсхолдер
+        if (middleSorted.count > 0 && gameList.currentIndex < middleSorted.count) {
             
-            // 1. Получаем индекс в отсортированном списке
-            var proxyIndex = gameList.currentIndex;
+            // Получаем индекс в отсортированном списке
+            var proxyIndex = gameList.currentIndex
             
-            // 2. Преобразуем его в индекс ГЛАВНОГО списка (api.allGames)
-            // Это самая важная часть!
-            var sourceIndex = middleSorted.mapToSource(proxyIndex);
+            // Преобразуем его в индекс ГЛАВНОГО списка (api.allGames)
+            var sourceIndex = middleSorted.mapToSource(proxyIndex)
             
-            // 3. Получаем НАСТОЯЩИЙ объект игры из api.allGames
-            // У этого объекта есть функции launch() и свойство favorite
-            currentFocusedGame = api.allGames.get(sourceIndex);
+            // Получаем НАСТОЯЩИЙ объект игры из api.allGames
+            currentFocusedGame = api.allGames.get(sourceIndex)
             
             if (currentFocusedGame) {
                 // Снимаем фокус со всех элементов
@@ -136,6 +247,215 @@ function toggleOptionsMenu() {
 Item {
         id: animatedContent
         anchors.fill: parent
+        
+        // === ДИНАМИЧЕСКИЙ КОНТЕЙНЕР ДЛЯ ВКЛАДОК ===
+Rectangle {
+    id: dynamicTabsContainer
+    width: parent.width
+    height: 90 // Высота контейнера под вкладки (74px высота вкладок + отступы)
+    z: root.isBottomZoneMerged ? 200000000000 : 6
+
+    readonly property real naturalY: (root.middleH) - flick.contentY
+y: Math.max(root.topH, naturalY)
+
+
+    // Изменение цвета: черный при слиянии, прозрачный в обычном состоянии
+    color: naturalY <= root.topH ? "black" : "transparent"
+
+    onYChanged: {
+        root.isBottomZoneMerged = (naturalY <= root.topH)
+    }
+
+    Behavior on color { ColorAnimation { duration: 150 } }
+    
+    // ТЕКСТ СЛЕВА (на уровне кнопок, смещен на 10% ниже)
+Text {
+    id: leftSideText
+    anchors {
+        left: parent.left
+        leftMargin: 40
+        top: bottomTabsRow.top
+    }
+    y: bottomTabsRow.height * 0.3 // Смещение на 10% ниже
+    text: "<"
+    color: "white"
+    font.pixelSize: 70
+    font.family: icons.name
+    opacity: root.focusZone === 2 ? 1.0 : 0.0
+    Behavior on opacity {
+        NumberAnimation { duration: 200; easing.type: Easing.OutQuad }
+    }
+}
+
+// ТЕКСТ СПРАВА
+Text {
+    id: rightSideText
+    anchors {
+        right: parent.right
+        rightMargin: 40
+        top: bottomTabsRow.top
+    }
+    y: bottomTabsRow.height * 0.3
+    text: ">"
+    color: "white"
+    font.pixelSize: 70
+    font.family: icons.name
+    opacity: root.focusZone === 2 ? 1.0 : 0.0
+    Behavior on opacity {
+        NumberAnimation { duration: 200; easing.type: Easing.OutQuad }
+    }
+    horizontalAlignment: Text.AlignRight
+}
+    
+    
+
+    // === ВАШ РЯД ВКЛАДОК (БЕЗ ИЗМЕНЕНИЙ ВНУТРЕННЕЙ ЛОГИКИ) ===
+    Row {
+        id: bottomTabsRow
+        spacing: 24
+        anchors.centerIn: parent // Центрирование внутри нового контейнера
+        property int currentIndex: 0
+        property bool inContent: false
+        focus: true
+
+        // === WHAT'S NEW ===
+        Rectangle {
+            id: bottomFirstTab
+            width: 240; height: 74
+            radius: 40
+            focus: false
+            
+            property bool isFocused: activeFocus || (bottomTabsRow.focus && bottomTabsRow.currentIndex === 0 && !bottomTabsRow.inContent)
+            
+            color: isFocused ? "white" : (bottomTabsRow.currentIndex === 0 ? "#31343B" : "transparent")
+            Behavior on color { ColorAnimation { duration: 150 } }
+
+            Text {
+                anchors.centerIn: parent
+                text: "WHAT'S NEW"
+                font.pixelSize: 25
+                font.family: bold.name
+                color: bottomFirstTab.isFocused ? "black" : "white"
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    if (bottomTabsRow.currentIndex === 0 && bottomTabsRow.focus && !bottomTabsRow.inContent) {
+                        return
+                    }
+                    root.safeBottomNav(0)
+                    bottomTabsRow.inContent = false
+                    bottomTabsRow.forceActiveFocus()
+                    flick.contentY = topH + (middleH * 0.78)
+                    sTab.stop();
+                    sTab.play();
+                }
+            }
+        }
+
+        // === FRIENDS ===
+        Rectangle {
+            id: bottomSecondTab
+            width: 240; height: 74
+            radius: 40
+            focus: false
+            
+            property bool isFocused: activeFocus || (bottomTabsRow.focus && bottomTabsRow.currentIndex === 1 && !bottomTabsRow.inContent)
+            
+            color: isFocused ? "white" : (bottomTabsRow.currentIndex === 1 ? "#31343B" : "transparent")
+            Behavior on color { ColorAnimation { duration: 150 } }
+
+            Text {
+                anchors.centerIn: parent
+                text: "FRIENDS"
+                font.pixelSize: 25
+                font.family: bold.name
+                color: bottomSecondTab.isFocused ? "black" : "white"
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    if (bottomTabsRow.currentIndex === 1 && bottomTabsRow.focus && !bottomTabsRow.inContent) {
+                        return
+                    }
+                    root.safeBottomNav(1)
+                    bottomTabsRow.inContent = false
+                    bottomTabsRow.forceActiveFocus()
+                    flick.contentY = topH + (middleH * 0.78)
+                    sTab.stop();
+                    sTab.play();
+                }
+            }
+        }
+
+        // === RECOMMENDED ===
+        Rectangle {
+            id: bottomThirdTab
+            width: 240; height: 74
+            radius: 40
+            focus: false
+            
+            property bool isFocused: activeFocus || (bottomTabsRow.focus && bottomTabsRow.currentIndex === 2 && !bottomTabsRow.inContent)
+            
+            color: isFocused ? "white" : (bottomTabsRow.currentIndex === 2 ? "#31343B" : "transparent")
+            Behavior on color { ColorAnimation { duration: 150 } }
+
+            Text {
+                anchors.centerIn: parent
+                text: "RECOMMENDED"
+                font.pixelSize: 25
+                font.family: bold.name
+                color: bottomThirdTab.isFocused ? "black" : "white"
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    if (bottomTabsRow.currentIndex === 2 && bottomTabsRow.focus && !bottomTabsRow.inContent) {
+                        return
+                    }
+                    root.safeBottomNav(2)
+                    bottomTabsRow.inContent = false
+                    bottomTabsRow.forceActiveFocus()
+                    flick.contentY = topH + (middleH * 0.78)
+                    sTab.stop();
+                    sTab.play();
+                }
+            }
+        }
+
+        // Навигация клавишами
+        Keys.onLeftPressed: {
+            if (bottomTabsRow.currentIndex > 0) {
+                root.safeBottomNav(bottomTabsRow.currentIndex - 1)
+                bottomTabsRow.forceActiveFocus()
+                sTab.stop();
+                sTab.play();
+            }
+        }
+
+        Keys.onRightPressed: {
+            if (bottomTabsRow.currentIndex < 2) {
+                root.safeBottomNav(bottomTabsRow.currentIndex + 1)
+                bottomTabsRow.forceActiveFocus()
+                sTab.stop();
+                sTab.play();
+            }
+        }
+        
+        Keys.onDownPressed: {
+            bottomTabsRow.inContent = true
+            if (bottomTabsRow.currentIndex === 0) newsList.forceActiveFocus()
+            else if (bottomTabsRow.currentIndex === 1) friendsList.forceActiveFocus()
+            else if (bottomTabsRow.currentIndex === 2) recommendedList.forceActiveFocus()
+            sNav.stop();
+            sNav.play();
+        }
+    }
+}
+
 
     Flickable {
         id: flick
@@ -143,14 +463,14 @@ Item {
         contentWidth: parent.width
         contentHeight: content.height
         flickableDirection: Flickable.VerticalFlick
-        boundsBehavior: Flickable.DragAndOvershootBounds
+        boundsBehavior: Flickable.StopAtBounds 
         interactive: true
         clip: true
 
         // сделать плавный переход при программном изменении contentY
         Behavior on contentY { 
             NumberAnimation { 
-                duration: 100 
+                duration: 200 
                 easing.type: Easing.OutCubic
             } 
         }
@@ -166,154 +486,251 @@ Rectangle {
     id: middleZone
     width: content.width
     height: root.middleH
-    color: "black"
+    color: theme.highContrastHome ? "#0F1318" : "black"
     z: 5
 
     // ======== ФОН ========
+   Item {
+    id: backgroundContainer
+    anchors.fill: parent
+    clip: true 
+    
+    function isAnimated(url) {
+        if (!url) return false;
+        var str = url.toString().toLowerCase();
+        return str.indexOf(".gif") !== -1 || str.indexOf(".webp") !== -1;
+    }
+
+    // === 1. УХОДЯЩИЙ СЛОЙ (Только статика) ===
     Item {
-        id: backgroundContainer
+        id: exitAnimationLayer
         anchors.fill: parent
-        clip: true // Обрезаем всё что выходит за границы
-        
-        
+        opacity: 0
+        z: 2 
+
+                function prepareExit(source, direction) {
+            // 1. Жестко останавливаем анимацию, если она не успела закончиться
+            exitParallelAnimation.stop();
+            
+            // 2. Сбрасываем слой в начальное положение и прозрачность
+            exitTransform.x = 0;
+            exitTransform.y = 0;
+            
+            // 3. Подменяем картинку на ту, что сейчас уходит
+            exitStatic.source = source;
+            
+            // Устанавливаем цель анимации по X в зависимости от направления скролла
+            exitAnimX.to = (backgroundContainer.width * 0.05) * direction;
+            
+            // 4. Запускаем анимацию заново
+            exitParallelAnimation.restart();
+        }
+
+        transform: Translate {
+            id: exitTransform
+            x: 0
+            y: 0
+        }
+
         Image {
-            id: middleBackground
-            width: parent.width * 1.15  // 15% больше
+            id: exitStatic
+            width: parent.width * 1.15
             height: parent.height * 1.15
             anchors.centerIn: parent
             fillMode: Image.PreserveAspectCrop
-            opacity: 0
+            asynchronous: true
+            visible: source != "" && !theme.highContrastHome
             z: 0
+        }
+
+        ParallelAnimation {
+            id: exitParallelAnimation
             
-            // === 1. ПОЯВЛЕНИЕ ФОНА ===
-            PropertyAnimation {
-                id: fadeInAnimation
-                target: middleBackground
+                        PropertyAnimation {
+                target: exitAnimationLayer
                 property: "opacity"
-                from: 0
-                to: 0.4
-                duration: 200
+                from: 0.4 // <-- ДОБАВИТЬ ЭТУ СТРОКУ
+                to: 0
+                duration: 700
                 easing.type: Easing.OutCubic
-                
-                onStopped: {
-                    // После появления ждем 2 секунды                   
-                    idleTimer.start();
-                }
+            }
+
+
+            PropertyAnimation {
+                id: exitAnimX // Добавлен ID для управления из prepareExit
+                target: exitTransform
+                property: "x"
+                to: -backgroundContainer.width * 0.05
+                duration: 700 
+                easing.type: Easing.OutCubic
             }
             
-            // === 2. ТАЙМЕР ОЖИДАНИЯ (2 секунды) ===
-            Timer {
-                id: idleTimer
-                interval: 2000
-                
-                onTriggered: {
-                    moveAnimation.start();
-                }
+            PropertyAnimation {
+                target: exitTransform
+                property: "y"
+                to: -backgroundContainer.height * 0.05 // Движение вверх остается неизменным
+                duration: 700 
+                easing.type: Easing.OutCubic
             }
             
-            // === 3. АНИМАЦИЯ ДВИЖЕНИЯ ===
-            // Используем transform вместо x
-            transform: Translate {
-                id: backgroundTransform
-                x: 0
+            onStopped: {
+                exitStatic.source = ""; 
             }
-            
-            SequentialAnimation {
-                id: moveAnimation
-                loops: Animation.Infinite
-                
-                // Движение ВПРАВО на 15% ширины
-                PropertyAnimation {
-                    target: backgroundTransform
-                    property: "x"
-                    from: 0
-                    to: middleZone.width * 0.02
-                    duration: 10000 // 10 секунд - ОЧЕНЬ МЕДЛЕННО
-                    easing.type: Easing.InOutSine
-                }
-                
-                // Движение ВЛЕВО на 30% (от +15% до -15%)
-                PropertyAnimation {
-                    target: backgroundTransform
-                    property: "x"
-                    from: middleZone.width * 0.02
-                    to: -middleZone.width * 0.02
-                    duration: 15000 // 20 секунд
-                    easing.type: Easing.InOutSine
-                }
-                
-                // Возврат вправо на 15%
-                PropertyAnimation {
-                    target: backgroundTransform
-                    property: "x"
-                    from: -middleZone.width * 0.02
-                    to: 0
-                    duration: 10000 // 10 секунд
-                    easing.type: Easing.InOutSine
-                }
-            }
-            
-            // При смене фона сбрасываем всё
-            onSourceChanged: {
-                moveAnimation.stop();
-                idleTimer.stop();
-                backgroundTransform.x = 0;
-                
-                if (opacity > 0) {
-                    idleTimer.start();
-                }
-            }
+        }        
+    }
+
+
+    // === 2. ОСНОВНЫЕ ФОНЫ (Нижний слой) ===
+    Image {
+        id: staticBackground
+        width: parent.width * 1.15
+        height: parent.height * 1.15
+        anchors.centerIn: parent
+        fillMode: Image.PreserveAspectCrop
+        asynchronous: true
+        sourceSize.width: 1920
+        sourceSize.height: 1080
+        visible: source != "" && !theme.highContrastHome
+        opacity: 0.4
+        z: 0
+        transform: Translate { x: backgroundTransform.x }
+    }
+
+    AnimatedImage {
+        id: middleBackground
+        width: parent.width * 1.15
+        height: parent.height * 1.15
+        anchors.centerIn: parent
+        fillMode: Image.PreserveAspectCrop
+        asynchronous: true
+        visible: source != "" && !theme.highContrastHome
+        playing: visible && status === AnimatedImage.Ready && theme.animatedCovers && (!theme.animationInFocus || root.focusZone === 1)
+
+
+        cache: false
+        opacity: 0.4
+        z: 0
+        transform: Translate { id: backgroundTransform; x: 0 }
+    }
+
+    // --- НЕПРЕРЫВНАЯ АНИМАЦИЯ ДВИЖЕНИЯ ---
+    SequentialAnimation {
+        id: moveFlow
+        running: true 
+        loops: Animation.Infinite
+        
+        PropertyAnimation {
+            target: backgroundTransform
+            property: "x"
+            from: 0
+            to: backgroundContainer.width * 0.02
+            duration: 12000 
+            easing.type: Easing.InOutSine
+        }
+        
+        PropertyAnimation {
+            target: backgroundTransform
+            property: "x"
+            from: backgroundContainer.width * 0.02
+            to: -backgroundContainer.width * 0.02
+            duration: 12000 
+            easing.type: Easing.InOutSine
+        }
+        
+        PropertyAnimation {
+            target: backgroundTransform
+            property: "x"
+            from: -backgroundContainer.width * 0.02
+            to: 0
+            duration: 12000 
+            easing.type: Easing.InOutSine
         }
     }
 
-    // Обновление фона при смене игры
+
+    // === 3. ОБНОВЛЕНИЕ ПРИ СМЕНЕ ИГРЫ     // === 3. ОБНОВЛЕНИЕ ПРИ СМЕНЕ ИГРЫ ===
     Connections {
         target: gameList
+        property int lastIndex: 0 // Свойство для сохранения предыдущего индекса
+        
         function onCurrentIndexChanged() { // DECKOS: Qt 5.15 Connections syntax
-        if (gameList.focus) {
-    }
-            if (gameList.model && gameList.model.count > 0) {
-                var currentIndex = gameList.currentIndex;
-                
-                if (currentIndex !== 10) {
-                    var game = gameList.model.get(currentIndex);
-                    if (game && game.assets) {
-                        var newBackground = game.assets.background || "";
-                        
-                        // 1. Скрываем
-                        middleBackground.opacity = 0;
-                        
-                        // 2. Меняем картинку
-                        middleBackground.source = newBackground;
-                        
-                        // 3. Показываем
-                        fadeInAnimation.start();
+            if (gameList.currentIndex >= 0 && gameList.currentIndex < (gameList.displayCount - 1)) {
+                var game = middleSorted.get(gameList.currentIndex);
+                if (game && game.assets) {
+                    var newBackground = theme.getAssetSource("background", game) || "";
+                    
+                    var currentSource = "";
+                    if (middleBackground.source != "") {
+                        currentSource = middleBackground.source;
+                    } else if (staticBackground.source != "") {
+                        currentSource = staticBackground.source;
+                    }
+
+                    // Вычисляем направление: если листаем вправо (индекс растет), фон едет влево (-1)
+                    var direction = (gameList.currentIndex > lastIndex) ? -1 : 1;
+                    lastIndex = gameList.currentIndex; // Обновляем индекс
+
+                    if (currentSource != "") {
+                        exitAnimationLayer.prepareExit(currentSource, direction);
+                    }
+
+                    var isNewAnim = backgroundContainer.isAnimated(newBackground);
+                    if (isNewAnim) {
+                        staticBackground.source = ""; 
+                        middleBackground.source = theme.getAssetSource("background", game) || "";
+                    } else {
+                        middleBackground.source = ""; 
+                        staticBackground.source = theme.getAssetSource("background", game) || "";;
                     }
                 }
+            } else {
+                exitParallelAnimation.stop();
             }
         }
     }
-    
+}
+
+
     // Устанавливаем начальный фон
-    Component.onCompleted: {
-        if (gameList.model && gameList.model.count > 0 && gameList.currentIndex !== 10) {
-            var game = gameList.model.get(gameList.currentIndex);
+        Component.onCompleted: {
+    // Создаем одноразовый таймер, который подождет загрузки данных
+    var checkData = function() {
+        if (middleSorted.count > 0) {
+            var game = middleSorted.get(gameList.currentIndex);
             if (game && game.assets) {
-                middleBackground.source = game.assets.background || "";
-                middleBackground.opacity = 0.5;
-                
-                // Сразу запускаем таймер ожидания
-                idleTimer.start();
+                var asset = theme ? theme.getAssetSource("background", game) : ""; // DECKOS: theme is set after creation
+                // Проверяем тип ассета и кладем в нужный слот
+                if (backgroundContainer.isAnimated(asset)) {
+                    middleBackground.source = asset;
+                } else {
+                    staticBackground.source = asset;
+                }
             }
+            initialLoadTimer.stop(); // Останавливаем, когда данные получены
         }
     }
 
-    // Градиент поверх фона
+    // Запускаем проверку (интервал 100мс)
+    initialLoadTimer.triggered.connect(checkData);
+    initialLoadTimer.start();
+}
+
+// Добавь этот объект рядом с Component.onCompleted
+Timer {
+    id: initialLoadTimer
+    interval: 1
+    repeat: true
+    running: false
+}
+
+
+
+      // Градиент поверх фона
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
             GradientStop { position: 1.0; color: "#0F1318" }
-            GradientStop { position: 0.2; color: "transparent" }
+            GradientStop { position: 0.3; color: "transparent" }
         }
         z: 4
     }
@@ -321,13 +738,15 @@ Rectangle {
         anchors.fill: parent
         gradient: Gradient {
             GradientStop { position: 1.0; color: "#0F1318" }
-            GradientStop { position: 0.9; color: "transparent" }
+            GradientStop { position: 0.8; color: "transparent" }
         }
         z: 10
     }
 
-    property real innerH: middleZone.height * 0.6
-    property real vMargin: middleZone.height * 0.25
+    property real innerH: root.safeAltHomeScreen
+        ? (260 + (root.safeGameListSize - 1) * 60)
+        : (middleZone.height - middleZone.vMargin - 150)
+    property real vMargin: middleZone.height * 0.3
 
     // ======== Сортировка и фильтрация ========
 SortFilterProxyModel {
@@ -349,80 +768,104 @@ SortFilterProxyModel {
             top: parent.top
             leftMargin: 60
             rightMargin: 45
-            topMargin: middleZone.vMargin
+            topMargin: root.safeAltHomeScreen ? (middleZone.height - middleZone.innerH - 70) : middleZone.vMargin
         }
         height: middleZone.innerH
         orientation: ListView.Horizontal
-        spacing: 28
+        spacing: 33
         clip: false
-        model: middleSorted
+                // Моделью становится число: количество игр + 1 (максимум 11)
+        model: Math.min(11, (middleSorted.count + 1))
         property int currentIndex: 0
-        // Главное изменение: вместо model.count используем фиксированное число
-    property int displayCount: 11 // Показываем 11 игр + 1 плейсхолдер
-    // Искусственно ограничиваем количество создаваемых делегатов
-    property int effectiveCount: Math.min(displayCount, model ? model.count : 0)
-                z: 5
-        highlightMoveDuration: 120
-        highlightRangeMode: ListView.ApplyRange
-        preferredHighlightBegin: width * 0.3
-        preferredHighlightEnd: width * 0.6
+        property int displayCount: count                 
+z: 5
+highlightMoveDuration: 120
+highlightRangeMode: ListView.ApplyRange
+preferredHighlightBegin: width * 0.3
+preferredHighlightEnd: width * 0.6
+onWidthChanged: animateToIndex(currentIndex) // DECKOS: updateScrollPosition() belongs to the news list
 
-         // === ЖЁСТКОЕ ВЫРАВНИВАНИЕ ===
-    onCurrentIndexChanged: {
-    if (currentIndex >= 0 && currentIndex < count) {
-        // Если это последние 2 игры (или одна последняя), 
-        // просто прижимаем список к правому краю, а не центрируем.
-        if (currentIndex >= count - 2) {
-            positionViewAtEnd()
-        } else {
-            positionViewAtIndex(currentIndex, ListView.Center)
-        }
-    }
+onCurrentIndexChanged: {
+    animateToIndex(currentIndex)
 }
 
+NumberAnimation {
+    id: scrollAnim
+    target: gameList
+    property: "contentX"
+    duration: 300
+    easing.type: Easing.OutCubic
+}
+
+function animateToIndex(idx) {
+    if (idx < 0 || idx >= count) return;
+
+    var dH = height;
+    var wideW = dH * 92 / 43;
+    var normalW = dH * 6 / 9;
+    var spacing = 32;
+
+    var totalItems = gameList.count;
+
+    var itemX = 0;
+    var currentItemWidth = 0;
+
+    if (idx === 0) {
+        itemX = 0;
+        currentItemWidth = wideW;
+    } else {
+        itemX = wideW + spacing + ((idx - 1) * (normalW + spacing));
+        currentItemWidth = normalW;
+    }
+
+    var totalContentWidth = wideW + (totalItems - 1) * (normalW + spacing);
+    var maxTargetX = Math.max(0, totalContentWidth - width);
+    var targetX = itemX - (width / 2) + (currentItemWidth / 2);
+
+    if (targetX < 0) targetX = 0;
+    if (targetX > maxTargetX) targetX = maxTargetX;
+
+    scrollAnim.stop();
+    scrollAnim.to = targetX;
+    scrollAnim.start();
+}
         
 // === ИСПРАВЛЕННЫЙ БЛОК: Получение ИСХОДНОГО объекта игры ===
 Keys.onPressed: {
     if (api.keys.isAccept(event) && gameList.focus) {
-        if (gameList.model && gameList.model.count > 0) {
+        if (gameList.count > 0) {
             
-            // Проверяем, если это серый плейсхолдер
-            if (gameList.currentIndex === 10) {
-                theme.openPage(1)  // Открываем Library
+            // 1. Проверка на плейсхолдер (всегда последний в списке)
+            if (gameList.currentIndex === gameList.count - 1) {            
+                theme.openPage(1) 
                 event.accepted = true
                 return
             }
             
-            // 1. Получаем индекс в SortFilterProxyModel (middleSorted)
-            var proxyIndex = gameList.currentIndex
+            // 2. Получаем индекс исходной модели через mapToSource
+            var sourceIndex = middleSorted.mapToSource(gameList.currentIndex)
             
-            // 2. Получаем исходный индекс (source index) из прокси-модели
-            //    Используем метод mapToSource, который преобразует индекс
-            //    из proxy в индекс в исходной модели.
-            var sourceIndex = middleSorted.mapToSource(proxyIndex)
-            
-            // 3. Получаем ИСХОДНЫЙ объект игры из исходной модели (api.allGames)
-            //    ВАЖНО: Должен быть прямой доступ к sourceModel, т.к. get() 
-            //    из SortFilterProxyModel возвращает "скомпилированные" данные.
+            // 3. Берем ЖИВОЙ объект из api.allGames (а не из прокси!)
             var gameData = api.allGames.get(sourceIndex)
             
             if (gameData) {
-                // Передаем исходный объект игры в theme
+                // Передаем настоящий объект, который понимает движок
                 theme.currentGame = gameData
                 theme.openPage(8)
                 event.accepted = true
-            }
+            }            
         }
     }
 }
+
 // ==========================================================
         
         Keys.onLeftPressed: {
         if (gameList.currentIndex > 0) {
             gameList.currentIndex--
             event.accepted = true
-            ////sNav.stop();
-////sNav.play();
+            sNav.stop();
+sNav.play();
 
         }
     }
@@ -431,45 +874,132 @@ Keys.onPressed: {
         if (gameList.currentIndex < gameList.displayCount - 1) {
         gameList.currentIndex++
         event.accepted = true
-        ////sNav.stop();
-////sNav.play();
+        sNav.stop();
+sNav.play();
 
     }
     }
     
     
 
-        delegate: Item {
-            id: gameDelegate
-            property bool isWide: index === 0
-            property real dH: gameList.height
-            property real scaleFactor: index === gameList.currentIndex && gameList.focus ? 1.04 : 1.0
-            property bool hasImage: !!(isWide ? (modelData && modelData.assets.steam) : (modelData && modelData.assets.poster)) // DECKOS: !! - was undefined without a game
-            property bool isGrayPlaceholder: index === gameList.displayCount - 1    
-    // Скрываем элементы, которые идут после лимита
-    visible: index < gameList.displayCount
-    height: visible ? (dH) : 0
-    width: index < 11 ? (isWide ? dH * 92 / 46 : dH * 6 / 9) : -gameList.spacing
+                        delegate: Item {
+    id: gameDelegate
 
-            
+    // 1. ПРАВИЛЬНЫЙ объект игры
+    property var modelData: index < middleSorted.count ? api.allGames.get(middleSorted.mapToSource(index)) : null
+    property bool isGrayPlaceholder: index === (gameList.count - 1)
+    property bool isWide: index === 0
+    property real dH: gameList.height
+    property real scaleFactor: index === gameList.currentIndex && gameList.focus ? 1.04 : 1.0
 
-            // ======== Контейнер игры ========
-            Rectangle {
-                id: gameContainer
-                anchors.fill: parent
-                // ВАЖНОЕ ИЗМЕНЕНИЕ: Полупрозрачный тёмно-серый цвет для плейсхолдера
-color: isGrayPlaceholder ? "#AA2A2E35" : (hasImage ? "transparent" : "#555")
-                scale: scaleFactor
-                Behavior on scale { NumberAnimation { duration: 150 } }
+    // 2. СИНХРОНИЗИРОВАННАЯ проверка изображения (как в Bottom Zone)
+    // Используем theme.getAssetSource, так как это конечная инстанция истины
+    property string posterSource: {
+        if (isGrayPlaceholder || !modelData) return ""
+        return isWide ? theme.getAssetSource("steam", modelData) : theme.getAssetSource("poster", modelData)
+    }
+    property bool hasImg: posterSource !== ""
 
-                // Изображение
-                Image {
-                    anchors.fill: parent
-                    source: (isWide ? (modelData && modelData.assets.steam) : (modelData && modelData.assets.poster)) || "" // DECKOS: never undefined
-                    fillMode: Image.PreserveAspectCrop
-                    visible: hasImage && !isGrayPlaceholder
-                    z: 10
-                }
+    visible: true
+    height: dH
+    width: isWide ? dH * 92 / 43 : dH * 6 / 9
+
+    // ======== Контейнер игры ========
+Rectangle {
+    id: gameContainer
+    anchors.fill: parent
+    radius: theme.roundedCovers ? 24 : 0
+    
+    // Серый фон виден ТОЛЬКО если это игра и у неё НЕТ картинки
+    color: (isGameItem && !hasImg) ? "#555" : (isGrayPlaceholder ? "#AA2A2E35" : "transparent")
+    
+    // Вспомогательное свойство для читаемости
+    property bool isGameItem: !isGrayPlaceholder && modelData !== null
+
+    scale: scaleFactor
+    Behavior on scale { NumberAnimation { duration: 150 } }
+
+    // Изображение
+    AnimatedImage {
+        id: gamePoster
+        anchors.fill: parent
+        source: posterSource
+        fillMode: AnimatedImage.PreserveAspectCrop
+        playing: visible && status === AnimatedImage.Ready && theme.animatedCovers && (!theme.animationInFocus || (index === gameList.currentIndex && root.focusZone === 1))
+        cache: true
+        asynchronous: true
+        // Видно только если это игра и путь к картинке найден
+        visible: !isGrayPlaceholder && hasImg
+        z: 10
+        
+        // Скругление через графический слой и маску
+        layer.enabled: theme.roundedCovers
+        layer.effect: OpacityMask {
+            maskSource: Rectangle {
+                width: gamePoster.width
+                height: gamePoster.height
+                radius: gameContainer.radius
+            }
+        }
+    }
+
+        // Текст названия игры (внутри карточки)
+        Text {
+            id: gameTitleText
+            anchors.centerIn: parent
+            // Берем название из modelData
+            text: (modelData && modelData.title) ? modelData.title : ""
+            color: "white"
+            font.pixelSize: 26
+            font.family: bold.name 
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            wrapMode: Text.WordWrap
+            width: parent.width * 0.9
+            // Виден ТОЛЬКО если это реальная игра, но картинка НЕ загрузилась
+            visible: !isGrayPlaceholder && modelData !== null && !hasImg
+            z: 11
+        }
+                
+                // ======== ИНДИКАТОР FAVORITES ========
+Rectangle {
+    id: favoritesIndicator
+    anchors {
+        right: parent.right
+        bottom: parent.bottom
+        rightMargin: 2
+        bottomMargin: 2
+    }
+    width: 110
+    height: 55
+    radius: 45
+    color: "#0F1318"
+    visible: modelData && modelData.favorite === true && !isGrayPlaceholder && index === gameList.currentIndex
+    z: 20
+    
+    Row {
+        anchors.verticalCenter: parent.verticalCenter 
+        anchors.left: parent.left
+        anchors.leftMargin: 10
+        spacing: 5
+        
+        Text {
+            text: "★"
+            color: "white"
+            font.pixelSize: 50
+            font.family: icons.name
+            anchors.verticalCenter: parent.verticalCenter
+        }
+        
+        Text {
+            text: "✓"
+            color: "#6ccf58"
+            font.pixelSize: 50
+            font.family: icons.name
+            anchors.verticalCenter: parent.verticalCenter
+        }
+    }
+}
 
                 // Текст для плейсхолдера
 Text {
@@ -485,19 +1015,6 @@ Library"
     visible: isGrayPlaceholder
 }
 
-// Старый текст для игр (переименуйте его id)
-Text {
-    id: gameTitleText  // Добавьте id
-    anchors.centerIn: parent
-    text: modelData && modelData.title ? modelData.title : ("Game " + (index + 1))
-    color: "white"
-    font.pixelSize: 26
-    horizontalAlignment: Text.AlignHCenter
-    verticalAlignment: Text.AlignVCenter
-    wrapMode: Text.WordWrap
-    width: parent.width * 0.9
-    visible: !hasImage && !isGrayPlaceholder  // Скрыть для плейсхолдера
-}
 
                 // Обводка активного элемента (ТОЛЬКО когда в фокусе)
                 Rectangle {
@@ -506,10 +1023,10 @@ Text {
                     color: "transparent"
                     border.width: 5
                     border.color: "grey"
-                    radius: 0
+                    radius: theme.roundedCovers ? 32 : 0
                     anchors.margins: -10
                     opacity: (index === gameList.currentIndex && root.focusZone === 1) ? 1.0 : 0.0
-                    visible: !leftBar.isOpen && !optionsMenuVisible &&  opacity > 0
+                    visible: !leftBar.isOpen && !optionsMenuVisible && !root.closeMenuVisible && opacity > 0
                     z: 20
 
                     // ======== Анимация появления + «прыжок» ========
@@ -520,18 +1037,18 @@ Text {
 
                         // Фаза 1: растёт больше нужного
                         ParallelAnimation {
-                            NumberAnimation { target: highlightBorder; property: "border.width"; to: 10; duration: 100; easing.type: Easing.OutBack }
-                            NumberAnimation { target: highlightBorder; property: "radius"; to: 0; duration: 100; easing.type: Easing.OutBack }
-                            NumberAnimation { target: highlightBorder; property: "anchors.margins"; to: -17; duration: 100; easing.type: Easing.OutBack }
-                            ColorAnimation { target: highlightBorder; property: "border.color"; to: "white"; duration: 100 }
-                            NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.5; duration: 100 }
+                            NumberAnimation { target: highlightBorder; property: "border.width"; to: 10; duration: 200; easing.type: Easing.OutBack }
+                            NumberAnimation { target: highlightBorder; property: "radius"; to: theme.roundedCovers ? 32 : 2; duration: 200; easing.type: Easing.OutBack }
+                            NumberAnimation { target: highlightBorder; property: "anchors.margins"; to: -17; duration: 200; easing.type: Easing.OutBack }
+                            ColorAnimation { target: highlightBorder; property: "border.color"; to: "white"; duration: 200 }
+                            NumberAnimation { target: highlightBorder; property: "opacity"; to: 0.5; duration: 200 }
                         }
 
                         // Фаза 2: «сжимается» до финального размера
                         ParallelAnimation {
-                            NumberAnimation { target: highlightBorder; property: "radius"; to: 0; duration: 100; easing.type: Easing.InOutQuad }
-                            NumberAnimation { target: highlightBorder; property: "anchors.margins"; to: -10; duration: 100; easing.type: Easing.InOutQuad }
-                            NumberAnimation { target: highlightBorder; property: "border.width"; to: 5; duration: 100; easing.type: Easing.OutBack }
+                            NumberAnimation { target: highlightBorder; property: "radius"; to: theme.roundedCovers ? 32 : 2; duration: 200; easing.type: Easing.InOutQuad }
+                            NumberAnimation { target: highlightBorder; property: "anchors.margins"; to: -10; duration: 200; easing.type: Easing.InOutQuad }
+                            NumberAnimation { target: highlightBorder; property: "border.width"; to: 5; duration: 200; easing.type: Easing.OutBack }
                         }
 
                         // Фаза 3: мигание
@@ -544,30 +1061,32 @@ Text {
                 }
             }
 
-            // ======== Название под игрой ========
+            // ======== Название под игрой (или НАД игрой в Alternative Home Screen) ========
 Column {
     id: titleColumn
     Component.onCompleted: parent = middleZone 
-    z: 11 
+    z: 110 
     
     // 1. Жесткая привязка по X
     x: gameDelegate.x - gameList.contentX + 60 - 7
     
     // 2. Базовая позиция по Y + смещение для анимации
     property real appearanceOffset: visible ? 0 : 15 
-    y: gameList.y + gameDelegate.height + 25 + appearanceOffset
+    y: root.safeAltHomeScreen
+        ? (gameList.y - height - 30 - appearanceOffset)
+        : (gameList.y + gameDelegate.height + 25 + appearanceOffset)
     
     // 3. Анимируем только смещение!
     Behavior on appearanceOffset {
         NumberAnimation {
-            duration: 100
-            easing.type: Easing.OutCubic
+            duration: 400
+            easing.type: Easing.OutQuad
         }
     }
     
     // 4. Плавность прозрачности
     Behavior on opacity { 
-        NumberAnimation { duration: 100 } 
+        NumberAnimation { duration: 300 } 
     }
     
     // Условие видимости
@@ -576,42 +1095,106 @@ Column {
     spacing: 5 // Расстояние между строками
     
     // Основное название игры
+Text {
+    id: gameTitleUnder
+    text: isGrayPlaceholder ? "" : (modelData && modelData.title ? modelData.title : ("Game " + (index + 1)))
+    color: "white"
+    font.pixelSize: 38
+    font.family: extrabold.name
+}
+
+// === ДОБАВЬТЕ ЭТОТ КОМПОНЕНТ ПОД ТЕКСТОМ С НАЗВАНИЕМ ИГРЫ ===
+// Контейнер для иконки и текста Last Played
+Row {
+    id: lastPlayedRow
+    spacing: 11 // Расстояние между треугольником и текстом
+    visible: (index === gameList.currentIndex && gameList.focus && !leftBar.isOpen && !optionsMenuVisible && !isGrayPlaceholder)
+    opacity: visible ? 1 : 0
+    Behavior on opacity { NumberAnimation { duration: 200 } }
+    
+    // ЗЕЛЁНЫЙ ТРЕУГОЛЬНИК
     Text {
-        id: gameTitleUnder
-        text: isGrayPlaceholder ? "" : (modelData && modelData.title ? modelData.title : ("Game " + (index + 1)))
-        color: "white"
-        font.pixelSize: 38
+        id: triangleIcon
+        text: "♥︎" // Unicode символ треугольника
+        color: "#54B63D" // Зелёный цвет
+        font.pixelSize: 30 // Размер поменьше чем у текста
+        font.family: icons.name
+        anchors.verticalCenter: parent.verticalCenter
+    }
+    
+    // Текст с информацией о Last Played
+    Text {
+        id: lastPlayedText
+        text: getLastPlayedText(modelData)
+        color: "white" // Серый цвет для подписи
+        font.pixelSize: 27
+        opacity: 0.5
         font.family: extrabold.name
-    }   
+        anchors.verticalCenter: parent.verticalCenter
+        
+        function getLastPlayedText(game) {
+            if (!game || !game.lastPlayed) {
+                return "NEVER PLAYED"
+            }
+            
+            var now = new Date()
+            var lastPlayed = new Date(game.lastPlayed)
+            var diffMs = now - lastPlayed
+            var diffMins = Math.floor(diffMs / 60000)
+            var diffHours = Math.floor(diffMins / 60)
+            var diffDays = Math.floor(diffHours / 24)
+            var diffWeeks = Math.floor(diffDays / 7)
+            var diffMonths = Math.floor(diffDays / 30)
+            var diffYears = Math.floor(diffDays / 365)
+            
+            if (diffYears > 0) {
+                return diffYears === 1 ? "PLAYED 1 YEAR AGO" : "PLAYED " + diffYears + " YEARS AGO"
+            } else if (diffMonths > 0) {
+                return diffMonths === 1 ? "PLAYED 1 MONTH AGO" : "PLAYED " + diffMonths + " MONTHS AGO"
+            } else if (diffWeeks > 0) {
+                return diffWeeks === 1 ? "PLAYED 1 WEEK AGO" : "PLAYED " + diffWeeks + " WEEKS AGO"
+            } else if (diffDays > 0) {
+                return diffDays === 1 ? "PLAYED YESTERDAY" : "PLAYED " + diffDays + " DAYS AGO"
+            } else if (diffHours > 0) {
+                return diffHours === 1 ? "PLAYED 1 HOUR AGO" : "PLAYED " + diffHours + " HOURS AGO"
+            } else if (diffMins > 0) {
+                return diffMins === 1 ? "PLAYED 1 MINUTE AGO" : "PLAYED " + diffMins + " MINUTES AGO"
+            } else {
+                return "PLAYED JUST NOW"
+            }
+        }
+    }
+}
 }
 
 
 
  // Размытие для игр 
 Rectangle {
-    width: isWide ? 3100 : 1111
-    height: isWide ? 1500 : 500
+    width: 1111
+    height: 500
+    scale: isWide ? 2: 1
     color: "transparent"
     clip: true
     visible: (index === gameList.currentIndex && gameList.focus && !leftBar.isOpen && !optionsMenuVisible && !isGrayPlaceholder)
-    opacity: visible ? 0.8 : 0
-    x: isWide ? - 1200 : -445
-    y: isWide ? parent.height - 350 : parent.height - 185
+    opacity: visible ? 0.5 : 0
+    x: -445
+    y: isWide? parent.height- 250 : parent.height - 185
     z: -2
     
     Image {
-        width: parent.width * 2000
-        height: parent.height * 2000
+        width: parent.width * 200
+        height: parent.height * 200
         x: -parent.width * 1
         y: -parent.height * 1
-        source: modelData && modelData.assets.steam
+        source: theme.getAssetSource("steam", modelData)
         fillMode: Image.PreserveAspectCrop
     }
     
     // Анимации
     
     Behavior on opacity {
-        NumberAnimation { duration: 100 }
+        NumberAnimation { duration: 200 }
     }
     
     layer.enabled: true
@@ -644,17 +1227,17 @@ Rectangle {
         }
     }
 }
-// Текст над первой игрой
+// Текст над первой игрой (скрывается в Alternative Home Screen)
             Text {
-                visible: index === 0
+                visible: index === 0 && !root.safeAltHomeScreen
                 text: "Recent games"
                 color: "white"
-                font.pixelSize: 48
+                font.pixelSize: 47
                 font.family: extrabold.name
-                anchors.bottomMargin: 40
+                anchors.bottomMargin: 0
                 z:3
                 x: -7
-                y: parent.height - 553
+                y: -middleZone.vMargin * 0.4
             }
             
             
@@ -692,8 +1275,8 @@ MouseArea {
                 root.goToZone(1)
                 gameList.currentIndex = index
                 gameList.forceActiveFocus()
-                ////sNav.stop();
-            ////sNav.play();
+                sNav.stop();
+            sNav.play();
             } else if (gameList.currentIndex === index && gameList.focus) {
                 // Если это серый плейсхолдер - открываем Library
                 if (isGrayPlaceholder) {
@@ -706,8 +1289,8 @@ MouseArea {
             } else {
                 gameList.currentIndex = index
                 gameList.forceActiveFocus()
-                ////sNav.stop();
-            ////sNav.play();
+                sNav.stop();
+            sNav.play();
             }
         }
     }        
@@ -716,7 +1299,8 @@ MouseArea {
     }
 } // middleZone
 
-            // ================= BOTTOM ZONE (вкладки + новости) =================
+
+// ================= BOTTOM ZONE (вкладки + новости) =================
 Rectangle {
     id: bottomZone
     width: content.width
@@ -724,334 +1308,285 @@ Rectangle {
     color: "#0F1318"
     z: 10
     
-  // ТЕКСТ СЛЕВА (на уровне кнопок, смещен на 10% ниже)
-Text {
-    id: leftSideText
-    anchors {
-        left: parent.left
-        leftMargin: 40
-        // top: bottomTabsRow.bottom (DECKOS: not a sibling, Qt ignored it; y below positions it)
-    }
-    y: bottomTabsRow.height * 0.3 // Смещение на 10% ниже
-    text: "<"
-    color: "white"
-    font.pixelSize: 70
-    font.family: icons.name
-    opacity: root.focusZone === 2 ? 1.0 : 0.0
-    Behavior on opacity {
-        NumberAnimation { duration: 200; easing.type: Easing.OutQuad }
-    }
-}
-
-// ТЕКСТ СПРАВА
-Text {
-    id: rightSideText
-    anchors {
-        right: parent.right
-        rightMargin: 40
-        // top: bottomTabsRow.bottom (DECKOS: not a sibling, Qt ignored it; y below positions it)
-    }
-    y: bottomTabsRow.height * 0.3
-    text: ">"
-    color: "white"
-    font.pixelSize: 70
-    font.family: icons.name
-    opacity: root.focusZone === 2 ? 1.0 : 0.0
-    Behavior on opacity {
-        NumberAnimation { duration: 200; easing.type: Easing.OutQuad }
-    }
-    horizontalAlignment: Text.AlignRight
-}
-    
-    
-    Item { // DECKOS: was a Column whose child uses anchors.fill (positioning was off anyway; same layout, no warning)
+    Item { // DECKOS: was a Column whose children use anchors (Column ignored them and warned)
         anchors.fill: parent
         anchors.margins: 36
         // spacing: 30 (DECKOS: Item has no spacing)
 
-        // вкладки
-        Row {
-    id: bottomTabsRow
-    spacing: 24
-    anchors.horizontalCenter: parent.horizontalCenter
-    property int currentIndex: 0
-    property bool inContent: false
-    focus: true
-
-    // === WHAT'S NEW ===
-    Rectangle {
-        id: bottomFirstTab
-        width: 240; height: 74
-        radius: 40
-        focus: false
-        
-        property bool isFocused: activeFocus || (bottomTabsRow.focus && bottomTabsRow.currentIndex === 0 && !bottomTabsRow.inContent)
-        
-        color: isFocused ? "white" : (bottomTabsRow.currentIndex === 0 ? "#31343B" : "transparent")
-        Behavior on color { ColorAnimation { duration: 150 } }
-
-        Text {
-            anchors.centerIn: parent
-            text: "WHAT'S NEW"
-            font.pixelSize: 25
-            font.family: bold.name
-            color: bottomFirstTab.isFocused ? "black" : "white"
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: {
-                bottomTabsRow.currentIndex = 0
-                bottomTabsRow.inContent = false
-                bottomFirstTab.forceActiveFocus()
-                flick.contentY = topH + (middleH * 0.78)
-                ////sNav.play ()
-            }
-        }
-    }
-
-    // === FRIENDS ===
-    Rectangle {
-        id: bottomSecondTab
-        width: 240; height: 74
-        radius: 40
-        focus: false
-        
-        property bool isFocused: activeFocus || (bottomTabsRow.focus && bottomTabsRow.currentIndex === 1 && !bottomTabsRow.inContent)
-        
-        color: isFocused ? "white" : (bottomTabsRow.currentIndex === 1 ? "#31343B" : "transparent")
-        Behavior on color { ColorAnimation { duration: 150 } }
-
-        Text {
-            anchors.centerIn: parent
-            text: "FRIENDS"
-            font.pixelSize: 25
-            font.family: bold.name
-            color: bottomSecondTab.isFocused ? "black" : "white"
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: {
-                bottomTabsRow.currentIndex = 1
-                bottomTabsRow.inContent = false
-                bottomSecondTab.forceActiveFocus()
-                flick.contentY = topH + (middleH * 0.78)
-                ////sNav.stop();
-            ////sNav.play();
-            }
-        }
-    }
-
-    // === RECOMMENDED ===
-    Rectangle {
-        id: bottomThirdTab
-        width: 240; height: 74
-        radius: 40
-        focus: false
-        
-        property bool isFocused: activeFocus || (bottomTabsRow.focus && bottomTabsRow.currentIndex === 2 && !bottomTabsRow.inContent)
-        
-        color: isFocused ? "white" : (bottomTabsRow.currentIndex === 2 ? "#31343B" : "transparent")
-        Behavior on color { ColorAnimation { duration: 150 } }
-
-        Text {
-            anchors.centerIn: parent
-            text: "RECOMMENDED"
-            font.pixelSize: 25
-            font.family: bold.name
-            color: bottomThirdTab.isFocused ? "black" : "white"
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: {
-                bottomTabsRow.currentIndex = 2
-                bottomTabsRow.inContent = false
-                bottomThirdTab.forceActiveFocus()
-                flick.contentY = topH + (middleH * 0.78)
-                ////sNav.play ()
-            }
-        }
-    }
-
-    // Навигация клавишами по табам и спуск в контент
-    Keys.onLeftPressed: {
-        if (bottomTabsRow.currentIndex > 0) {
-            bottomTabsRow.currentIndex--
-            bottomTabsRow.inContent = false
-            bottomTabsRow.forceActiveFocus()
-            ////sNav.stop();
-           ////sNav.play();
-        }
-    }
-    
-    Keys.onRightPressed: {
-        if (bottomTabsRow.currentIndex < 2) {
-            bottomTabsRow.currentIndex++
-            bottomTabsRow.inContent = false
-            bottomTabsRow.forceActiveFocus()
-            ////sNav.stop();
-            ////sNav.play();
-        }
-    }
-    
-    Keys.onDownPressed: {
-        // при спуске явно отдать фокус нужному списку
-        bottomTabsRow.inContent = true
-        if (bottomTabsRow.currentIndex === 0) newsList.forceActiveFocus()
-        else if (bottomTabsRow.currentIndex === 1) friendsList.forceActiveFocus()
-        else if (bottomTabsRow.currentIndex === 2) recommendedList.forceActiveFocus()
-        ////sNav.stop();
-            ////sNav.play();
-    }
-}
-
         // Контейнер для списков
         Item {
-            id: listsContainer
-            anchors.fill: parent
-            anchors.topMargin: 220
-            width: parent.width
-            height: bottomZone.height * 0.6
+    id: listsContainer
+    anchors.top: parent.top 
+    anchors.topMargin: bottomTabsRow.currentIndex === 0 ? 150:210
+    width: parent.width
+    height: bottomZone.height * 0.6
+    
+    // ДОБАВЬ ЭТИ СТРОКИ:
+    x: root.bottomAnimX
+    opacity: root.bottomAnimOpacity
+    Behavior on x { enabled: false } // Отключаем стандартное поведение
+    Behavior on opacity { enabled: false }
 
- // ======== WHAT'S NEW ========
-Grid {
+ // ======== WHAT'S NEW (Динамический список) ========
+ListView {
     id: newsList
-    anchors.fill: parent
-    columns: 4
-    rows: 2
-    columnSpacing: 30
-    rowSpacing: 25
+    anchors {
+        left: parent.left
+        right: parent.right
+        top: parent.top
+        bottom: parent.bottom
+        leftMargin: 60
+        rightMargin: 45
+    }
+    orientation: ListView.Horizontal
+    spacing: 30
+    clip: false
     visible: bottomTabsRow.currentIndex === 0
-    
-    property real rowHeight: parent.height / 3
-    
-    /*
-    Repeater {
-        model: 8
-        delegate: Item {
-            width: parent.width / 4 - parent.columnSpacing * 0.75
-            height: index < 4 ? parent.rowHeight * 0.5 : parent.rowHeight * 2.5  // 1-4 в 2 раза ниже, 5-8 в 2.5 раза выше
-            property real scaleFactor: newsListFocusHelper === (index + 1) ? 1.04 : 1.0
-            
-            // Позиционирование по рядам
-            y: index < 4 ? 0 : parent.rowHeight * 0.5
-            
-            
+    model: root.newsData
+
+    highlightMoveDuration: 0
+    highlightRangeMode: ListView.NoHighlightRange
+    interactive: false 
+    onWidthChanged: updateScrollPosition()
+
+    property real itemWidth: (width - (spacing * 2.3)) / 3.3
+
+    onCurrentIndexChanged: {
+        animateNewsToIndex(currentIndex)
+    }
+
+    NumberAnimation {
+        id: newsScrollAnim
+        target: newsList
+        property: "contentX"
+        duration: 300
+        easing.type: Easing.OutCubic
+    }
+
+    function animateNewsToIndex(idx) {
+        if (idx < 0 || idx >= count) return;
+
+        var itemW = newsList.itemWidth;
+        var sp = newsList.spacing;
+
+        var itemX = idx * (itemW + sp);
+        var totalContentWidth = count * (itemW + sp);
+        var maxTargetX = Math.max(0, totalContentWidth - width);
+        var targetX = itemX - (width / 2) + (itemW / 2);
+
+        if (targetX < 0) targetX = 0;
+        if (targetX > maxTargetX) targetX = maxTargetX;
+
+        newsScrollAnim.stop();
+        newsScrollAnim.to = targetX;
+        newsScrollAnim.start();
+    }
+
+    function updateScrollPosition() {
+        animateNewsToIndex(currentIndex)
+    }
+
+    onFocusChanged: {
+        if (focus) {
+            flick.contentY = topH + (middleH * 0.78)
+        }
+    }
+
+    Keys.onLeftPressed: {
+        if (currentIndex > 0) {
+            currentIndex--
+            flick.contentY = topH + (middleH * 0.78)
+            sNav.stop(); sNav.play();
+        }
+    }
+    Keys.onRightPressed: {
+        if (currentIndex < count - 1) {
+            currentIndex++
+            flick.contentY = topH + (middleH * 0.78)
+            sNav.stop(); sNav.play();
+        }
+    }
+    Keys.onUpPressed: {
+        bottomTabsRow.inContent = false
+        bottomTabsRow.forceActiveFocus()
+        sNav.stop(); sNav.play();
+    }
+    Keys.onPressed: {
+    if (api.keys.isAccept(event)) {
+        if (currentIndex >= 0 && currentIndex < count) {
+            root.openNewsDetail(root.newsData[currentIndex], currentIndex)
+        }
+        event.accepted = true
+    }
+}
+
+    delegate: Item {
+        width: newsList.itemWidth
+        height: width 
+        
+        Text {
+            text: "news"
+            color: "#B0B398"
+            font.pixelSize: 25
+            font.family: bold.name
+            font.capitalization: Font.AllUppercase
+            anchors.bottom: parent.top
+            anchors.bottomMargin: 20
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: "#32353C"
+            scale: newsList.currentIndex === index && newsList.focus ? 1.02 : 1.0
+            Behavior on scale { NumberAnimation { duration: 150 } }
+
             Rectangle {
-                anchors.fill: parent
-                color: "#2A2E35"
-                scale: scaleFactor
-                Behavior on scale { NumberAnimation { duration: 150 } }
-                
-                Text {
-                    anchors.centerIn: parent
-                    text: "Button " + (index + 1)
-                    color: "white"
-                    font.pixelSize: 24
-                    font.family: bold.name
+                id: imgPart
+                anchors.top: parent.top
+                width: parent.width
+                height: parent.height * 0.56 
+                color: "#1A1E25"
+                clip: true
+
+                Image {
+                    anchors.fill: parent
+                    source: modelData.image || "../assets/news/new.jpg"
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
                 }
                 
-                
-                // Обводка как у других элементов               
                 Rectangle {
-                    id: newsBorder
-                    anchors.fill: parent
-                    color: "transparent"
-                    border.width: 4
-                    border.color: "grey"
-                    radius: 0
-                    anchors.margins: -7
-                    opacity: newsListFocusHelper === (index + 1) ? 0.5 : 0.0
-                    visible: opacity > 0
+                id: blueOverlay
+                anchors.fill: parent
+                color: "#0A1C59"
+                opacity: newsList.currentIndex === index && newsList.focus ? 0.8 : 0
+                Behavior on opacity { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+            }
+
+            Text {
+                id: newsText
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    top: parent.top
+                    margins: 12
+                    topMargin: newsList.currentIndex === index && newsList.focus ? 12 : 50
+                }
+                text: modelData.desc || ""
+                color: "white"
+                font.pixelSize: 26
+                wrapMode: Text.WordWrap
+                maximumLineCount: 12
+                elide: Text.ElideRight
+                opacity: newsList.currentIndex === index && newsList.focus ? 0.95 : 0
+                Behavior on opacity { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+                Behavior on anchors.topMargin { NumberAnimation { duration: 340; easing.type: Easing.OutQuad } }
+            }
+            }
+
+            Column {
+                anchors {
+                    top: imgPart.bottom
+                    left: parent.left
+                    right: parent.right
+                    bottom: parent.bottom
+                    margins: 15
+                }
+                spacing: 5
+
+                Row {
+                    width: parent.width
+                    spacing: 6
+                    
+                    Text {
+                        id: pubLabel
+                        text: "PUBLISHED"
+                        color: "lightgrey"
+                        font.pixelSize: 23
+                    }
+                    
+                    Text {
+                        text: modelData.pubDate || ""
+                        color: "grey"
+                        font.pixelSize: 23
+                        elide: Text.ElideRight
+                        width: parent.width - pubLabel.width - parent.spacing
+                    }
+                }
+
+                Text {
+                    text: modelData.title || ""
+                    color: "white"
+                    font.pixelSize: 26
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: 2
+                    elide: Text.ElideRight
+                    width: parent.width
+                }
+            }
+
+            Rectangle {
+                id: newsBorder
+                anchors.fill: parent
+                color: "transparent"
+                border.width: 4
+                border.color: "grey"
+                radius: 0
+                anchors.margins: -7
+                opacity: (newsList.currentIndex === index && newsList.focus) ? 0.5 : 0.0
+                visible: opacity > 0
+
+                SequentialAnimation {
+                    id: appearAnim
+                    running: (newsList.currentIndex === index && newsList.focus)
+                    loops: 1
+
+                    ParallelAnimation {
+                        NumberAnimation { target: newsBorder; property: "border.width"; to: 10; duration: 200; easing.type: Easing.OutBack }
+                        NumberAnimation { target: newsBorder; property: "radius"; to: 0; duration: 200; easing.type: Easing.OutBack }
+                        NumberAnimation { target: newsBorder; property: "anchors.margins"; to: -17; duration: 200; easing.type: Easing.OutBack }
+                        ColorAnimation  { target: newsBorder; property: "border.color"; to: "white"; duration: 200 }
+                        NumberAnimation { target: newsBorder; property: "opacity"; to: 0.5; duration: 200 }
+                    }
+
+                    ParallelAnimation {
+                        NumberAnimation { target: newsBorder; property: "radius"; to: 0; duration: 200; easing.type: Easing.InOutQuad }
+                        NumberAnimation { target: newsBorder; property: "anchors.margins"; to: -7; duration: 200; easing.type: Easing.InOutQuad }
+                        NumberAnimation { target: newsBorder; property: "border.width"; to: 4; duration: 200; easing.type: Easing.OutBack }
+                    }
 
                     SequentialAnimation {
-                        id: appearAnim
-                        running: newsListFocusHelper === (index + 1)
-                        loops: 1
-
-                        ParallelAnimation {
-                            NumberAnimation { target: newsBorder; property: "border.width"; to: 10; duration: 100; easing.type: Easing.OutBack }
-                            NumberAnimation { target: newsBorder; property: "radius"; to: 0; duration: 100; easing.type: Easing.OutBack }
-                            NumberAnimation { target: newsBorder; property: "anchors.margins"; to: -17; duration: 100; easing.type: Easing.OutBack }
-                            ColorAnimation { target: newsBorder; property: "border.color"; to: "white"; duration: 100 }
-                            NumberAnimation { target: newsBorder; property: "opacity"; to: 0.5; duration: 100 }
-                        }
-
-                        ParallelAnimation {
-                            NumberAnimation { target: newsBorder; property: "radius"; to: 0; duration: 100; easing.type: Easing.InOutQuad }
-                            NumberAnimation { target: newsBorder; property: "anchors.margins"; to: -7; duration: 100; easing.type: Easing.InOutQuad }
-                            NumberAnimation { target: newsBorder; property: "border.width"; to: 4; duration: 100; easing.type: Easing.OutBack }
-                        }
-
-                        SequentialAnimation {
-                            loops: Animation.Infinite
-                            NumberAnimation { target: newsBorder; property: "opacity"; to: 0.2; duration: 500 }
-                            NumberAnimation { target: newsBorder; property: "opacity"; to: 0.5; duration: 500 }
-                        }
+                        loops: Animation.Infinite
+                        NumberAnimation { target: newsBorder; property: "opacity"; to: 0.2; duration: 500 }
+                        NumberAnimation { target: newsBorder; property: "opacity"; to: 0.5; duration: 500 }
                     }
                 }
             }
-            
-            MouseArea {
-                anchors.fill: parent
-                onClicked: {
-                    if (root.focusZone !== 2) {
-                        root.goToZone(2)
-                        flick.contentY = topH + (middleH * 0.78)
-                    }
-                    newsListFocusHelper = index + 1
-                    //sNav.play()
-                }
+        }
+
+                MouseArea {
+            anchors.fill: parent
+            onClicked: {
+                if (root.focusZone !== 2 || !newsList.activeFocus) {
+                    root.goToZone(2)
+                    sNav.stop(); sNav.play();
+                    newsList.currentIndex = index
+                    newsList.forceActiveFocus()
+                    flick.contentY = topH + (middleH * 0.78)
+                } else if (newsList.currentIndex !== index) {
+                    newsList.currentIndex = index
+                    sNav.stop(); sNav.play();
+                    flick.contentY = topH + (middleH * 0.78)
+                } else {
+                    // Открываем детальную новость
+                    root.openNewsDetail(modelData, index)
+                }                 
             }
         }
     }
-    
-    Keys.onLeftPressed: {
-        if (newsListFocusHelper > 1) {
-            newsListFocusHelper--
-            //sNav.play()
-        }
-    }
-    
-    Keys.onRightPressed: {
-        if (newsListFocusHelper < 8) {
-            newsListFocusHelper++
-            //sNav.play()
-        }
-    }
-    
-    Keys.onUpPressed: {
-        if (newsListFocusHelper > 4) {
-            newsListFocusHelper -= 4
-        } else {
-            bottomTabsRow.inContent = false
-            bottomTabsRow.forceActiveFocus()
-        }
-        //sNav.play()
-    }
-    
-    Keys.onDownPressed: {
-        if (newsListFocusHelper <= 4 && newsListFocusHelper + 4 <= 8) {
-            newsListFocusHelper += 4
-            //sNav.play()
-        }
-    }
-*/
 }
 
 
-
-Text {
-    //text:"Recently updated on yourdevice"
-    text: "WORK IN PROGRESS"
-    color: "white"
-    font.pixelSize: 40
-    font.family: bold.name
-    y: -130
-    visible: bottomTabsRow.currentIndex === 0
-}
 
             // ======== FRIENDS ========
 ListView {
@@ -1067,120 +1602,18 @@ ListView {
     preferredHighlightEnd: width * 0.8
     highlightMoveDuration: 120
 
-    delegate: Item {
-        width: 420; height: friendsList.height
-        property real scaleFactor: ListView.isCurrentItem && friendsList.focus ? 1.04 : 1.0
-
-/*
-        Rectangle {
-            anchors.fill: parent
-            color: "#2A2E35"
-            scale: scaleFactor
-            Behavior on scale { NumberAnimation { duration: 150 } }
-
-            // Обводка как у игр (анимация идентична newsList)
-            Rectangle {
-                id: friendsBorder
-                anchors.fill: parent
-                color: "transparent"
-                border.width: 4
-                border.color: "grey"
-                radius: 2
-                anchors.margins: -7
-                opacity: (index === friendsList.currentIndex && friendsList.focus) ? 0.5 : 0.0
-
-                SequentialAnimation {
-                    id: appearAnim
-                    running: (index === friendsList.currentIndex && friendsList.focus)
-                    loops: 1
-
-                    ParallelAnimation {
-                        NumberAnimation { target: friendsBorder; property: "border.width"; to: 10; duration: 100; easing.type: Easing.OutBack }
-                        NumberAnimation { target: friendsBorder; property: "radius"; to: 0; duration: 100; easing.type: Easing.OutBack }
-                        NumberAnimation { target: friendsBorder; property: "anchors.margins"; to: -17; duration: 100; easing.type: Easing.OutBack }
-                        ColorAnimation  { target: friendsBorder; property: "border.color"; to: "white"; duration: 100 }
-                        NumberAnimation { target: friendsBorder; property: "opacity"; to: 0.5; duration: 100 }
-                    }
-
-                    ParallelAnimation {
-                        NumberAnimation { target: friendsBorder; property: "radius"; to: 2; duration: 100; easing.type: Easing.InOutQuad }
-                        NumberAnimation { target: friendsBorder; property: "anchors.margins"; to: -7; duration: 100; easing.type: Easing.InOutQuad }
-                        NumberAnimation { target: friendsBorder; property: "border.width"; to: 4; duration: 100; easing.type: Easing.OutBack }
-                    }
-
-                    SequentialAnimation {
-                        loops: Animation.Infinite
-                        NumberAnimation { target: friendsBorder; property: "opacity"; to: 0.2; duration: 500 }
-                        NumberAnimation { target: friendsBorder; property: "opacity"; to: 0.5; duration: 500 }
-                    }
-                }
-            }
-
-            Column {
-                anchors.centerIn: parent
-                spacing: 10
-                Text {
-                    text: "Friend " + (index + 1)
-                    color: "white"
-                    font.pixelSize: 24
-                    font.family: bold.name
-                }
-                Text {
-                    text: "Online now"
-                    color: "#00FF00"
-                    font.pixelSize: 18
-                }
-            }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: {
-                if (root.focusZone !== 2) {
-                    root.goToZone(2)
-                    flick.contentY = topH + (middleH * 0.78)
-                }
-                friendsList.currentIndex = index
-                friendsList.forceActiveFocus()
-                //sNav.play ()
-            }
-        }
-*/
-    }
-
-/*
-    Keys.onLeftPressed: {
-        if (friendsList.currentIndex > 0) friendsList.currentIndex--
-        //sNav.stop();
-        ////sNav.play(); 
-    }
-    Keys.onRightPressed: {
-        if (friendsList.currentIndex < friendsList.count - 1) friendsList.currentIndex++
-        //sNav.stop();
-        //sNav.play();          
-    }
-    Keys.onUpPressed: {
-        bottomTabsRow.inContent = false
-        bottomTabsRow.forceActiveFocus()
-        //sNav.stop();
-        //sNav.play();
-    }
-*/
-
-}
-
 Text {
-    //text:"Recently updated on yourdevice"
-    text: "WORK IN PROGRESS"
-    color: "white"
-    font.pixelSize: 40
-    font.family: bold.name
-    y: -130
-    visible: bottomTabsRow.currentIndex === 1
+    text: "Work In Progress"
+    anchors.centerIn: parent
+    color: "white" // Замени на цвет своего интерфейса
+    font.pixelSize: 28 // Настрой размер под себя
+    font.bold: true
 }
 
+}
 
 // ======== RECOMMENDED ========
+
 Item {
     id: recommendedContainer
     anchors.fill: parent
@@ -1195,23 +1628,15 @@ Item {
     property var unfilteredGames: []
     property int totalSlots: 0
     
-    // Заголовки
     Text {
-        text: "Play next in your Library"
-        color: "white"
-        font.pixelSize: 40
-        font.family: bold.name
-        y: -130
-    }
-    
-    Text {
-        text: "Games from your library that you haven't played for a long time"
-        color: "grey"
-        font.pixelSize: 35
-        font.family: bold.name
-        y: -75
-    }
-    
+    text: "Work In Progress"
+    anchors.centerIn: parent
+    color: "white" // Замени на цвет своего интерфейса
+    font.pixelSize: 28 // Настрой размер под себя
+    font.bold: true
+}
+
+
     // Функция фильтрации
     function updateUnfilteredGames() {
     var games = []
@@ -1260,42 +1685,62 @@ Item {
         Grid {
             id: recommendedList
             anchors.fill: parent
-            columns: 7
+            columns: theme.homeRows
             rows: 2
             columnSpacing: 28
             rowSpacing: 28
-            
+            visible: false            
             property int currentIndex: 0
             property int displayCount: recommendedContainer.totalSlots
             
             Repeater {
                 model: recommendedList.displayCount
                 
-                delegate: Item {
-                    width: (recommendedGrid.width - (recommendedList.columns - 1) * recommendedList.columnSpacing) / recommendedList.columns
-                    height: width * 9 / 6 // Правильное соотношение 6:9 как в играх
-                    
-                    property bool isLibraryButton: index === recommendedContainer.totalSlots - 1
-                    property bool isGame: !isLibraryButton && index < recommendedContainer.unfilteredGames.length
-                    property var gameData: isGame ? recommendedContainer.unfilteredGames[index] : null
-                    property real scaleFactor: recommendedList.currentIndex === index ? 1.04 : 1.0
-                    property bool firstClickDone: false
-                    property bool isSelected: recommendedList.currentIndex === index && firstClickDone
-                    
-                    Rectangle {
-                        anchors.fill: parent
-                        color: isLibraryButton ? "#AA2A2E35" : 
-                               (isGame && gameData && gameData.assets && gameData.assets.poster ? "transparent" : "#2A2E35")
-                        scale: scaleFactor
-                        Behavior on scale { NumberAnimation { duration: 150 } }
-                        
-                        Image {
-                            anchors.fill: parent
-                            source: isGame && gameData && gameData.assets && gameData.assets.poster ? gameData.assets.poster : ""
-                            fillMode: Image.PreserveAspectCrop
-                            visible: isGame && source !== ""
-                        }
-                        
+              delegate: Item {
+    width: (recommendedGrid.width - (recommendedList.columns - 1) * recommendedList.columnSpacing) / recommendedList.columns
+    height: width * 9 / 6 
+    
+    property bool isLibraryButton: index === recommendedContainer.totalSlots - 1
+    property bool isGame: !isLibraryButton && index < recommendedContainer.unfilteredGames.length
+    property var gameData: isGame ? recommendedContainer.unfilteredGames[index] : null
+    
+    // Получаем реальный путь к ассету (локальный или веб)
+    property string posterSource: isGame ? theme.getAssetSource("poster", gameData) : ""
+    // Проверяем, удалось ли что-то найти
+    property bool hasImg: posterSource !== ""
+
+    Rectangle {
+        anchors.fill: parent
+        // Серый фон виден ТОЛЬКО если это игра без найденного изображения
+        color: (isGame && !hasImg) ? "#555" : (isLibraryButton ? "#AA2A2E35" : "transparent")
+        scale: recommendedList.currentIndex === index ? 1.04 : 1.0
+        Behavior on scale { NumberAnimation { duration: 150 } }
+        
+        // Постер (поддерживает и локальные пути, и URL из Steam/Web)
+        AnimatedImage {
+            anchors.fill: parent
+            source: posterSource
+            fillMode: AnimatedImage.PreserveAspectCrop
+            playing: visible && status === AnimatedImage.Ready && theme.animatedCovers && (!theme.animationInFocus || (recommendedList.currentIndex === index && recommendedList.focus))
+            cache: true
+            asynchronous: true
+            visible: isGame && hasImg
+        }
+
+        // Текст названия игры (появляется только если постер пуст)
+        Text {
+            anchors.centerIn: parent
+            width: parent.width * 0.8
+            text: isGame ? gameData.title : ""
+            color: "white"
+            font.pixelSize: 24
+            font.family: bold.name
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            wrapMode: Text.WordWrap
+            visible: isGame && !hasImg
+        }
+        
                         // Blur эффект за игрой
 Item {
     width: parent.width * 1.02
@@ -1308,7 +1753,7 @@ Item {
     Image {
         id: blurSource
         anchors.fill: parent
-        source: isGame && gameData && gameData.assets && gameData.assets.poster ? gameData.assets.poster : ""
+        source: theme.getAssetSource("poster", gameData)
         fillMode: Image.PreserveAspectCrop
         visible: false
         
@@ -1361,17 +1806,17 @@ Library"
                                 loops: 1
 
                                 ParallelAnimation {
-                                    NumberAnimation { target: recommendedBorder; property: "border.width"; to: 10; duration: 100; easing.type: Easing.OutBack }
-                                    NumberAnimation { target: recommendedBorder; property: "radius"; to: 0; duration: 100; easing.type: Easing.OutBack }
-                                    NumberAnimation { target: recommendedBorder; property: "anchors.margins"; to: -17; duration: 100; easing.type: Easing.OutBack }
-                                    ColorAnimation  { target: recommendedBorder; property: "border.color"; to: "white"; duration: 100 }
-                                    NumberAnimation { target: recommendedBorder; property: "opacity"; to: 0.5; duration: 100 }
+                                    NumberAnimation { target: recommendedBorder; property: "border.width"; to: 10; duration: 200; easing.type: Easing.OutBack }
+                                    NumberAnimation { target: recommendedBorder; property: "radius"; to: 0; duration: 200; easing.type: Easing.OutBack }
+                                    NumberAnimation { target: recommendedBorder; property: "anchors.margins"; to: -17; duration: 200; easing.type: Easing.OutBack }
+                                    ColorAnimation  { target: recommendedBorder; property: "border.color"; to: "white"; duration: 200 }
+                                    NumberAnimation { target: recommendedBorder; property: "opacity"; to: 0.5; duration: 200 }
                                 }
 
                                 ParallelAnimation {
-                                    NumberAnimation { target: recommendedBorder; property: "radius"; to: 0; duration: 100; easing.type: Easing.InOutQuad }
-                                    NumberAnimation { target: recommendedBorder; property: "anchors.margins"; to: -7; duration: 100; easing.type: Easing.InOutQuad }
-                                    NumberAnimation { target: recommendedBorder; property: "border.width"; to: 4; duration: 100; easing.type: Easing.OutBack }
+                                    NumberAnimation { target: recommendedBorder; property: "radius"; to: 0; duration: 200; easing.type: Easing.InOutQuad }
+                                    NumberAnimation { target: recommendedBorder; property: "anchors.margins"; to: -7; duration: 200; easing.type: Easing.InOutQuad }
+                                    NumberAnimation { target: recommendedBorder; property: "border.width"; to: 4; duration: 200; easing.type: Easing.OutBack }
                                 }
 
                                 SequentialAnimation {
@@ -1392,6 +1837,8 @@ Library"
         if (root.focusZone !== 2 || !recommendedList.activeFocus) {
             // Если фокуса нет или зона не та — только фокусируемся
             root.goToZone(2)
+            sNav.stop();
+sNav.play();
             recommendedList.currentIndex = index
             recommendedList.forceActiveFocus()
             flick.contentY = topH + (middleH * (index >= 7 ? 1.140 : 0.78))
@@ -1399,6 +1846,8 @@ Library"
         else if (recommendedList.currentIndex !== index) {
             // Если мы уже в зоне, но кликнули на другой индекс
             recommendedList.currentIndex = index
+            sNav.stop();
+sNav.play();
             flick.contentY = topH + (middleH * (index >= 7 ? 1.140 : 0.78))
         } 
         else {
@@ -1428,7 +1877,8 @@ Library"
     }
 }
 }
-}   
+}
+   
             
             // Навигация клавишами
             Keys.onLeftPressed: {
@@ -1436,6 +1886,8 @@ Library"
         currentIndex--
         // УСЛОВИЕ: если индекс > 7, двигаем камеру на 1.1, иначе 0.78
         flick.contentY = topH + (middleH * (currentIndex >= 7 ? 1.140 : 0.78))
+        sNav.stop();
+            sNav.play();
     }
 }
 
@@ -1444,6 +1896,8 @@ Keys.onRightPressed: {
         currentIndex++
         // УСЛОВИЕ: если индекс > 7, двигаем камеру на 1.1, иначе 0.78
         flick.contentY = topH + (middleH * (currentIndex >= 7 ? 1.140 : 0.78))
+        sNav.stop();
+            sNav.play();
     }
 }
 
@@ -1452,9 +1906,13 @@ Keys.onUpPressed: {
         currentIndex -= 7
         // УСЛОВИЕ: если индекс > 7, двигаем камеру на 1.1, иначе 0.78
         flick.contentY = topH + (middleH * (currentIndex >= 7 ? 1.140 : 0.78))
+        sNav.stop();
+            sNav.play();
     } else {
         bottomTabsRow.inContent = false
         bottomTabsRow.forceActiveFocus()
+        sNav.stop();
+            sNav.play();
     }
 }
 
@@ -1463,6 +1921,8 @@ Keys.onDownPressed: {
         currentIndex += 7
         // УСЛОВИЕ: если индекс > 7, двигаем камеру на 1.1
         flick.contentY = topH + (middleH * 1.140)
+        sNav.stop();
+            sNav.play();
     }
 }
             
@@ -1501,7 +1961,7 @@ Keys.onDownPressed: {
 }
 }
 } // bottomZone
-        } // Column content
+       } // Column content
         
         
 
@@ -1513,21 +1973,21 @@ Keys.onDownPressed: {
             // С верхней зоны переходим в среднюю
             root.goToZone(1)
             event.accepted = true
-            //sNav.stop();
-            //sNav.play();
+            sNav.stop();
+            sNav.play();
         } else if (root.focusZone === 1) {
             // Со средней зоны переходим в нижнюю
             root.goToZone(2)
             event.accepted = true
-            //sNav.stop();
-            //sNav.play();
+            sNav.stop();
+            sNav.play();
         } else if (root.focusZone === 2 && !bottomTabsRow.inContent) {
             // С табов переходим в контент
             bottomTabsRow.inContent = true
             newsList.forceActiveFocus()
             event.accepted = true
-            //sNav.stop();
-            //sNav.play();
+            sNav.stop();
+            sNav.play();
         }
     } 
     else if (event.key === event.key === Qt.Key_Up) {
@@ -1536,42 +1996,57 @@ Keys.onDownPressed: {
             bottomTabsRow.inContent = false
             bottomTabsRow.forceActiveFocus()
             event.accepted = true
-            //sNav.stop();
-            //sNav.play();
+            sNav.stop();
+            sNav.play();
         } else if (root.focusZone === 2) {
             // С нижних табов переходим в среднюю зону
             root.goToZone(1)
             event.accepted = true
-            //sNav.stop();
-            //sNav.play();
+            sNav.stop();
+            sNav.play();
         } else if (root.focusZone === 1) {
             // Со средней зоны переходим в верхнюю
             root.goToZone(0)
             event.accepted = true
-            //sNav.stop();
-            //sNav.play();
+            sNav.stop();
+            sNav.play();
         }
     }
     // Обработка PrevPage/NextPage для BottomZone
 else if (api.keys.isPrevPage(event) || api.keys.isNextPage(event)) {
     if (root.focusZone === 2) {
-        // Переключаемся между кнопками табов
+        sTab.stop();
+        sTab.play();
+        
+        let oldIndex = bottomTabsRow.currentIndex;
+        let newIndex = oldIndex;
+        
         if (api.keys.isPrevPage(event)) {
-            if (bottomTabsRow.currentIndex > 0) {
-                bottomTabsRow.currentIndex--
-                bottomTabsRow.inContent = false
-                bottomTabsRow.forceActiveFocus()
-            }
+            newIndex = Math.max(0, oldIndex - 1);
         } else if (api.keys.isNextPage(event)) {
-            if (bottomTabsRow.currentIndex < 2) {
-                bottomTabsRow.currentIndex++
-                bottomTabsRow.inContent = false
-                bottomTabsRow.forceActiveFocus()
-            }
+            newIndex = Math.min(2, oldIndex + 1);
+        }
+        
+        if (oldIndex !== newIndex) {
+            // Используем новую анимацию
+            root.safeBottomNav(newIndex);
+            
+            // Возвращаем управление на кнопки табов
+            bottomTabsRow.inContent = false
+            bottomTabsRow.forceActiveFocus()
+            
+            // Сбрасываем камеру на заголовки
+            flick.contentY = topH + (middleH * 0.78)
+            
+            // Сброс индексов списков
+            if (newsList) newsList.currentIndex = 0
+            if (friendsList) friendsList.currentIndex = 0
+            if (recommendedList) recommendedList.currentIndex = 0
         }
         event.accepted = true
     }
 }
+
 // Добавить после блока с PrevPage/NextPage
 else if (api.keys.isDetails(event) || event.key === Qt.Key_X) {
     if (!optionsMenuVisible && focusZone === 1 && gameList.focus) {
@@ -1582,29 +2057,45 @@ else if (api.keys.isDetails(event) || event.key === Qt.Key_X) {
     else if (event.key === Qt.Key_Left) {
         if (root.focusZone === 0) { 
             if (topButtonsRow.currentIndex > 0) topButtonsRow.currentIndex-- 
+            sTab.stop();
+            sTab.play();
         }
         else if (root.focusZone === 1) { 
             if (gameList.currentIndex > 0) gameList.currentIndex-- 
+            sTab.stop();
+            sTab.play();
         }
         else if (root.focusZone === 2 && bottomTabsRow.inContent) { 
             if (newsList.currentIndex > 0) newsList.currentIndex-- 
+            sTab.stop();
+            sTab.play();
         }
         else if (root.focusZone === 2) { 
             if (bottomTabsRow.currentIndex > 0) bottomTabsRow.currentIndex-- 
+            sTab.stop();
+            sTab.play();
         }
     } 
     else if (event.key === Qt.Key_Right) {
         if (root.focusZone === 0) { 
             if (topButtonsRow.currentIndex < 3) topButtonsRow.currentIndex++ 
+            sTab.stop();
+            sTab.play();
         }
         else if (root.focusZone === 1) { 
             if (gameList.currentIndex < gameList.count - 1) gameList.currentIndex++ 
+            sTab.stop();
+            sTab.play();
         }
         else if (root.focusZone === 2 && bottomTabsRow.inContent) { 
             if (newsList.currentIndex < newsList.count - 1) newsList.currentIndex++ 
+            sTab.stop();
+            sTab.play();
         }
         else if (root.focusZone === 2) { 
             if (bottomTabsRow.currentIndex < 2) bottomTabsRow.currentIndex++ 
+            sTab.stop();
+            sTab.play();
         }
         }
     }
@@ -1626,7 +2117,7 @@ else if (api.keys.isDetails(event) || event.key === Qt.Key_X) {
         Rectangle {
             anchors.fill: parent
             color: leftBar.isOpen || topButtonsRow.focus ? Qt.rgba(0,0,0) : Qt.rgba(0, 0, 0, Math.min(topBar.scrollRatio / 0.4, 1))
-            Behavior on color { ColorAnimation { duration: 100 } }
+            Behavior on color { ColorAnimation { duration: 200 } }
             z: -1
         }
 
@@ -1664,14 +2155,10 @@ Rectangle {
     readonly property real posRight: topBtnSearch.width - 50
     readonly property real posLeft: 15
     
-    // ЖЕСТКО УСТАНАВЛИВАЕМ НАЧАЛЬНУЮ ПОЗИЦИЮ СПРАВА
-    Component.onCompleted: {
-        x = posRight
-        opacity = 1
-    }
-    
-    // Убираем начальное значение x, чтобы не было конфликта
-    // x: posRight // УДАЛИТЬ ЭТУ СТРОКУ
+    // ВЕРНУЛИ декларативную привязку (определяет стартовую позицию и реагирует на ресайз)
+    x: posRight 
+
+    // Component.onCompleted ПОЛНОСТЬЮ УДАЛЕН
 
     states: [
         State {
@@ -1789,7 +2276,7 @@ Rectangle {
                 PauseAnimation { duration: 150 }
                 ParallelAnimation {
                     NumberAnimation { target: searchText; property: "opacity"; to: 1; duration: 200; easing.type: Easing.OutCubic }
-                    NumberAnimation { target: searchText; property: "x"; to: targetX; duration: 100; easing.type: Easing.OutCubic }
+                    NumberAnimation { target: searchText; property: "x"; to: targetX; duration: 200; easing.type: Easing.OutCubic }
                 }
             }
         },
@@ -1811,7 +2298,7 @@ Rectangle {
 
         MouseArea { 
         anchors.fill: parent
-        onClicked: {
+        onClicked: if (!root.closeMenuVisible) {
             // Если мы уже находимся в верхней зоне и уже выбрана кнопка поиска (индекс 0)
             if (root.focusZone === 0 && topButtonsRow.currentIndex === 0) {
                 theme.openPage(9) // Открываем Library
@@ -1820,7 +2307,7 @@ Rectangle {
                 root.goToZone(0)
                 topButtonsRow.currentIndex = 0
                 topButtonsRow.forceActiveFocus()
-                //sNav.play ()
+                sNav.play ()
             }
         }
     }
@@ -1838,7 +2325,7 @@ Rectangle {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "o"
+                    text: theme.isOnline ? "°" : "o" 
                     font.pixelSize: 35
                     font.family: icons.name
                     color: (topButtonsRow.currentIndex === 1 && topButtonsRow.focus) ? "black" : "white"
@@ -1846,10 +2333,10 @@ Rectangle {
 
                 MouseArea { 
                     anchors.fill: parent; 
-                    onClicked: {
+                    onClicked: if (!root.closeMenuVisible) {
                         root.goToZone(0)
                         topButtonsRow.currentIndex = 1
-                        //sNav.play ()
+                        sNav.play ()
                     }
                 }
             }
@@ -1858,7 +2345,7 @@ Rectangle {
           // Battery icon           
 Item {
     id: topBarBattery
-    width: 170
+    width: theme.showBatteryPercent ? 170 : 70
     height: root.topH
 
     // === Фон (реагирует на фокус) ===
@@ -1914,6 +2401,7 @@ Item {
             color: (topButtonsRow.currentIndex === 2 && topButtonsRow.focus) ? "black" : "white"
             font.family: bold.name
             font.pixelSize: 36
+            visible: theme.showBatteryPercent // Скрываем текст, если выключено
             verticalAlignment: Text.AlignVCenter
         }
 
@@ -1945,10 +2433,10 @@ Item {
     // === Область клика ===
     MouseArea {
         anchors.fill: parent
-        onClicked: {
+        onClicked: if (!root.closeMenuVisible) {
             root.goToZone(0)
             topButtonsRow.currentIndex = 2
-            //sNav.play ()
+            sNav.play ()
         }
     }
 }
@@ -1957,14 +2445,18 @@ Item {
             // ===== CLOCK =====
             Rectangle {
                 id: topBtnClock
-                width: 200; height: root.topH
+                width: theme.use24HourFormat ? 130 : 200; height: root.topH
                 color: "transparent"
                 border.color: "transparent"               
+
+                // Динамически определяем формат времени на основе настройки
+                property string timeFormat: theme.use24HourFormat ? "HH:mm" : "hh:mm AP"
 
                 Text {
                     id: clockText
                     anchors.centerIn: parent
-                    text: Qt.formatDateTime(new Date(), "hh:mm AP")
+                    // Инициализация при загрузке
+                    text: Qt.formatTime(new Date(), topBtnClock.timeFormat)
                     font.pixelSize: 35
                     font.family: bold.name
                     color: "white"
@@ -1972,9 +2464,13 @@ Item {
 
                 Timer {
                     interval: 1000; running: true; repeat: true
-                    onTriggered: clockText.text = Qt.formatDateTime(new Date(), "hh:mm AP")
+                    onTriggered: clockText.text = Qt.formatTime(new Date(), topBtnClock.timeFormat)
                 }                
+                
+                // Мгновенно обновляем текст, если переключатель нажали
+                onTimeFormatChanged: clockText.text = Qt.formatTime(new Date(), topBtnClock.timeFormat)
             }
+
 
             // ===== USER =====
             Rectangle {
@@ -1985,13 +2481,14 @@ Item {
                 border.color: "transparent"
                 Behavior on color { ColorAnimation { duration: 150 } }
 
-                Image {
+                AnimatedImage {
                     id: userImage
                     anchors.centerIn: parent
                     width: parent.width * 0.85
                     height: parent.height * 0.8
-                    source: "../assets/logo/logo.jpg"
+                    source: (root.theme && root.theme.profilePictureSource !== "") ? root.theme.profilePictureSource : "../assets/logo/logo.jpg" /* DECKOS */
                     fillMode: Image.PreserveAspectFit
+                    playing: visible && status === AnimatedImage.Ready && (api.memory.has("animatedCovers") ? api.memory.get("animatedCovers") : false)
                 }
 
                 Rectangle {
@@ -2006,23 +2503,26 @@ Item {
 
                 MouseArea { 
                     anchors.fill: parent; 
-                    onClicked: {
+                    onClicked: if (!root.closeMenuVisible) {
                         root.goToZone(0)
                         topButtonsRow.currentIndex = 3
-                        //sNav.stop();
-            //sNav.play();
+                        sNav.stop();
+            sNav.play();
                     }
                 }
             }
 
             Keys.onLeftPressed:{ if (topButtonsRow.currentIndex > 0) topButtonsRow.currentIndex--
-            //sNav.stop();
-            ////sNav.play(); 
+            sNav.stop();
+            sNav.play(); 
 }
-            Keys.onRightPressed: if (topButtonsRow.currentIndex < 3) topButtonsRow.currentIndex++
+            Keys.onRightPressed: {if (topButtonsRow.currentIndex < 3) topButtonsRow.currentIndex++
+            sNav.stop();
+            sNav.play();
+        }
             Keys.onDownPressed: {root.goToZone(1)
-//sNav.stop();
-            ////sNav.play(); 
+sNav.stop();
+            sNav.play(); 
 }
             Keys.onPressed: 
                       if (event.key === Qt.Key_Return || api.keys.isAccept(event)){
@@ -2034,38 +2534,74 @@ Item {
     }
     
     /* ================= BOTTOM BAR ================= */
-Rectangle {
+Item {
     id: bottomBar
     width: parent.width
     height: root.topH
-    color: "black"
-    z: 100000000000
     anchors.bottom: parent.bottom
+    z: 100000000000
+    clip: true
 
-    // ====== Левая кнопка MENU ======
+    // Захватываем фрагмент фона строго под bottomBar (не весь экран!)
+    ShaderEffectSource {
+        id: bottomAreaSource
+        sourceItem: globalBlurSource
+        // Координаты bottomBar в системе координат globalBlurSource (размер root)
+        sourceRect: Qt.rect(0, root.height - root.topH, root.width, root.topH)
+        live: true
+        visible: false
+    }
+
+   GaussianBlur {
+    anchors.fill: parent
+    source: bottomAreaSource
+    radius: 150          
+    visible: !theme.highContrastBottomBar
+     // до любого нужного значения
+    samples: 64        // количество сэмплов для качества
+    transparentBorder: false
+}
+
+    // Полупрозрачный чёрный (50%)
+    Rectangle {
+        anchors.fill: parent
+        color: "black"
+        opacity: theme.highContrastBottomBar ? 1.0 : (leftBar.isOpen || root.closeMenuVisible || root.optionsMenuVisible ? 0.9 : 0.6)
+
+        Behavior on opacity { NumberAnimation { duration: 150 } }
+    }
+
+     // ====== Левая кнопка MENU ======
     Rectangle {
         id: btnMenu
         width: 180; height: parent.height
         anchors.left: parent.left
-        anchors.leftMargin: 35
+        anchors.leftMargin: 18
         color: "transparent"
 
         Row {
-            anchors.centerIn: parent
+            anchors.verticalCenter: parent.verticalCenter 
             spacing: 6
             Text { text: ":"; font.family: icons.name; font.pixelSize: 54; color: "white" }
-            Text { text: "MENU"; font.family: bold.name; font.pixelSize: 28; color: "white";y:parent.height *0.21 }
+            Text { 
+    text: root.closeMenuVisible ? "PEGASUS MENU" : "MENU"
+    font.family: bold.name 
+    font.pixelSize: 28 
+    color: "white"
+    y: parent.height * 0.21 
+}
         }
 
-        MouseArea { anchors.fill: parent; onClicked: leftBar.toggle() }MouseArea {
+        // === В BOTTOM BAR (кнопка MENU) ===
+MouseArea {
     anchors.fill: parent
     onClicked: {
-        // Открываем/закрываем меню
+        if (root.closeMenuVisible || root.optionsMenuVisible || root.newsDetailVisible) return;
+        
         leftBar.toggle()
-       if (leftBar.isOpen === false) {
+        if (leftBar.isOpen === false) {
             focusTimer.start()
         }
-        // Сразу выставляем фокус на кнопку с индексом 0
         leftBar.currentIndex = 0
         leftBar.updateFocus()
     }
@@ -2073,62 +2609,121 @@ Rectangle {
     }
 
     // ====== Правая часть (подсказки + BACK) ======
+Row {
+    id: rightGroup
+    anchors.right: parent.right
+    anchors.rightMargin: 35
+    anchors.verticalCenter: parent.verticalCenter
+    spacing: 38
+
+    // --- Подсказка OPTIONS ---
     Row {
-        id: rightGroup
-        anchors.right: parent.right
-        anchors.rightMargin: 35
+        spacing: 18
+        visible: root.closeMenuVisible ? 0 : 1 && !leftBar.isOpen && !root.optionsMenuVisible && !root.newsDetailVisible
         anchors.verticalCenter: parent.verticalCenter
-        spacing: 38
-
-        // --- Подсказка OPTIONS ---
-        Row {
-            spacing: 18
-            anchors.verticalCenter: parent.verticalCenter
-            Text { text: "X"; font.family: icons.name; font.pixelSize: 53; color: "white";y:parent.height * -0.025 }
-            Text { text: "OPTIONS"; font.family: bold.name; font.pixelSize: 25; color: "white";y:parent.height *0.23 }
-        }
-
-        // --- Подсказка SELECT ---
-        Row {
-            spacing: 18
-            anchors.verticalCenter: parent.verticalCenter
-            Text { text: "A"; font.family: icons.name; font.pixelSize: 53; color: "white";y:parent.height * -0.025}
-            Text { text: "SELECT"; font.family: bold.name; font.pixelSize: 25; color: "white";y:parent.height *0.23 }
-        }
-
-        // --- Кнопка BACK ---
-        Rectangle {
-            id: btnBack
-            width: 140; height: parent.height
-            color: "transparent"
-            Row {
-                anchors.centerIn: parent
-                spacing: 18
-                Text { text: "B"; font.family: icons.name; font.pixelSize: 53; color: "white";y:parent.height * -0.025}
-                Text { text: "BACK"; font.family: bold.name; font.pixelSize: 25; color: "white";y:parent.height *0.23 }
-            }            
-        }
+        Text { text: theme.nintendoLayout ? (theme.universalIcons ? "У" : "Y") : (theme.universalIcons ? "Х" : "X")
+; font.family: icons.name; font.pixelSize: 53; color: "white";y:parent.height * -0.025 }
+        Text { text: "OPTIONS"; font.family: bold.name; font.pixelSize: 25; color: "white";y:parent.height *0.23 }
     }
-}
 
-// ФОН
+    // --- Подсказка SELECT ---
+    Row {
+        spacing: 18
+        anchors.verticalCenter: parent.verticalCenter
+        Text { text: theme.nintendoLayout ? (theme.universalIcons ? "В" : "B") : (theme.universalIcons ? "А" : "A")
+; font.family: icons.name; font.pixelSize: 53; color: "white";y:parent.height * -0.025}
+        Text { text: "SELECT"; font.family: bold.name; font.pixelSize: 25; color: "white";y:parent.height *0.23 }
+    }
+
+    // === КНОПКА BACK (с MouseArea) ===
     Rectangle {
-        id: dimLayer
-        anchors.fill: parent
-        color: "black"
-        opacity: leftBar.isOpen ? 0.7 : 0.0
-        visible: leftBar.visible
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutQuad } }
-        
+        id: btnBack
+        width: 140; height: parent.height
+        color: "transparent"
 
+        Row {
+            anchors.centerIn: parent
+            spacing: 18
+            Text { 
+                text: theme.nintendoLayout ? (theme.universalIcons ? "А" : "A") : (theme.universalIcons ? "В" : "B")
+; font.family: icons.name; font.pixelSize: 53; color: "white";y:parent.height * -0.025}
+            Text { 
+                text: root.newsDetailVisible ? "CANCEL" : "BACK"
+                font.family: bold.name; 
+                font.pixelSize: 25; 
+                color: "white";
+                y:parent.height *0.23 
+            }
+        }            
+
+        // === MouseArea для BACK / CANCEL ===
         MouseArea {
             anchors.fill: parent
-            onClicked: { 
-leftBar.toggle()
-focusTimer.start()
-}
+            onClicked: {
+                if (root.newsDetailVisible) {
+                    root.closeNewsDetail()
+                } 
+                else if (root.closeMenuVisible) {
+                    root.closeMenuVisible = false
+                    sLeftClose.play()
+                    focusTimer.start()
+                } 
+                else if (root.optionsMenuVisible) {
+                    root.toggleOptionsMenu()
+                    sLeftClose.play()
+                }
+                else if (root.focusZone === 2 && (newsList.focus || friendsList.focus || recommendedList.focus)) {
+                    bottomTabsRow.forceActiveFocus()
+                } 
+                else if (root.focusZone === 2) {
+                    root.goToZone(1)
+                } 
+                else if (root.focusZone === 1) {
+                    leftBar.toggle()
+                } 
+                else if (root.focusZone === 0) {
+                    root.goToZone(1)
+                }
+            }
         }
     }
+}
+}
+
+/* LEFT BAR ФОН */ 
+Item {
+    id: leftOverlay
+    anchors.fill: parent
+    z: 0 
+    
+    // Прямая привязка к движению панели для синхронной анимации
+    opacity: (leftBar.x + leftBar.width) / leftBar.width
+    visible: opacity > 0
+
+    MouseArea {
+        anchors.fill: parent
+        enabled: leftBar.isOpen
+        onClicked: {
+            leftBar.toggle()
+            focusTimer.start()
+        }
+    }
+
+    FastBlur {
+        anchors.fill: parent
+        source: globalBlurSource
+        radius: 50
+        transparentBorder: false
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        color: "black"
+        opacity: 0.7
+    }
+}
+
+
 
 /* ================= LEFT BAR ================= */
 FocusScope {
@@ -2145,7 +2740,6 @@ FocusScope {
         easing.type: Easing.OutCubic
     }
 }
-
 
 
     property bool isOpen: false
@@ -2165,13 +2759,19 @@ FocusScope {
         x: leftBar.isOpen ? width * 0.2: 0
 
 
+        ProfileBadge { // DECKOS: user picture + name (Settings > Profile)
+            theme: root.theme
+            anchors.left: parent.left; anchors.leftMargin: 40
+            anchors.right: parent.right; anchors.rightMargin: 20
+            y: parent.height * 0.105; height: parent.height * 0.075
+        }
         Column {
             id: buttonColumn
             anchors {
                 left: parent.left
                 top: parent.top
                 leftMargin: 0
-                topMargin: parent.height * 0.11
+                topMargin: parent.height * 0.2 /* DECKOS: was 0.11, room for the profile */
             }
             spacing: 0
         }
@@ -2186,8 +2786,8 @@ Keys.onPressed: {
                 currentIndex--
                 updateFocus()
                 event.accepted = true
-                ////sNav.stop();
-            ////sNav.play();
+                sNav.stop();
+            sNav.play();
             } else {
                 // Если уже на верхней кнопке - остаемся на ней
                 // Никакого перехода на topbar
@@ -2199,16 +2799,30 @@ Keys.onPressed: {
                 currentIndex++
                 updateFocus()
                 event.accepted = true
-                ////sNav.stop();
-            ////sNav.play();
+                sNav.stop();
+            sNav.play();
             } else {
                 // Если уже на нижней кнопке - остаемся на ней
                 event.accepted = true
             }
         }
         else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
-            theme.openPage(currentIndex)
+    if (currentIndex === 7) { // Close button
+        toggle() // Закрываем левое меню
+        root.closeMenuVisible = true // Открываем CloseMenu
+        focusTimer.start()
+    } else {
+        theme.openPage(currentIndex)
+        toggle()
+        if (currentIndex === 6) {
+            sShowui.play()
+        }
+    }
+    event.accepted = true
+}
+        else if (api.keys.isMenu(event)) {
             toggle()
+            focusTimer.start()
             event.accepted = true
         }
         else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape) {
@@ -2232,7 +2846,7 @@ Keys.onPressed: {
             property string title: ""
             property int buttonIndex: 0
             width: menuPanel.width
-            height: 106
+            height: Math.min(106, menuPanel.height * 0.085) /* DECKOS: was 106 */
             
             // СВОЙСТВО ДЛЯ ПРОВЕРКИ ФОКУСА
             property bool isFocused: activeFocus
@@ -2284,16 +2898,16 @@ Item {
         Row {
     anchors.verticalCenter: parent.verticalCenter  // центр по вертикали
     anchors.left: parent.left                       // прижимаем к левому краю
-    anchors.leftMargin: 50                         // отступ слева, можно менять
+    anchors.leftMargin: menuPanel.width * 0.083                     // отступ слева, можно менять
     spacing: 38                                // расстояние между иконкой и текстом
 
     // Иконка
     Text {
         text: icon
         font.family: icons.name
-        font.pixelSize: Math.min(43, menuPanel.width / 7)
+        font.pixelSize: menuPanel.width * 0.075
         color: "white"
-        verticalAlignment: Text.AlignVCenter
+        verticalAlignment: Text.AlignVCenter // DECKOS: was parent.verticalCenter (an anchor line)
         horizontalAlignment: Text.AlignHCenter
     }
 
@@ -2301,9 +2915,9 @@ Item {
     Text {
         text: title
         font.family: bold.name
-        font.pixelSize: Math.min(43, menuPanel.width / 7)
+        font.pixelSize: menuPanel.width * 0.075
         color: "white"
-        verticalAlignment: Text.AlignVCenter
+        verticalAlignment: Text.AlignVCenter // DECKOS: was parent.verticalCenter (an anchor line)
         horizontalAlignment: Text.AlignHCenter
     }
 }
@@ -2313,21 +2927,25 @@ Item {
     anchors.fill: parent
     hoverEnabled: true
     onClicked: {
-
-    if (leftBar.currentIndex === buttonIndex) {
-        // Второе нажатие — запускаем страницу
-        theme.openPage(buttonIndex)
-        leftBar.toggle()
-        if (buttonIndex === 6) {
-        ////sShowui.play()
+        if (leftBar.currentIndex === buttonIndex) {
+            // Второе нажатие
+            if (buttonIndex === 7) { // Close button
+                leftBar.toggle() // Закрываем левое меню
+                closeMenuVisible = true // Открываем CloseMenu
+            } else {
+                theme.openPage(buttonIndex)
+                leftBar.toggle()
+                if (buttonIndex === 6) {
+                    sShowui.play()
+                }
+            }
+        } else {
+            // Первое нажатие — переводим фокус
+            leftBar.currentIndex = buttonIndex
+            leftBar.updateFocus()
+            sNav.play()
         }
-    } else {
-        // Первое нажатие — переводим фокус
-        leftBar.currentIndex = buttonIndex
-        leftBar.updateFocus()
-        //sNav.play ()
     }
-}
 }
         }
     }
@@ -2396,46 +3014,332 @@ Item {
 
 /* ================= OPTIONS MENU ================= */
 FocusScope {
-    id: optionsMenu
+id: optionsMenu
+width: parent.width
+height: parent.height
+visible: optionsMenuVisible
+focus: optionsMenuVisible
+enabled: visible
+z: 9999
+opacity: optionsMenuVisible ? 1 : 0
+Behavior on opacity { NumberAnimation { duration: 150 } }
+property int currentButtonIndex: 0
+property var buttons: [playButton, favoriteButton, propertiesButton, artworkButton, cancelButton]
+/* OPTIONS MENU ФОН */
+Item {
+id: optionsOverlay
+anchors.fill: parent
+z: 0
+visible: optionsMenu.visible
+MouseArea { anchors.fill: parent }
+FastBlur {
+anchors.fill: parent
+source: globalBlurSource
+radius: 50
+transparentBorder: false
+}
+Rectangle {
+anchors.fill: parent
+color: "black"
+opacity: 0.7
+}
+}
+// Центральное окно меню
+Rectangle {
+width: 550
+height: 550 // Увеличено для размещения 5 кнопок
+anchors.centerIn: parent
+color: "#181B20"
+// Название игры сверху
+Text {
+anchors {
+horizontalCenter: parent.horizontalCenter
+bottom: parent.top
+bottomMargin: 25
+}
+text: currentFocusedGame ? currentFocusedGame.title : "No game selected"
+color: "white"
+font.pixelSize: 38
+font.family: bold.name
+width: parent.width
+horizontalAlignment: Text.AlignHCenter
+elide: Text.ElideRight
+}
+Column {
+anchors.fill: parent
+spacing: 0
+// ===== 0. КНОПКА "ИГРАТЬ" =====
+Rectangle {
+id: playButton
+width: parent.width
+height: parent.height / 5
+color: optionsMenu.currentButtonIndex === 0 ? "#54B63D" : "transparent"
+Row {
+anchors.left: parent.left
+anchors.leftMargin: 40
+anchors.verticalCenter: parent.verticalCenter
+spacing: 30
+Text {
+text: "♥︎"
+color: "white"
+font.pixelSize: 55
+font.family: icons.name
+anchors.verticalCenter: parent.verticalCenter
+}
+Text {
+text: "Play"
+color: "white"
+font.pixelSize: 35
+font.family: bold.name
+anchors.verticalCenter: parent.verticalCenter
+}
+}
+MouseArea {
+anchors.fill: parent
+onClicked: {
+if (optionsMenu.currentButtonIndex !== 0) {
+optionsMenu.currentButtonIndex = 0
+sNav.stop(); sNav.play();
+} else {
+if (currentFocusedGame) {
+currentFocusedGame.launch()
+root.toggleOptionsMenu()
+}
+}
+}
+}
+}
+// ===== 1. КНОПКА "ИЗБРАННОЕ" =====
+Rectangle {
+id: favoriteButton
+width: parent.width
+height: parent.height / 5
+color: optionsMenu.currentButtonIndex === 1 ? "white" : "transparent"
+Text {
+text: {
+if (currentFocusedGame) {
+return currentFocusedGame.favorite ? "   Delete from favorites" : "   Add to favorites"
+}
+return "   Add to favorites"
+}
+color: optionsMenu.currentButtonIndex === 1 ? "black" : "white"
+font.pixelSize: 35
+font.family: bold.name
+anchors.verticalCenter: parent.verticalCenter
+}
+MouseArea {
+anchors.fill: parent
+onClicked: {
+if (optionsMenu.currentButtonIndex !== 1) {
+optionsMenu.currentButtonIndex = 1
+sNav.stop(); sNav.play();
+} else {
+if (currentFocusedGame) {
+currentFocusedGame.favorite = !currentFocusedGame.favorite
+root.toggleOptionsMenu()
+}
+}
+}
+}
+}
+// ===== 2. КНОПКА "СВОЙСТВА" =====
+Rectangle {
+id: propertiesButton
+width: parent.width
+height: parent.height / 5
+color: optionsMenu.currentButtonIndex === 2 ? "white" : "transparent"
+Text {
+text: "   Properties"
+color: optionsMenu.currentButtonIndex === 2 ? "black" : "white"
+font.pixelSize: 35
+font.family: bold.name
+anchors.verticalCenter: parent.verticalCenter
+}
+MouseArea {
+    anchors.fill: parent
+    onClicked: {
+        if (optionsMenu.currentButtonIndex !== 2) {
+            optionsMenu.currentButtonIndex = 2
+            sNav.stop(); sNav.play();
+        } else {
+            if (currentFocusedGame) {
+                theme.currentGame = currentFocusedGame;
+                // ВАЖНО: Добавляем запись в память!
+                api.memory.set("targetGameName", currentFocusedGame.title);
+            }
+            root.toggleOptionsMenu()
+            theme.openPage(14)
+        }
+    }
+}
+}
+// ===== 3. КНОПКА "СМЕНА АРТА" =====
+Rectangle {
+id: artworkButton
+width: parent.width
+height: parent.height / 5
+color: optionsMenu.currentButtonIndex === 3 ? "white" : "transparent"
+Text {
+text: "   Change artwork..."
+color: optionsMenu.currentButtonIndex === 3 ? "black" : "white"
+font.pixelSize: 35
+font.family: bold.name
+anchors.verticalCenter: parent.verticalCenter
+}
+MouseArea {
+anchors.fill: parent
+onClicked: {
+if (optionsMenu.currentButtonIndex !== 3) {
+optionsMenu.currentButtonIndex = 3
+sNav.stop(); sNav.play();
+} else {
+if (currentFocusedGame) {
+theme.currentGame = root.currentFocusedGame
+}
+root.toggleOptionsMenu()
+theme.openPage(12)
+}
+}
+}
+}
+// ===== 4. КНОПКА "ОТМЕНА" =====
+Rectangle {
+id: cancelButton
+width: parent.width
+height: parent.height / 5
+color: optionsMenu.currentButtonIndex === 4 ? "white" : "transparent"
+Text {
+text: "   Cancel"
+color: optionsMenu.currentButtonIndex === 4 ? "black" : "white"
+font.pixelSize: 35
+font.family: bold.name
+anchors.verticalCenter: parent.verticalCenter
+}
+MouseArea {
+anchors.fill: parent
+onClicked: {
+if (optionsMenu.currentButtonIndex !== 4) {
+optionsMenu.currentButtonIndex = 4
+sNav.stop(); sNav.play();
+} else {
+root.toggleOptionsMenu()
+sLeftClose.play()
+}
+}
+}
+}
+}
+}
+Keys.onPressed: {
+if (optionsMenuVisible && optionsMenu.focus) {
+if (event.key === Qt.Key_Up) {
+if (currentButtonIndex > 0) {
+currentButtonIndex--
+sNav.stop(); sNav.play();
+}
+event.accepted = true
+}
+else if (event.key === Qt.Key_Down) {
+if (currentButtonIndex < 4) {
+currentButtonIndex++
+sNav.stop(); sNav.play();
+}
+event.accepted = true
+}
+else if (api.keys.isAccept(event) || event.key === Qt.Key_Return) {
+if (currentButtonIndex === 0) {
+if (currentFocusedGame) { currentFocusedGame.launch(); root.toggleOptionsMenu(); }
+} else if (currentButtonIndex === 1) {
+if (currentFocusedGame) { currentFocusedGame.favorite = !currentFocusedGame.favorite; root.toggleOptionsMenu(); }
+} else if (currentButtonIndex === 2) {
+// Properties
+} else if (currentButtonIndex === 3) {
+if (currentFocusedGame) theme.currentGame = root.currentFocusedGame;
+root.toggleOptionsMenu();
+theme.openPage(12);
+} else if (currentButtonIndex === 4) {
+root.toggleOptionsMenu();
+sLeftClose.play();
+}
+event.accepted = true
+}
+else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape || event.key === Qt.Key_B) {
+root.toggleOptionsMenu();
+sLeftClose.play();
+event.accepted = true
+}
+}
+}
+onVisibleChanged: {
+if (visible) {
+currentButtonIndex = 0
+sShowui.play()
+forceActiveFocus()
+}
+}
+}
+
+
+
+/* ================= CLOSE MENU ================= */
+FocusScope {
+    id: closeMenu
     width: parent.width
     height: parent.height
-    visible: optionsMenuVisible
-    focus: optionsMenuVisible
+    visible: closeMenuVisible
+    focus: closeMenuVisible
     enabled: visible
     z: 9999
+    
+    opacity: closeMenuVisible ? 1 : 0
+    Behavior on opacity { NumberAnimation { duration: 150 } }
 
     property int currentButtonIndex: 0
-    property var buttons: [playButton, favoriteButton, propertiesButton, cancelButton]
+    // Массив теперь содержит только 2 кнопки
+    property var buttons: [exitButton, cancelButton]
 
-    // ФОН (полупрозрачный оверлей)
+    /* CLOSE MENU ФОН */
+Item {
+    id: closeMenuOverlay
+    anchors.fill: parent
+    z: 0 
+    visible: root.closeMenuVisible // Используем твой флаг видимости
+
+    MouseArea {
+        anchors.fill: parent
+    }
+
+    FastBlur {
+        anchors.fill: parent
+        source: globalBlurSource
+        radius: 50
+        transparentBorder: false
+    }
+
     Rectangle {
         anchors.fill: parent
         color: "black"
-        opacity: 0.5       
+        opacity: 0.7
     }
-    
-    MouseArea {
-        anchors.fill: parent
-        onClicked: {
-            // Пусто - просто блокирует
-        }
-    }
+}
+
 
     // Серый прямоугольник посередине
     Rectangle {
         width: 550
-        height: 450
+        height: 240 // Уменьшено, так как кнопок теперь 2
         anchors.centerIn: parent
         color: "#181B20"
+        z:1
         
-        // Название игры сверху
+        // Текст сверху
         Text {
             anchors {
                 horizontalCenter: parent.horizontalCenter
                 top: parent.top
                 topMargin: -65
             }
-            text: currentFocusedGame ? currentFocusedGame.title : "No game selected"
+            text: "Close"
             color: "white"
             font.pixelSize: 38
             font.family: bold.name
@@ -2448,130 +3352,45 @@ FocusScope {
             height: parent.height
             spacing: 0
             
-            // ===== 1. КНОПКА "ИГРАТЬ" =====
+            // ===== 1. КНОПКА "EXIT" =====
             Rectangle {
-                id: playButton
+                id: exitButton
                 width: parent.width
-                height: parent.height / 4
-                color: optionsMenu.currentButtonIndex === 0 ? "#54B63D" : "transparent"
-                
-                Row {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 40
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 30                    
-                    Text {
-                        text: "♥︎"
-                        color: "white"
-                        font.pixelSize: 55
-                        font.family: icons.name
-                        anchors.verticalCenter: parent.verticalCenter
-                    }                  
-                    Text {
-                        id: playText
-                        text: "Play"
-                        color: optionsMenu.currentButtonIndex === 0 ? "white" : "white"
-                        font.pixelSize: 35
-                        font.family: bold.name
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-                
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        if (optionsMenu.currentButtonIndex !== 0) {
-                            optionsMenu.currentButtonIndex = 0
-                            //sNav.stop();
-            //sNav.play();
-                        } else {
-                            if (currentFocusedGame) {
-                                currentFocusedGame.launch()
-                                root.toggleOptionsMenu()
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // ===== 2. КНОПКА "ДОБАВИТЬ В ИЗБРАННОЕ" =====
-            Rectangle {
-                id: favoriteButton
-                width: parent.width
-                height: parent.height / 4
-                color: optionsMenu.currentButtonIndex === 1 ? "white" : "transparent"
-                
+                height: parent.height / 2
+                color: closeMenu.currentButtonIndex === 0 ? "#DE3619" : "transparent"
+                              
                 Text {
-                    id: favoriteText
-                    text: {
-                        if (currentFocusedGame) {
-                            return currentFocusedGame.favorite ? 
-                                "   Delete from favorites" : "   Add to favorites"
-                        }
-                        return "   Add to favorites"
-                    }
-                    color: optionsMenu.currentButtonIndex === 1 ? "black" : "white"
+                    text: "   Exit"
+                    color: "white"
                     font.pixelSize: 35
                     font.family: bold.name
                     anchors.verticalCenter: parent.verticalCenter
-                }
+                }               
                 
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
-                        if (optionsMenu.currentButtonIndex !== 1) {
-                            optionsMenu.currentButtonIndex = 1
-                            //sNav.stop();
-            //sNav.play();
+                        if (closeMenu.currentButtonIndex !== 0) {
+                            closeMenu.currentButtonIndex = 0
+                            sNav.stop();
+                            sNav.play();
                         } else {
-                            if (currentFocusedGame) {
-                                currentFocusedGame.favorite = !currentFocusedGame.favorite
-                                root.toggleOptionsMenu()
-                            }
+                            Internal.system.quit() /* DECKOS: was Qt.quit(), which skips DeckOS's shutdown (saving play time etc.) */
                         }
                     }
                 }
             }
             
-            // ===== 3. КНОПКА "СВОЙСТВА" =====
+            // ===== 2. КНОПКА "CANCEL" =====
             Rectangle {
-                id: propertiesButton
+                id: cancelButton1
                 width: parent.width
-                height: parent.height / 4
-                color: optionsMenu.currentButtonIndex === 2 ? "white" : "transparent"
-                
-                Text {
-                    text: "   Properties"
-                    color: optionsMenu.currentButtonIndex === 2 ? "black" : "white"
-                    font.pixelSize: 35
-                    font.family: bold.name
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-                
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        if (optionsMenu.currentButtonIndex !== 2) {
-                            optionsMenu.currentButtonIndex = 2
-                            //sNav.stop();
-            //sNav.play();
-                        } else {
-                            // Properties - ничего не делаем
-                        }
-                    }
-                }
-            }
-            
-            // ===== 4. КНОПКА "ОТМЕНА" =====
-            Rectangle {
-                id: cancelButton
-                width: parent.width
-                height: parent.height / 4
-                color: optionsMenu.currentButtonIndex === 3 ? "white" : "transparent"
+                height: parent.height / 2
+                color: closeMenu.currentButtonIndex === 1 ? "white" : "transparent"
                 
                 Text {
                     text: "   Cancel"
-                    color: optionsMenu.currentButtonIndex === 3 ? "black" : "white"
+                    color: closeMenu.currentButtonIndex === 1 ? "black" : "white"
                     font.pixelSize: 35
                     font.family: bold.name
                     anchors.verticalCenter: parent.verticalCenter
@@ -2580,13 +3399,14 @@ FocusScope {
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
-                        if (optionsMenu.currentButtonIndex !== 3) {
-                            optionsMenu.currentButtonIndex = 3
-                            //sNav.stop();
-            //sNav.play();
+                        if (closeMenu.currentButtonIndex !== 1) {
+                            closeMenu.currentButtonIndex = 1
+                            sNav.stop();
+                            sNav.play();
                         } else {
-                            root.toggleOptionsMenu()
+                            closeMenuVisible = false
                             sLeftClose.play()
+                            focusTimer.start()
                         }
                     }
                 }
@@ -2596,64 +3416,54 @@ FocusScope {
     
     // ОБРАБОТКА КЛАВИШ
     Keys.onPressed: {
-        if (optionsMenuVisible && optionsMenu.focus) {
+        if (closeMenuVisible) {
             if (event.key === Qt.Key_Up) {
-                // Навигация вверх
                 if (currentButtonIndex > 0) {
                     currentButtonIndex--
+                    sNav.stop();
+                    sNav.play();
                 }
                 event.accepted = true
-                ////sNav.stop();
-            ////sNav.play();
             }
             else if (event.key === Qt.Key_Down) {
-                // Навигация вниз
-                if (currentButtonIndex < 3) {
+                if (currentButtonIndex < 1) { // Всего 2 кнопки (0 и 1)
                     currentButtonIndex++
+                    sNav.stop();
+                    sNav.play(); 
                 }
                 event.accepted = true
-                ////sNav.stop();
-            ////sNav.play();
             }
+            else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) {
+                event.accepted = true
+            }
+            else if (api.keys.isMenu(event)) {    
+}
             else if (api.keys.isAccept(event) || event.key === Qt.Key_Return || event.key === Qt.Key_Space) {
-                // Активация выбранной кнопки
                 if (currentButtonIndex === 0) {
-                    // Play
-                    if (currentFocusedGame) {
-                        currentFocusedGame.launch()
-                        root.toggleOptionsMenu()
-                    }
+                    // Активация Exit
+                    event.accepted = true
+                    Internal.system.quit() /* DECKOS: was Qt.quit(), which skips DeckOS's shutdown (saving play time etc.) */
+                    return
                 } else if (currentButtonIndex === 1) {
-                    // Favorite
-                    if (currentFocusedGame) {
-                        currentFocusedGame.favorite = !currentFocusedGame.favorite
-                        root.toggleOptionsMenu()
-                    }
-                } else if (currentButtonIndex === 2) {
-                    // Properties - ничего не делаем
-                } else if (currentButtonIndex === 3) {
-                    // Cancel - закрываем меню
-                    root.toggleOptionsMenu()
+                    // Активация Cancel
+                    closeMenuVisible = false
+                    sLeftClose.play()
+                    focusTimer.start()
                 }
                 event.accepted = true
-            }
-            else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape || event.key === Qt.Key_B) {
-                // Нажатие B/Back - закрываем меню
-                root.toggleOptionsMenu()
-                event.accepted = true
-            }
+            }            
         }
     }
     
-    // При открытии устанавливаем фокус на первую кнопку
     onVisibleChanged: {
         if (visible) {
             currentButtonIndex = 0
-            //sShowui.play()
-            forceActiveFocus() // Важно: берем фокус при открытии
+            sShowui.play()
+            forceActiveFocus()
         }
     }
 }
+
 
     Keys.onPressed: {
     if (event.key === Qt.Key_Down) {
@@ -2661,20 +3471,32 @@ FocusScope {
             // С верхней зоны переходим в среднюю
             root.goToZone(1)
             event.accepted = true
+            sNav.stop();
+            sNav.play();
         } else if (root.focusZone === 1) {
             // Со средней зоны переходим в нижнюю
             root.goToZone(2)
             event.accepted = true
+            sNav.stop();
+            sNav.play();
         } else if (root.focusZone === 2) {
             // В нижней зоне - переходим в контент соответствующих вкладок
             if (bottomTabsRow.currentIndex === 0) {
                 newsList.forceActiveFocus()
+                sNav.stop();
+            sNav.play();
                 if (newsList.count > 0) newsList.currentIndex = 0
+                sNav.stop();
+            sNav.play();
             } else if (bottomTabsRow.currentIndex === 1) {
                 friendsList.forceActiveFocus()
+                sNav.stop();
+            sNav.play();
                 if (friendsList.count > 0) friendsList.currentIndex = 0
             } else if (bottomTabsRow.currentIndex === 2) {
                 recommendedList.forceActiveFocus()
+                sNav.stop();
+            sNav.play();
                 if (recommendedList.count > 0) recommendedList.currentIndex = 0
             }
             event.accepted = true
@@ -2685,10 +3507,14 @@ FocusScope {
             // Из нижней зоны переходим в среднюю
             root.goToZone(1)
             event.accepted = true
+            sNav.stop();
+            sNav.play();
         } else if (root.focusZone === 1) {
             // Со средней зоны переходим в верхнюю
             root.goToZone(0)
             event.accepted = true
+            sNav.stop();
+            sNav.play();
         }
     }
     else if (event.key === Qt.Key_Left) {
@@ -2696,12 +3522,16 @@ FocusScope {
             if (topButtonsRow.currentIndex > 0) {
                 topButtonsRow.currentIndex--
                 event.accepted = true
+                sNav.stop();
+            sNav.play();
             }
         }
         else if (root.focusZone === 1) { 
             if (gameList.currentIndex > 0) {
                 gameList.currentIndex--
                 event.accepted = true
+                sNav.stop();
+            sNav.play();
             }
         }
         else if (root.focusZone === 2) {
@@ -2709,15 +3539,23 @@ FocusScope {
             if (newsList.focus && newsList.currentIndex > 0) {
                 newsList.currentIndex--
                 event.accepted = true
+                sNav.stop();
+            sNav.play();
             } else if (friendsList.focus && friendsList.currentIndex > 0) {
                 friendsList.currentIndex--
                 event.accepted = true
+                sNav.stop();
+            sNav.play();
             } else if (recommendedList.focus && recommendedList.currentIndex > 0) {
                 recommendedList.currentIndex--
                 event.accepted = true
+                sNav.stop();
+            sNav.play();
             } else if (bottomTabsRow.focus && bottomTabsRow.currentIndex > 0) {
                 bottomTabsRow.currentIndex--
                 event.accepted = true
+                sNav.stop();
+            sNav.play();
             }
         }
     } 
@@ -2726,12 +3564,16 @@ FocusScope {
             if (topButtonsRow.currentIndex < 3) {
                 topButtonsRow.currentIndex++
                 event.accepted = true
+                sNav.stop();
+            sNav.play();
             }
         }
         else if (root.focusZone === 1) { 
             if (gameList.currentIndex < gameList.count - 1) {
                 gameList.currentIndex++
                 event.accepted = true
+                sNav.stop();
+            sNav.play();
             }
         }
         else if (root.focusZone === 2) {
@@ -2739,15 +3581,23 @@ FocusScope {
             if (newsList.focus && newsList.currentIndex < newsList.count - 1) {
                 newsList.currentIndex++
                 event.accepted = true
+                sNav.stop();
+            sNav.play();
             } else if (friendsList.focus && friendsList.currentIndex < friendsList.count - 1) {
                 friendsList.currentIndex++
                 event.accepted = true
+                sNav.stop();
+            sNav.play();
             } else if (recommendedList.focus && recommendedList.currentIndex < recommendedList.count - 1) {
                 recommendedList.currentIndex++
                 event.accepted = true
+                sNav.stop();
+            sNav.play();
             } else if (bottomTabsRow.focus && bottomTabsRow.currentIndex < 2) {
                 bottomTabsRow.currentIndex++
                 event.accepted = true
+                sNav.stop();
+            sNav.play();
             }
         }
     }
@@ -2788,11 +3638,13 @@ else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape || event.key ==
         event.accepted = true
     }
 }
-    else if (event.key === Qt.Key_Menu || api.keys.isPageUp(event)) {
-        // Кнопка Menu (левый нижний угол) - открытие левого меню
+    // === В Keys.onPressed главного экрана ===
+else if (api.keys.isMenu(event)) {
+    if (!optionsMenuVisible && !closeMenuVisible && !newsDetailVisible) {
         leftBar.toggle()
         event.accepted = true
     }
+}
 }
 
 
@@ -2800,16 +3652,50 @@ else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape || event.key ==
     
         property int nextPageIndex: 0
 
-    function startExitAnimation(index) {
-        nextPageIndex = index
-        exitAnim.start()
+        function startExitAnimation(index) {
+    if (index === 8 || index === 12) {
+        api.memory.set("homeReturnContext", {
+            listIndex: gameList.currentIndex,
+            contentX: gameList.contentX
+        })
+        if (index === 12 || index === 14) {
+            api.memory.set("steamGridSource", 0)
+        }
+    }
+    nextPageIndex = index
+    exitAnim.start()
+}
+
+        Component.onCompleted: {
+        NewsJS.fetchNews(function(items) {
+            root.newsData = items;
+        });
+        enterAnim.start()        
+
+        var ctx = api.memory.has("homeReturnContext") ? api.memory.get("homeReturnContext") : null
+        if (ctx) {
+            api.memory.set("homeReturnContext", null)
+            var lIdx = (ctx.listIndex !== undefined) ? ctx.listIndex : 0
+            var savedX = (ctx.contentX !== undefined) ? ctx.contentX : 0
+
+            // 1. Сначала переходим в зону (это вызовет сброс на 0)
+            root.goToZone(1) 
+            
+            // 2. Теперь возвращаем правильный сохраненный индекс
+            gameList.currentIndex = lIdx 
+
+            // 3. Отменяем анимацию прокрутки и ставим точный contentX
+            Qt.callLater(function() {
+                if (typeof scrollAnim !== "undefined") scrollAnim.stop()
+                gameList.contentX = savedX
+            })
+            focusTimer.start()
+        } else {
+            root.goToZone(1)
+            focusTimer.start()
+        }
     }
 
-    Component.onCompleted: {
-enterAnim.start()
-    root.goToZone(1)
-    focusTimer.start()
-}
 
     // Появление: страница идет «вперед» (из глубины на пользователя)
     SequentialAnimation {
@@ -2846,13 +3732,65 @@ Timer {
     running: false
     repeat: false
     onTriggered: {
-        // Просто возвращаем фокус в среднюю зону
-        if (root.focusZone === 1) {
-            gameList.forceActiveFocus()
-            if (gameList.count > 0) {
-                gameList.currentIndex = gameList.currentIndex // Перезапускаем выделение
-            }
+    if (!root.closeMenuVisible && root.focusZone === 1) {
+        gameList.forceActiveFocus()
+        if (gameList.count > 0) {
+            gameList.currentIndex = gameList.currentIndex // перезапуск выделения
+        }
+    }
+    }
+}
+
+// === NEWS DETAIL LOADER ===
+property var selectedNewsItem: null
+property int selectedNewsIndex: 0
+property bool newsDetailVisible: false
+
+Loader {
+    id: newsDetailLoader
+    anchors.fill: parent
+    active: newsDetailVisible
+    asynchronous: true
+    focus: true
+
+    
+    source: "newspage.qml"
+    
+    onLoaded: {
+        if (item) {
+            item.newsItem = root.selectedNewsItem
+            item.visible = true
+            item.forceActiveFocus()
+            item.newsData = root.newsData
+item.currentNewsIndex = root.selectedNewsIndex
+        }
+    }
+    
+    // Закрытие по Escape / Back
+    Keys.onPressed: {
+        if (api.keys.isCancel(event) || event.key === Qt.Key_Escape || event.key === Qt.Key_B) {
+            root.closeNewsDetail()
+            event.accepted = true
         }
     }
 }
+
+
+
+function openNewsDetail(news, newsIndex) {
+    if (!news) return;
+    selectedNewsItem = news;
+    selectedNewsIndex = newsIndex || 0;
+    newsDetailVisible = true;
+    sShowui.play();
 }
+
+function closeNewsDetail() {
+    newsDetailVisible = false
+    selectedNewsItem = null
+    // Возвращаем фокус на список новостей
+    if (bottomTabsRow.currentIndex === 0) {
+        newsList.forceActiveFocus()
+    }
+}
+} 

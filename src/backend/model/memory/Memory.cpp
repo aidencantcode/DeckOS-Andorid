@@ -134,6 +134,13 @@ void Memory::set(const QString& key, QVariant value)
     if (value.userType() == qMetaTypeId<QJSValue>())
         value = value.value<QJSValue>().toVariant();
 
+    // DECKOS: storing the value a key already has changes nothing - skip the signal and the disk write.
+    // Every `api.memory` binding re-evaluates on dataChanged; themes that save a setting from its own
+    // onChanged handler (StMini) otherwise got binding loops and a file write per re-evaluation.
+    const auto it = m_data.constFind(key);
+    if (it != m_data.cend() && it.value() == value)
+        return;
+
     m_data[key] = std::move(value);
     emit dataChanged();
 
@@ -142,6 +149,9 @@ void Memory::set(const QString& key, QVariant value)
 
 void Memory::unset(const QString& key)
 {
+    if (!m_data.contains(key)) // DECKOS: nothing to remove
+        return;
+
     m_data.remove(key);
     emit dataChanged();
 

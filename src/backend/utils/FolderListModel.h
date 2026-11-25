@@ -35,6 +35,8 @@ struct FolderListEntry {
 class FolderListModel : public QAbstractListModel {
     Q_OBJECT
     Q_PROPERTY(QString folder READ folder NOTIFY folderChanged)
+    // DECKOS: for QML pickers that address rows directly (themes/deckos FolderPicker)
+    Q_PROPERTY(int count READ count NOTIFY folderChanged)
     Q_PROPERTY(QStringList files
                READ filenames WRITE setFilenames
                NOTIFY filenamesChanged)
@@ -55,6 +57,8 @@ public:
     QHash<int, QByteArray> roleNames() const override { return m_role_names; }
 
     Q_INVOKABLE void cd(const QString&);
+    int count() const { return static_cast<int>(m_files.size()); }
+    Q_INVOKABLE QVariantMap get(int row) const; // DECKOS: { name, isDir }, empty if out of range
 
     QString folder() const { return m_dir_path; }
     const QStringList& filenames() const { return m_filenames; }

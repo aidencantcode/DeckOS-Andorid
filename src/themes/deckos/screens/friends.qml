@@ -106,6 +106,7 @@ FocusScope {
             // Battery icon           
             Item {
                 id: topBarBattery
+    visible: root.showBatteryPercent // Скрываем текст, если выключено
                 width: 170
                 height: root.topH
 
@@ -211,7 +212,7 @@ FocusScope {
                     anchors.centerIn: parent
                     width: parent.width * 0.85
                     height: parent.height * 0.8
-                    source: "../assets/logo/logo.jpg"
+                    source: (root.theme && root.theme.profilePictureSource !== "") ? root.theme.profilePictureSource : "../assets/logo/logo.jpg" /* DECKOS */
                     fillMode: Image.PreserveAspectFit
                 }
 
@@ -355,13 +356,19 @@ FocusScope {
         Behavior on x { NumberAnimation { duration: 800; easing.type: Easing.OutBack } }
         Behavior on opacity { NumberAnimation { duration: 0 } }
 
+        ProfileBadge { // DECKOS: user picture + name (Settings > Profile)
+            theme: root.theme
+            anchors.left: parent.left; anchors.leftMargin: 40
+            anchors.right: parent.right; anchors.rightMargin: 20
+            y: parent.height * 0.105; height: parent.height * 0.075
+        }
         Column {
             id: buttonColumn
             anchors {
                 left: parent.left
                 top: parent.top
                 leftMargin: 0
-                topMargin: parent.height * 0.11
+                topMargin: parent.height * 0.2 /* DECKOS: was 0.11, room for the profile */
             }
             spacing: 0
         }
@@ -376,7 +383,7 @@ FocusScope {
             property string title: ""
             property int buttonIndex: 0
             width: menuPanel.width
-            height: 106
+            height: Math.min(106, menuPanel.height * 0.085) /* DECKOS: was 106 */
             
             // СВОЙСТВО ДЛЯ ПРОВЕРКИ ФОКУСА
             property bool isFocused: activeFocus
@@ -489,7 +496,7 @@ FocusScope {
             "icon": "€"
         })
         var btn4 = menuButtonComponent.createObject(buttonColumn, { 
-            "title": "Friends and Chat", 
+            "title": "Freands and Chat", 
             "buttonIndex": 3,
             "icon": "F"
             })

@@ -84,11 +84,14 @@ Window {
             enabled: focus
 
             readonly property url apiThemePath: Internal.settings.themes.currentQmlPath
+            // DECKOS: the built-in theme has every setting in its own Settings screen, so Pegasus's menu
+            // and its "no games" screen are only used with third-party themes (which have no settings UI)
+            readonly property bool builtinTheme: String(apiThemePath).indexOf("themes/deckos/theme.qml") >= 0
 
             function getThemeFile() {
                 if (Internal.scanner.running)
                     return "";
-                if (api.collections.count === 0)
+                if (api.collections.count === 0 && !builtinTheme)
                     return "messages/NoGamesError.qml";
 
                 return apiThemePath;
@@ -96,7 +99,7 @@ Window {
             onApiThemePathChanged: source = Qt.binding(getThemeFile)
 
             Keys.onPressed: {
-                if (api.keys.isCancel(event) || api.keys.isMenu(event)) {
+                if (!builtinTheme && (api.keys.isCancel(event) || api.keys.isMenu(event))) {
                     event.accepted = true;
                     mainMenu.focus = true;
                 }
@@ -154,6 +157,7 @@ Window {
         }
         PegasusUtils.HorizontalSwipeArea {
             id: menuSwipe
+            enabled: !theme.builtinTheme // DECKOS: see builtinTheme
 
             width: vpx(40)
             height: parent.height
@@ -218,27 +222,33 @@ Window {
     }
 
 
-    SplashLayer {
+    // DECKOS: boot animation instead of Pegasus's splash; fades out into the interface
+    BootLayer {
         id: splashScreen
         focus: true
-        enabled: false
-        visible: focus
+        enabled: focus // receives keys only to skip the video
+        opacity: focus ? 1.0 : 0.0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 600; easing.type: Easing.InOutQuad } }
 
         readonly property bool dataLoading: Internal.scanner.running
         readonly property bool skinLoading: theme.status === Loader.Null || theme.status === Loader.Loading
 
+        loading: dataLoading || skinLoading
         showDataProgressText: dataLoading
         progress: Internal.scanner.progress
         stage: Internal.scanner.stage
 
         function hideMaybe() {
-            if (focus && !dataLoading && !skinLoading) {
+            if (focus && !dataLoading && !skinLoading && videoDone) {
                 content.focus = true;
                 Internal.scanner.reset();
+                playVideo = false; // once per start; later reloads show only the progress line
             }
         }
 
         onSkinLoadingChanged: hideMaybe()
         onDataLoadingChanged: hideMaybe()
+        onVideoDoneChanged: hideMaybe()
     }
 }

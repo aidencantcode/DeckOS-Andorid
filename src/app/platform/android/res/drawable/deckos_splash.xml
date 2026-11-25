@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- DECKOS: placeholder splash (shown by Qt's loader until the first frame): background colour + icon mark -->
+<!-- DECKOS: plain black splash (shown by Qt's loader until the first frame), so the start blends straight
+     into the black boot animation (src/frontend/BootLayer.qml) without a logo flashing in between -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@color/deckos_bg"/>
-    <item>
-        <bitmap android:gravity="center" android:src="@mipmap/icon_fg"/>
-    </item>
+    <item android:drawable="@color/deckos_boot_bg"/>
 </layer-list>
