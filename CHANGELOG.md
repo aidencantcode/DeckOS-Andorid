@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.0.10 — 2026-11-25
 **The in-game layer: play time, a Steam-style overlay and a performance HUD.** While you play, DeckOS shows a notification with the game and a live play timer. Tap it for a Steam Deck-style Quick Access menu over the game, with performance info, your RetroAchievements and an overlay level slider. 0.0.9 never got an APK, so this build also carries all of 0.0.9 (ROM-hash achievements, the new keyboard, the boot and menu fixes); its checklist is below.
 
 ### Test checklist (Odin 3 Max first, then the Retroid Pocket Classic)
