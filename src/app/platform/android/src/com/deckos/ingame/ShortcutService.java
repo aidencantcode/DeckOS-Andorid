@@ -1,9 +1,9 @@
 // DeckOS - in-game layer
 // The controller shortcut that opens Quick Access over any game (Settings > Overlay, or the menu's
-// Overlay tab: Select+Start, Select+R1 or L3+R3). An accessibility service is the only way for an app to
-// see controller buttons while another app is in front. It only filters key events: it reads no screen
-// content and keeps nothing. The first button of the combo still reaches the game; only the second one
-// (which completes the combo) is swallowed. Nothing happens while DeckOS itself is in front. It also hears
+// Overlay tab: Select+Start, Select+R1 or L3+R3, in either order). An accessibility service is the only
+// way for an app to see controller buttons while another app is in front. It only filters key events: it
+// reads no screen content and keeps nothing. The first button of the combo still reaches the game; only
+// the second one (which completes the combo) is swallowed. Nothing happens while DeckOS itself is in front. It also hears
 // which app comes to the front (its package name, from window changes) so play time counts only while
 // the game is in front. Any button
 // also skips the launch cover (LaunchCover) once the game is starting underneath.
@@ -82,8 +82,11 @@ public class ShortcutService extends AccessibilityService {
         if (LaunchCover.showing())
             LaunchCover.skip(); // a button while the game loads under the launch cover: show the game
         int combo = Session.app() != null ? Session.shortcut() : 0;
+        // either order: pressed together, Start often lands a few ms before Select, and the combo was
+        // missed (it took two or three tries). The first of the two still reaches the game.
         if (e.getRepeatCount() == 0 && combo > 0 && combo < COMBOS.length && !Session.frontendInFront
-            && k == COMBOS[combo][1] && held.contains(COMBOS[combo][0])) {
+            && ((k == COMBOS[combo][1] && held.contains(COMBOS[combo][0]))
+                || (k == COMBOS[combo][0] && held.contains(COMBOS[combo][1])))) {
             swallowUp = k;
             held.clear();
             open();

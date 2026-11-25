@@ -26,7 +26,9 @@ Work top to bottom. Each phase ends with an APK the owner tests. Tick boxes as y
 
 ## Stable Alpha — 0.1.0 (current phase)
 
-The first build that is not a pre-release (`ship.ps1 -Phase 1` → `0.1.x`; `android.yml` publishes 0.1+ as a normal release). The goal is "daily-drivable": nothing stutters, nothing is half-wired, the in-game layer works on both handhelds. Work the milestones in order; each one ships as a 0.0.x test build if it's big, so the owner can test early.
+The first build that is not a pre-release (`ship.ps1 -Phase 1` → `0.1.0`; `android.yml` publishes 0.1+ as a normal release). The goal is "daily-drivable": nothing stutters, nothing is half-wired, the in-game layer works on both handhelds. Work the milestones in order.
+
+**2026-11-26 (owner's call):** 0.1.0 shipped as the first stable build, ahead of the full device checklist in F. The open items below continue as 0.1.1, 0.1.2…
 
 **Research behind this plan (2026-11-25, details in `DECISIONS.md`):**
 - **ClusterTune has no outside API.** No exported receiver, activity extras or service. Its Quick Settings tile is bound by the system only. "Talk to the app" isn't possible without changes on its side.
@@ -106,6 +108,12 @@ The first build that is not a pre-release (`ship.ps1 -Phase 1` → `0.1.x`; `and
     - Picking a network: open networks and saved networks connect when the firmware allows (*verify*). A new network needing a password opens Android's Wi-Fi panel.
   - **Bluetooth drawer:** paired devices with their connected state. Connecting or pairing new devices opens Android's Bluetooth settings.
 - [x] **Font:** the performance overlay uses Unispace Regular/Bold (CC0), supplied by the owner. Quick Access keeps the system font. (0.0.12)
+- [x] **Play time from usage stats:** the exact app a launch opens, and which app is in front from Android's usage stats (access granted through PServer / root). (0.0.15)
+- [x] **Running game, like Steam** (owner request; 0.1.0, device check pending):
+  - PServer / root watches the game's process. Back in DeckOS while it runs, the session goes on; its page shows **Resume** and a blue **Stop** (with a confirmation), and Home says RUNNING. When the process ends, Play is green again.
+  - Play time counts while the game runs, except with the screen off (Settings › Overlay; off = only while it's in front, the fallback without PServer / root).
+  - Launching another game ends the running game's session first; library reloads wait for the session to end.
+- [x] **0.0.15 report fixes:** Home's game row no longer scrolls onto empty space after Settings or a game page; a tap opens a tile directly; Select+Start works in either order; Quick Access's background can't take the focus (Android's grey focus tint). (0.1.0)
 
 ### E — Performance tab: device profiles (AYN / Retroid)
 Under the overlay level slider, each one is a 3–5 step slider like the overlay one, and the HUD shows what's active:
@@ -128,7 +136,7 @@ Under the overlay level slider, each one is a 3–5 step slider like the overlay
 ### F — Stable Alpha release
 - [x] `android.yml`: 0.1+ tags publish as a normal release; 0.0.x stays pre-release.
 - [ ] Full checklist on both handhelds (layout at 1080p and 1240×1080; controller-only; offline; first start).
-- [ ] CHANGELOG "0.1.0 — Stable Alpha" with the test checklist.
+- [x] CHANGELOG 0.1.0 with the test checklist (2026-11-26).
 
 ## Beyond 0.1.0 — guided roadmap
 Proposed order. Each line becomes a milestone when its release starts. The owner can reorder.
@@ -137,7 +145,7 @@ Proposed order. Each line becomes a milestone when its release starts. The owner
   - ClusterTune's remaining parts (`docs/clustertune-port.md`): Auto Tune (per-game frame rate target that lowers the ceilings it doesn't need), a sleep profile, switch history.
   - Session summary toast on return ("Played 42 min · 3 achievements").
   - A Quick Access **Screenshot** button (PServer `screencap`, saved per game; it feeds the Activity tab).
-  - Accurate play time from Android usage stats.
+  - ~~Accurate play time from Android usage stats.~~ Done in 0.0.15 / 0.1.0.
   - A Home "Continue playing" card while a session is running.
 - **0.3 — Achievements everywhere:**
   - Manual "Link RA game…".

@@ -79,10 +79,22 @@ DeckSettingsPage {
                  value: function () { return ig && !ig.notificationBlocked && android ? "✓" : "" },
                  enabled: function () { return android && ig.notificationBlocked },
                  activate: function () { if (ig) ig.openNotificationSettings() } })
-        r.push({ type: "button", label: "Play time",
+        // DECKOS: with PServer / root DeckOS sees the game's process: play time can count while it runs,
+        // like Steam (a game left open behind DeckOS still counts), not only while it's in front
+        r.push({ type: "toggle", label: "Count play time while the game runs",
                  desc: function () {
-                     if (!android) return "Counts only while the game DeckOS opened is in front (Android)"
-                     if (ig.usageAccess) return "Counts only while the game DeckOS opened is in front"
+                     if (!android) return "Android with root, or an AYN / Retroid handheld"
+                     if (!ig.processTracking) return "Needs root, or an AYN / Retroid handheld - without it, only while the game is in front"
+                     return ig.countWhileRunning ? "Like Steam: until the game is closed (not while the screen is off)"
+                                                 : "Off: only while the game is in front"
+                 },
+                 value: function () { return ig ? (ig.processTracking && ig.countWhileRunning) : false },
+                 enabled: function () { return android && ig.processTracking },
+                 toggle: function () { if (ig) ig.countWhileRunning = !ig.countWhileRunning } })
+        r.push({ type: "button", label: "Play time in front",
+                 desc: function () {
+                     if (!android) return "Which app is in front, for counting only while the game is (Android)"
+                     if (ig.usageAccess) return "DeckOS can tell when the game it opened is in front"
                      if (ig.privileged) return "Needs usage access - DeckOS gives it itself at the next launch, or now"
                      return "Needs usage access: Android › Usage access › DeckOS"
                  },

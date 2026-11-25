@@ -116,6 +116,7 @@ final class QuickAccessPanel extends FrameLayout {
             Session.init(ctx);
         localStats = new Stats(ctx);
         setOnClickListener(v -> close()); // a tap beside the panel closes it, like on the Deck
+        noFocus(this);
         build(Session.prefs().getInt(Session.KEY_TAB, Session.raGameId > 0 ? TAB_ACHIEVEMENTS : TAB_PERFORMANCE));
     }
 
@@ -131,6 +132,7 @@ final class QuickAccessPanel extends FrameLayout {
         panel = ui.column();
         panel.setBackgroundColor(Ui.PANEL);
         panel.setClickable(true);
+        noFocus(panel);
         panel.addView(topBar(), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, ui.px(40)));
         panel.addView(nowPlaying(), Ui.fill());
 
@@ -153,6 +155,16 @@ final class QuickAccessPanel extends FrameLayout {
 
         tab = -1;
         selectTab(startTab, true);
+    }
+
+    /// Android 8+ makes a clickable view focusable too: the full-screen root could then take the first
+    /// focus and Android drew its focus highlight over the whole screen - a grey tint over the game,
+    /// while the controller moved nothing visible. Only the panel's buttons take the focus.
+    private static void noFocus(View v) {
+        v.setFocusable(false);
+        v.setFocusableInTouchMode(false);
+        if (Build.VERSION.SDK_INT >= 26)
+            v.setDefaultFocusHighlightEnabled(false);
     }
 
     void open() {
@@ -360,6 +372,7 @@ final class QuickAccessPanel extends FrameLayout {
         FrameLayout dim = new FrameLayout(getContext());
         dim.setBackgroundColor(Color.argb(180, 0, 0, 0));
         dim.setClickable(true); // taps don't reach the panel underneath
+        noFocus(dim);
         LinearLayout card = ui.column();
         card.setBackground(Ui.rect(Ui.CARD, ui.px(6)));
         card.setPadding(ui.px(18), ui.px(16), ui.px(18), ui.px(16));

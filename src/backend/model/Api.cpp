@@ -85,10 +85,14 @@ void ApiObject::onGameFileSelectorRequested()
 
 void ApiObject::onGameFileLaunchRequested()
 {
-    if (m_launch_game_file)
-        return;
+    auto* const file = static_cast<model::GameFile*>(QObject::sender());
+    if (m_launch_game_file) {
+        emit launchWhileRunning(); // DECKOS: may finish the last game's session
+        if (m_launch_game_file)
+            return;
+    }
 
-    m_launch_game_file = static_cast<model::GameFile*>(QObject::sender());
+    m_launch_game_file = file;
     emit launchGameFile(m_launch_game_file);
 }
 

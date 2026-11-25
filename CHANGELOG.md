@@ -3,6 +3,31 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**The first stable build: a normal release, no longer a pre-release.**
+- **A game keeps running behind DeckOS, like on Steam.** On your handhelds the system service (or root) can see whether the game's app is still running.
+  - Back in DeckOS while the game is still open, the game page shows a green **Resume** and a blue **Stop**, and Home shows **RUNNING** under it. Once the game's app is closed, Play is green again.
+  - **Resume** brings the game back exactly where you left it. It doesn't start it again.
+  - **Stop** asks first, then closes the game at once. Anything not saved in the game is lost.
+  - Starting a different game ends the running game's session first, and its play time is saved.
+- **Play time counts while the game runs**, from the launch until the game's app is closed, but not while the screen is off. That includes time you spend back in DeckOS with the game open.
+  - Settings › Overlay › *Count play time while the game runs* turns it off. Then it counts only while the game is in front, as in 0.0.15, which is also how devices without the system service or root work.
+- **Home's game row no longer vanishes.** After Settings, or coming back from a game page, the row could be scrolled onto empty space: no icons, no highlight, and a tap on *View more in your Library* scrolled instead of opening the Library. It now always sits on the selected game.
+- **A tap opens a tile** on Home and in the Library (games, collections, *View more*). It used to take a second tap.
+- **The controller shortcut works in either order.** Select+Start pressed together often registered Start first and was missed, so it took two or three tries.
+- **Quick Access:** its background can no longer take the controller focus. When it did, Android tinted the whole screen grey and the controller seemed to move nothing.
+
+**Notes**
+- **About the blue tint in your Among Us photos:** that's the game's own Announcements pop-up. The game dims everything behind it, and its controller ring sits on the pop-up's X. The performance overlay can't take the focus or draw a highlight. The main-menu photos are the same game without the pop-up.
+- Nothing here has been checked on a handheld yet. The PC checks (235 tests) pass, and the Android code and APK build locally.
+
+**Test checklist**
+1. Launch a game from DeckOS, play a minute, then come back to DeckOS (Home button, Quick Access › Return to DeckOS, or recent apps). The game page shows **Resume** and a blue **Stop**, and Home says **RUNNING**.
+2. Press **Resume**: the game is back where you left it, not restarted.
+3. Come back to DeckOS, press **Stop**, choose *Stop game*. The game closes, Play is green again, and its play time includes the minutes spent in DeckOS while it was open.
+4. Launch a game, close it from Android's recent apps, then open DeckOS: it shows Play, not Resume.
+5. Settings › Overlay: *Count play time while the game runs* is on. Turn it off, play, go back to DeckOS for a minute, then play again. That minute doesn't count.
+6. Open Settings, go back to Home: the game row shows its icons and highlight. Open a game page, go back, tap *View more in your Library*: the Library opens on the first tap.
+7. In a game, press Select+Start together a few times. Quick Access opens every time, whichever button lands first.
 
 ## 0.0.15 — 2026-11-26
 **Fixes from your report on the Steam menu's highlight and on play time.**

@@ -55,6 +55,8 @@ public:
 
     CollectionListModel* collections() const { return m_collections; }
     GameListModel* allGames() const { return m_all_games; }
+    /// DECKOS: a launch is going on, or its game hasn't finished yet
+    bool launchInProgress() const { return m_launch_game_file != nullptr; }
 
 signals:
     // loading
@@ -62,6 +64,9 @@ signals:
 
     // user actions
     void launchGameFile(const model::GameFile*);
+    /// DECKOS: a launch while the last game hasn't finished (on Android it can run behind DeckOS):
+    /// a handler may finish it, then the launch goes on
+    void launchWhileRunning();
     void launchFailed(QString);
     void gameFileFinished(model::GameFile* const);
     void gameFileLaunched(model::GameFile* const);

@@ -31,7 +31,7 @@ A manual Android build of any commit can also be started from the Actions tab (*
 | APK file | `DeckOS_<version>_<shortsha>_arm64.apk` | `DeckOS_0.1.4_abc1234_arm64.apk` |
 | Untagged build | `git describe` of the last tag | `0.1.4-3-gabc1234` |
 
-- **phase** = the roadmap phase the build belongs to (`docs/02-roadmap.md`). **build** counts 1, 2, 3… within a phase and restarts at 1 when the phase goes up. `1.0.0` is reserved for the first public release (end of Phase 7).
+- **phase** = the roadmap phase the build belongs to (`docs/02-roadmap.md`). **build** counts 0, 1, 2… within a phase: a new phase starts at `x.<phase>.0` (0.0.15 → 0.1.0, the first stable build; 0.0.x were pre-releases). `1.0.0` is reserved for the first public release (end of Phase 7).
 - `versionCode` only ever goes up as versions go up, so Android always accepts the new APK as an update. Limit: build ≤ 999 per phase.
 - The full version + commit is shown in Help → About and in the log header (`lastrun.log`), so every bug report says exactly which build it came from.
 

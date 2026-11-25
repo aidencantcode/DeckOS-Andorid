@@ -759,6 +759,13 @@ SortFilterProxyModel {
         roleName: "lastPlayed"
         sortOrder: Qt.DescendingOrder
     }
+
+    // DECKOS: bumped when the order changes (a game was just played): the tiles look their game up again.
+    // Their binding only followed `count`, so they kept the old order while A opened the new one.
+    property int revision: 0
+    onLayoutChanged: revision++
+    onModelReset: revision++
+    onRowsMoved: revision++
  }
 
     // ======== Список игр ========
@@ -781,11 +788,15 @@ SortFilterProxyModel {
         property int currentIndex: 0
         property int displayCount: count                 
 z: 5
-highlightMoveDuration: 120
-highlightRangeMode: ListView.ApplyRange
-preferredHighlightBegin: width * 0.3
-preferredHighlightEnd: width * 0.6
-onWidthChanged: animateToIndex(currentIndex) // DECKOS: updateScrollPosition() belongs to the news list
+// DECKOS: only animateToIndex scrolls the row. ListView's own highlight range and arrow keys moved its
+// internal current item (this currentIndex shadows it) and scrolled the row away from the selection.
+highlightRangeMode: ListView.NoHighlightRange
+keyNavigationEnabled: false
+cacheBuffer: 100000 // all (at most 11) tiles exist, so their real positions are known (scrollTarget)
+onWidthChanged: snapLater() // DECKOS: updateScrollPosition() belongs to the news list
+onHeightChanged: snapLater() // the tiles' widths follow the height
+onCountChanged: snapLater()
+onOriginXChanged: if (!moving && !scrollAnim.running) snapLater()
 
 onCurrentIndexChanged: {
     animateToIndex(currentIndex)
@@ -799,37 +810,47 @@ NumberAnimation {
     easing.type: Easing.OutCubic
 }
 
-function animateToIndex(idx) {
-    if (idx < 0 || idx >= count) return;
-
-    var dH = height;
-    var wideW = dH * 92 / 43;
-    var normalW = dH * 6 / 9;
-    var spacing = 32;
-
-    var totalItems = gameList.count;
-
-    var itemX = 0;
-    var currentItemWidth = 0;
-
-    if (idx === 0) {
-        itemX = 0;
-        currentItemWidth = wideW;
-    } else {
-        itemX = wideW + spacing + ((idx - 1) * (normalW + spacing));
-        currentItemWidth = normalW;
+// DECKOS: where the row scrolls to center tile idx, from the tiles' real positions. StMini computed them
+// from 0, but Qt can lay the row out from a shifted origin: when Home was rebuilt (after Settings) the
+// tiles had no size yet, and when DeckOS came back the window could change size. The row then sat on
+// empty space - the icons "vanished" and a tap on View more scrolled instead of opening the Library.
+function scrollTarget(idx) {
+    var it = itemAtIndex(idx)
+    var x, w
+    if (it) {
+        x = it.x
+        w = it.width
+    } else { // not built yet: StMini's layout, from the row's origin
+        var wideW = height * 92 / 43, normalW = height * 6 / 9
+        x = originX + (idx === 0 ? 0 : wideW + spacing + (idx - 1) * (normalW + spacing))
+        w = idx === 0 ? wideW : normalW
     }
+    var first = itemAtIndex(0), last = itemAtIndex(count - 1)
+    var minX = first ? first.x : originX
+    var maxX = Math.max(minX, last ? last.x + last.width - width : minX + contentWidth - width)
+    return Math.max(minX, Math.min(maxX, x - width / 2 + w / 2))
+}
 
-    var totalContentWidth = wideW + (totalItems - 1) * (normalW + spacing);
-    var maxTargetX = Math.max(0, totalContentWidth - width);
-    var targetX = itemX - (width / 2) + (currentItemWidth / 2);
-
-    if (targetX < 0) targetX = 0;
-    if (targetX > maxTargetX) targetX = maxTargetX;
-
+function animateToIndex(idx) {
+    if (idx < 0 || idx >= count || width <= 0 || height <= 0) return;
     scrollAnim.stop();
-    scrollAnim.to = targetX;
+    scrollAnim.to = scrollTarget(idx);
     scrollAnim.start();
+}
+
+// at once, without the animation: after a layout change, or when Home is shown again
+function snapToIndex(idx) {
+    if (idx < 0 || idx >= count || width <= 0 || height <= 0) return;
+    forceLayout()
+    scrollAnim.stop();
+    contentX = scrollTarget(idx);
+}
+
+property bool snapPending: false
+function snapLater() {
+    if (snapPending) return
+    snapPending = true
+    Qt.callLater(function () { snapPending = false; snapToIndex(currentIndex) })
 }
         
 // === ИСПРАВЛЕННЫЙ БЛОК: Получение ИСХОДНОГО объекта игры ===
@@ -888,7 +909,7 @@ sNav.play();
     id: gameDelegate
 
     // 1. ПРАВИЛЬНЫЙ объект игры
-    property var modelData: index < middleSorted.count ? api.allGames.get(middleSorted.mapToSource(index)) : null
+    property var modelData: middleSorted.revision >= 0 && index < middleSorted.count ? api.allGames.get(middleSorted.mapToSource(index)) : null
     property bool isGrayPlaceholder: index === (gameList.count - 1)
     property bool isWide: index === 0
     property real dH: gameList.height
@@ -1135,6 +1156,9 @@ Row {
         anchors.verticalCenter: parent.verticalCenter
         
         function getLastPlayedText(game) {
+            // DECKOS: still running behind DeckOS (PServer / root), like Steam's "Running"
+            if (game && deckos.ingame && deckos.ingame.running
+                && (deckos.ingame.runningGame === game || game.title === deckos.ingame.runningTitle)) return "RUNNING"
             // DECKOS: a never-launched game has an invalid date (truthy, NaN arithmetic): was "PLAYED JUST NOW"
             if (!game || !game.lastPlayed || game.playCount === 0) return "NEVER PLAYED"
             var lastPlayed = new Date(game.lastPlayed)
@@ -1273,29 +1297,20 @@ MouseArea {
     
     onClicked: {
         if (!holdTimer.running) { // Только если не было удержания
-            if (root.focusZone !== 1) {
-                root.goToZone(1)
-                gameList.currentIndex = index
-                gameList.forceActiveFocus()
-                sNav.stop();
-            sNav.play();
-            } else if (gameList.currentIndex === index && gameList.focus) {
-                // Если это серый плейсхолдер - открываем Library
-                if (isGrayPlaceholder) {
-                    theme.openPage(1)
-                } else {
-                    // Иначе открываем меню игры (быстрое нажатие)
-                    theme.currentGame = modelData
-                    theme.openPage(8)
-                }
-            } else {
-                gameList.currentIndex = index
-                gameList.forceActiveFocus()
-                sNav.stop();
-            sNav.play();
+            // DECKOS: a tap opens the tile at once, like touch on the Deck - it took a second tap (and
+            // a third while the row sat on empty space, see scrollTarget). Selected first, so B comes
+            // back to it.
+            if (root.focusZone !== 1) root.goToZone(1)
+            gameList.currentIndex = index
+            gameList.forceActiveFocus()
+            if (isGrayPlaceholder) {
+                theme.openPage(1)
+            } else if (modelData) {
+                theme.currentGame = modelData
+                theme.openPage(8)
             }
         }
-    }        
+    }
 }
         }
     }
@@ -3667,6 +3682,7 @@ else if (api.keys.isMenu(event)) {
         function resumePage() {
             api.memory.set("homeReturnContext", null)
             recommendedContainer.updateUnfilteredGames() // a game may have been played meanwhile
+            gameList.snapLater() // the row back on the selected game (scrollTarget)
             enterAnim.start()
             focusTimer.start()
         }
@@ -3693,19 +3709,16 @@ else if (api.keys.isMenu(event)) {
         if (ctx) {
             api.memory.set("homeReturnContext", null)
             var lIdx = (ctx.listIndex !== undefined) ? ctx.listIndex : 0
-            var savedX = (ctx.contentX !== undefined) ? ctx.contentX : 0
 
             // 1. Сначала переходим в зону (это вызовет сброс на 0)
-            root.goToZone(1) 
-            
-            // 2. Теперь возвращаем правильный сохраненный индекс
-            gameList.currentIndex = lIdx 
+            root.goToZone(1)
 
-            // 3. Отменяем анимацию прокрутки и ставим точный contentX
-            Qt.callLater(function() {
-                if (typeof scrollAnim !== "undefined") scrollAnim.stop()
-                gameList.contentX = savedX
-            })
+            // 2. Теперь возвращаем правильный сохраненный индекс
+            gameList.currentIndex = Math.max(0, Math.min(lIdx, gameList.count - 1))
+
+            // 3. DECKOS: the row on that game once it's laid out - not the saved contentX, which belonged
+            // to the old layout (scrollTarget)
+            gameList.snapLater()
             focusTimer.start()
         } else {
             root.goToZone(1)

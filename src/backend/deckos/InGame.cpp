@@ -3,6 +3,7 @@
 
 #include "InGame.h"
 
+#include "Log.h"
 #include "RaMatcher.h"
 #include "model/Api.h"
 #include "model/gaming/Assets.h"
@@ -51,12 +52,31 @@ InGame::InGame(model::ApiObject* api, RaMatcher* ra, QObject* parent)
     , m_api(api)
     , m_ra(ra)
     , m_no_show_timer(new QTimer(this))
+    , m_running_timer(new QTimer(this))
 {
     m_no_show_timer->setSingleShot(true);
     m_no_show_timer->setInterval(15000);
     connect(m_no_show_timer, &QTimer::timeout, this, [this]() {
         if (m_playing && !m_left_front)
             endSession();
+    });
+#ifndef Q_OS_ANDROID
+    // PC, for testing the look: DECKOS_FAKE_RUNNING=<game title> shows that game as running behind DeckOS
+    if (qEnvironmentVariableIsSet("DECKOS_FAKE_RUNNING")) {
+        m_playing = true;
+        m_background = true;
+        m_session_title = qEnvironmentVariable("DECKOS_FAKE_RUNNING");
+    }
+#endif
+    m_running_timer->setInterval(1000);
+    connect(m_running_timer, &QTimer::timeout, this, [this]() {
+#ifdef Q_OS_ANDROID
+        if (m_playing && m_background
+            && !QAndroidJniObject::callStaticMethod<jboolean>(JNI_SESSION, "gameRunning", "()Z")) {
+            Log::info(LOGMSG("The game that ran behind DeckOS has ended"));
+            endSession();
+        }
+#endif
     });
     connect(qApp, &QGuiApplication::applicationStateChanged, this, &InGame::onAppState);
     connect(m_api, &model::ApiObject::eventLaunchError, this, &InGame::hideLaunchCover); // DeckOS shows the error
@@ -194,8 +214,20 @@ bool InGame::notificationBlocked() const { DECKOS_GET(jni_bool("notificationsBlo
 bool InGame::launchCover() const { DECKOS_GET(jni_bool("launchCover"), m_pc_cover); }
 int InGame::launchCoverSeconds() const { DECKOS_GET(jni_int("launchCoverSeconds"), m_pc_cover_seconds); }
 bool InGame::launchCoverPossible() const { DECKOS_GET(jni_bool("launchCoverPossible"), qEnvironmentVariableIsSet("DECKOS_COVER_DUMP")); }
+bool InGame::processTracking() const { DECKOS_GET(jni_bool("processTracking"), false); }
+bool InGame::countWhileRunning() const { DECKOS_GET(jni_bool("countWhileRunning"), m_pc_count_running); }
 
 #undef DECKOS_GET
+
+void InGame::setCountWhileRunning(bool on)
+{
+#ifdef Q_OS_ANDROID
+    jni_set_bool("setCountWhileRunning", on);
+#else
+    m_pc_count_running = on;
+#endif
+    emit changed();
+}
 
 void InGame::setOverlayScale(int percent)
 {
@@ -308,6 +340,7 @@ QString InGame::deviceInfo() const
 void InGame::beginSession()
 {
     m_left_front = QGuiApplication::applicationState() != Qt::ApplicationActive;
+    m_background = false;
     m_playing = true;
     emit playingChanged();
     if (!m_left_front)
@@ -323,23 +356,74 @@ void InGame::onAppState(Qt::ApplicationState state)
     if (state != Qt::ApplicationActive) {
         m_left_front = true;
         m_no_show_timer->stop();
+        m_running_timer->stop(); // in the game again: the session ends when DeckOS is back
         return;
     }
-    if (m_left_front)
+    if (!m_left_front)
+        return;
+    m_left_front = false;
+#ifdef Q_OS_ANDROID
+    // Java decides (Session.onFrontendResumed runs first): the game still runs behind DeckOS
+    if (QAndroidJniObject::callStaticMethod<jboolean>(JNI_SESSION, "backgroundSession", "()Z")) {
+        Log::info(LOGMSG("Back in DeckOS while the game still runs"));
+        const bool was = m_background;
+        m_background = true;
+        m_running_timer->start();
+        if (!was)
+            emit playingChanged();
+        emit returnedToFront();
+        return;
+    }
+#endif
+    endSession();
+}
+
+void InGame::finishSession()
+{
+    if (m_playing)
         endSession();
+}
+
+bool InGame::stopGame()
+{
+#ifdef Q_OS_ANDROID
+    if (!m_playing || !QAndroidJniObject::callStaticMethod<jboolean>(JNI_SESSION, "stopGame", "()Z"))
+        return false;
+    Log::info(LOGMSG("Game stopped from DeckOS"));
+    endSession();
+    return true;
+#else
+    return false;
+#endif
+}
+
+bool InGame::resumeGame()
+{
+#ifdef Q_OS_ANDROID
+    return m_playing && QAndroidJniObject::callStaticMethod<jboolean>(JNI_SESSION, "resumeGame", "()Z");
+#else
+    return false;
+#endif
 }
 
 void InGame::endSession()
 {
     m_no_show_timer->stop();
+    m_running_timer->stop();
     m_playing = false;
     m_left_front = false;
+    m_background = false;
 #ifdef Q_OS_ANDROID
     const bool home = QAndroidJniObject::callStaticMethod<jboolean>(JNI_SESSION, "takeExitToHome", "()Z");
 #else
     const bool home = false;
 #endif
-    emit sessionEnded();
+    emit sessionEnded(); // Backend reads the play time here
+#ifdef Q_OS_ANDROID
+    QAndroidJniObject::callStaticMethod<void>(JNI_SESSION, "sessionFinished", "()V");
+#endif
+    m_session_game = nullptr;
+    m_session_title.clear();
     emit playingChanged();
     if (home)
         emit exitedToHome();
@@ -382,6 +466,8 @@ void InGame::onGameLaunching(const model::GameFile* file)
     if (!file || !file->parentGame())
         return;
     model::Game* game = file->parentGame();
+    m_session_game = game; // its page shows it running (Resume / Stop) while the session lasts
+    m_session_title = game->title();
 
     QJsonObject info;
     info.insert(QStringLiteral("title"), game->title());

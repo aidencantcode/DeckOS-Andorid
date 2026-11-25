@@ -45,6 +45,15 @@ FocusScope {
     property var coverGame: null
     property int originalZone1Height: 620
     property bool closeMenuVisible: false
+    // DECKOS: this game still runs behind DeckOS (Android, PServer / root sees its process): Resume and
+    // Steam's blue Stop instead of Play, until it ends
+    readonly property bool gameRunningHere: !!deckos.ingame && deckos.ingame.running && !!theme.currentGame
+        && (deckos.ingame.runningGame === theme.currentGame || theme.currentGame.title === deckos.ingame.runningTitle)
+    property bool stopMenuVisible: false
+    onGameRunningHereChanged: {
+        zone2.currentButtonIndex = 0
+        if (!gameRunningHere && stopMenuVisible) { stopMenuVisible = false; focusTimer.start() }
+    }
     property var selectedGameForMedia: null
 
     // ---- Fullscreen properties ----
@@ -93,6 +102,32 @@ FocusScope {
         } else {
             g.launch()
         }
+    }
+
+    // DECKOS: A on the main button - Resume when the game still runs behind DeckOS (its app comes back as
+    // it was; launching it again would restart it in most emulators), else Play
+    function playOrResume() {
+        if (gameRunningHere) {
+            try { sAccept.play() } catch(e) {}
+            if (!deckos.ingame.resumeGame())
+                startLaunchAnimation() // no launcher entry to bring back: launched again
+            return
+        }
+        startLaunchAnimation()
+    }
+
+    function openStopMenu() {
+        if (gameRunningHere) stopMenuVisible = true
+    }
+
+    function closeStopMenu(stop) {
+        stopMenuVisible = false
+        if (stop && deckos.ingame.stopGame()) {
+            try { sLeftClose.play() } catch(e) {}
+        } else {
+            try { sBack.play() } catch(e) {}
+        }
+        focusTimer.start()
     }
 
     Timer {
@@ -283,7 +318,7 @@ FocusScope {
                     event.accepted = true
                 }
             } else if (focusZone === 1) {
-                if (zone2.currentButtonIndex < 2) {
+                if (zone2.currentButtonIndex < zone2.lastIdx) {
                     zone2.currentButtonIndex++
                     sNav.stop();
                     sNav.play();
@@ -303,10 +338,13 @@ FocusScope {
         root.cancelLaunchAnimation()
         event.accepted = true
     } else if (theme.currentGame) {
-        root.startLaunchAnimation()
+        root.playOrResume() // DECKOS: Resume while it runs behind DeckOS
         event.accepted = true
     }
-                } else if (zone2.currentButtonIndex === 2) {
+                } else if (zone2.currentButtonIndex === zone2.stopIdx) {
+                    root.openStopMenu()
+                    event.accepted = true
+                } else if (zone2.currentButtonIndex === zone2.gIdx) {
                     root.toggleOptionsMenu()
                     sShowui.play()
                     event.accepted = true
@@ -445,6 +483,11 @@ FocusScope {
                 focus: false
 
                 property int currentButtonIndex: 0
+                // DECKOS: Stop sits after Play / Resume while the game runs behind DeckOS
+                readonly property int stopIdx: root.gameRunningHere ? 1 : -1
+                readonly property int wIdx: root.gameRunningHere ? 2 : 1
+                readonly property int gIdx: root.gameRunningHere ? 3 : 2
+                readonly property int lastIdx: gIdx
 
                 Rectangle {
                     id: playButton
@@ -473,7 +516,7 @@ FocusScope {
                         }
 
                         Text {
-                            text: isLaunching ? "Cancel" : (theme.currentGame && theme.currentGame.extra && theme.currentGame.extra["missing"] !== undefined ? "Not Installed" : "Play")
+                            text: isLaunching ? "Cancel" : root.gameRunningHere ? "Resume" : (theme.currentGame && theme.currentGame.extra && theme.currentGame.extra["missing"] !== undefined ? "Not Installed" : "Play")
                             color: "white"
                             font.pixelSize: 35
                             font.family: bold.name
@@ -494,7 +537,7 @@ FocusScope {
             if (root.isLaunching && theme.gameLaunchingAnimation) {
                 root.cancelLaunchAnimation()
             } else if (theme.currentGame && (!theme.currentGame.extra || theme.currentGame.extra["missing"] === undefined)) {
-                root.startLaunchAnimation()
+                root.playOrResume()
             }
         } else {
             zone2.currentButtonIndex = 0
@@ -552,7 +595,7 @@ FocusScope {
                         height: playButton.height
                         anchors {
                             left: playButton.right
-                            leftMargin: isLaunching ? 500 : 40
+                            leftMargin: (isLaunching ? 500 : 40) + (root.gameRunningHere ? stopButton.width + 20 : 0) // DECKOS: after Stop
                             verticalCenter: playButton.verticalCenter
                         }
 
@@ -577,7 +620,7 @@ FocusScope {
                                 top: lastPlayedLabel.bottom
                                 topMargin: 7
                             }
-                            text: isLaunching ? "Now" : getLastPlayedText()
+                            text: isLaunching || root.gameRunningHere ? "Now" : getLastPlayedText()
                             color: "white"
                             font.pixelSize: 38
                             font.family: bold.name
@@ -623,7 +666,7 @@ FocusScope {
                         id: playTimeContainer
                         width: 300
                         height: playButton.height
-                        visible: !isLaunching
+                        visible: !isLaunching && !(root.gameRunningHere && root.width < 1500) // DECKOS: no room beside Stop on near-square screens
                         anchors {
                             left: lastPlayedContainer.left
                             leftMargin: Math.max(lastPlayedLabel.implicitWidth, lastPlayedValue.implicitWidth) + 70
@@ -658,7 +701,51 @@ FocusScope {
                     }
 
                     Keys.onReturnPressed: {
-                        if (theme.currentGame) root.startLaunchAnimation()
+                        if (theme.currentGame) root.playOrResume()
+                    }
+                }
+
+                // DECKOS: Steam's blue STOP while the game runs behind DeckOS: closes it after asking
+                Rectangle {
+                    id: stopButton
+                    visible: root.gameRunningHere && !isLaunching
+                    width: height * 1.9
+                    height: playButton.height
+                    radius: 5
+                    anchors {
+                        left: playButton.right
+                        leftMargin: 20
+                        verticalCenter: playButton.verticalCenter
+                    }
+                    readonly property bool selected: zone2.currentButtonIndex === zone2.stopIdx && zone2.focus
+                    color: selected ? "#1A9EFF" : "#551A9EFF"
+                    Behavior on color { ColorAnimation { duration: 150 } }
+
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 22
+                        Rectangle { // the stop square
+                            width: 26; height: 26; radius: 3
+                            color: "white"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: "Stop"
+                            color: "white"
+                            font.pixelSize: 35
+                            font.family: bold.name
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            if (root.focusZone !== 1) root.goToZone(1)
+                            zone2.currentButtonIndex = zone2.stopIdx
+                            zone2.forceActiveFocus()
+                            root.openStopMenu()
+                        }
                     }
                 }
 
@@ -672,13 +759,13 @@ FocusScope {
                         rightMargin: 200
                         verticalCenter: parent.verticalCenter
                     }
-                    color: (zone2.currentButtonIndex === 1 && zone2.focus) ? "white" : "#20FEFEFE"
+                    color: (zone2.currentButtonIndex === zone2.wIdx && zone2.focus) ? "white" : "#20FEFEFE"
                     Behavior on color { ColorAnimation { duration: 150 } }
 
                     Text {
                         anchors.centerIn: parent
                         text: "G"
-                        color: (zone2.currentButtonIndex === 1 && zone2.focus) ? "black" : "white"
+                        color: (zone2.currentButtonIndex === zone2.wIdx && zone2.focus) ? "black" : "white"
                         font.pixelSize: 60
                         font.family: icons.name
                     }
@@ -691,7 +778,7 @@ FocusScope {
                                 sNav.stop();
                                 sNav.play();
                             }
-                            zone2.currentButtonIndex = 1
+                            zone2.currentButtonIndex = zone2.wIdx
                             sNav.stop();
                             sNav.play();
                             zone2.forceActiveFocus()
@@ -709,13 +796,13 @@ FocusScope {
                         rightMargin: 60
                         verticalCenter: parent.verticalCenter
                     }
-                    color: (zone2.currentButtonIndex === 2 && zone2.focus) ? "white" : "#20FEFEFE"
+                    color: (zone2.currentButtonIndex === zone2.gIdx && zone2.focus) ? "white" : "#20FEFEFE"
                     Behavior on color { ColorAnimation { duration: 150 } }
 
                     Text {
                         anchors.centerIn: parent
                         text: "w"
-                        color: (zone2.currentButtonIndex === 2 && zone2.focus) ? "black" : "white"
+                        color: (zone2.currentButtonIndex === zone2.gIdx && zone2.focus) ? "black" : "white"
                         font.pixelSize: 60
                         font.family: icons.name
                     }
@@ -725,15 +812,15 @@ FocusScope {
                         onClicked: {
                             if (root.focusZone !== 1) {
                                 root.goToZone(1)
-                                zone2.currentButtonIndex = 2
+                                zone2.currentButtonIndex = zone2.gIdx
                                 zone2.forceActiveFocus()
                                 sNav.stop();
                                 sNav.play();
-                            } else if (zone2.currentButtonIndex === 2 && zone2.focus) {
+                            } else if (zone2.currentButtonIndex === zone2.gIdx && zone2.focus) {
                                 root.toggleOptionsMenu()
                                 sShowui.play()
                             } else {
-                                zone2.currentButtonIndex = 2
+                                zone2.currentButtonIndex = zone2.gIdx
                                 sNav.stop();
                                 sNav.play();
                                 zone2.forceActiveFocus()
@@ -743,7 +830,7 @@ FocusScope {
                 }
 
                 Keys.onLeftPressed: if (!isLaunching && currentButtonIndex > 0) {currentButtonIndex--; sNav.stop(); sNav.play();}
-                Keys.onRightPressed: if (!isLaunching && currentButtonIndex < 2) {currentButtonIndex++; sNav.stop(); sNav.play();}
+                Keys.onRightPressed: if (!isLaunching && currentButtonIndex < lastIdx) {currentButtonIndex++; sNav.stop(); sNav.play();}
                 Keys.onDownPressed: if (!isLaunching) {root.goToZone(2); sNav.stop(); sNav.play();}
                 Keys.onUpPressed: if (!isLaunching) {root.goToZone(0); sNav.stop(); sNav.play();}
             }
@@ -2802,6 +2889,135 @@ FocusScope {
         }
     }
 
+    /* ================= STOP GAME (DECKOS) ================= */
+    // Steam's Stop for a game still running behind DeckOS: Android closes its app at once, so unsaved
+    // progress is lost - Cancel is selected first
+    FocusScope {
+        id: stopMenu
+        width: parent.width
+        height: parent.height
+        visible: stopMenuVisible
+        focus: stopMenuVisible
+        enabled: visible
+        z: 99
+
+        opacity: stopMenuVisible ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 150 } }
+
+        property int currentButtonIndex: 1 // 0 Stop, 1 Cancel
+
+        Item {
+            anchors.fill: parent
+            visible: root.stopMenuVisible
+
+            MouseArea { anchors.fill: parent; onClicked: root.closeStopMenu(false) }
+
+            FastBlur {
+                anchors.fill: parent
+                source: globalBlurSource
+                radius: 50
+                transparentBorder: false
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                color: "black"
+                opacity: 0.7
+            }
+        }
+
+        Rectangle {
+            id: stopCard
+            width: 700
+            height: stopMessage.height + 300
+            anchors.centerIn: parent
+            color: "#181B20"
+
+            MouseArea { anchors.fill: parent } // taps on the card don't close it
+
+            Text {
+                anchors { left: parent.left; bottom: parent.top; bottomMargin: 18 }
+                width: parent.width
+                text: "Stop " + (theme.currentGame ? theme.currentGame.title : "the game") + "?"
+                color: "white"
+                font.pixelSize: 38
+                font.family: bold.name
+                elide: Text.ElideRight
+            }
+
+            Text {
+                id: stopMessage
+                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 30 }
+                text: "The game closes at once. Anything not saved in the game is lost."
+                color: "white"
+                opacity: 0.7
+                font.pixelSize: 30
+                font.family: bold.name
+                wrapMode: Text.WordWrap
+            }
+
+            Column {
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+
+                Rectangle {
+                    width: parent.width
+                    height: 120
+                    color: stopMenu.currentButtonIndex === 0 ? "#DE3619" : "transparent"
+                    Text {
+                        text: "   Stop game"
+                        color: "white"
+                        font.pixelSize: 35
+                        font.family: bold.name
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: root.closeStopMenu(true)
+                    }
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: 120
+                    color: stopMenu.currentButtonIndex === 1 ? "white" : "transparent"
+                    Text {
+                        text: "   Cancel"
+                        color: stopMenu.currentButtonIndex === 1 ? "black" : "white"
+                        font.pixelSize: 35
+                        font.family: bold.name
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: root.closeStopMenu(false)
+                    }
+                }
+            }
+        }
+
+        Keys.onPressed: {
+            if (!stopMenuVisible) return
+            event.accepted = true // the page behind doesn't move
+            if (event.key === Qt.Key_Up) {
+                if (currentButtonIndex > 0) { currentButtonIndex--; sNav.stop(); sNav.play() }
+            } else if (event.key === Qt.Key_Down) {
+                if (currentButtonIndex < 1) { currentButtonIndex++; sNav.stop(); sNav.play() }
+            } else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape) {
+                root.closeStopMenu(false)
+            } else if (api.keys.isAccept(event) || event.key === Qt.Key_Return || event.key === Qt.Key_Space) {
+                root.closeStopMenu(currentButtonIndex === 0)
+            }
+        }
+
+        onVisibleChanged: {
+            if (visible) {
+                currentButtonIndex = 1
+                sShowui.play()
+                forceActiveFocus()
+            }
+        }
+    }
+
     /* ================= OPTIONS MENU ================= */
     FocusScope {
         id: optionsMenu
@@ -3098,7 +3314,7 @@ FocusScope {
         running: false
         repeat: false
         onTriggered: {
-            if (!closeMenuVisible && !optionsMenuVisible && !fullscreenView) {
+            if (!closeMenuVisible && !optionsMenuVisible && !stopMenuVisible && !fullscreenView) {
                 if (zone3Tabs.currentIndex === 1) {
                     if (yourStuffContent.mediaCount > 0) {
                         stuffGrid.forceActiveFocus()
@@ -3114,11 +3330,12 @@ FocusScope {
     }
 
     // DECKOS: on Android DeckOS stays loaded while the game runs; back from it, undo the launch animation
-    // and reload what the session changed (achievements; play time and last played update by themselves)
+    // and reload what the session changed (achievements; play time and last played update by themselves).
+    // Back while the game still runs behind DeckOS (`running`) counts as back too.
     Connections {
         target: (typeof deckos !== "undefined" && deckos) ? deckos.ingame : null
         function onPlayingChanged() {
-            if (deckos.ingame.playing) return
+            if (deckos.ingame.playing && !deckos.ingame.running) return
             if (root.isLaunching) root.cancelLaunchAnimation()
             raSection.load()
         }

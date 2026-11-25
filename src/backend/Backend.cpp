@@ -42,6 +42,7 @@
 #include "SortFilterProxyModel/sorters/sortersqmltypes.h"
 
 #include <QGuiApplication>
+#include <algorithm>
 #include <QQmlEngine>
 #include <QTimer>
 
@@ -249,9 +250,22 @@ Backend::Backend(const CliArgs& args)
             Log::info(LOGMSG("Played for %1 s").arg(played));
             providers::playtime::PlaytimeStats::setNextDuration(played);
         }
-        m_api_public->onGameProcessFinished();
+        if (m_api_public->launchInProgress()) // (never without one; PC's DECKOS_FAKE_RUNNING has none)
+            m_api_public->onGameProcessFinished();
         onProcessFinished();
     });
+    // DECKOS: back in DeckOS while the game still runs behind it (PServer / root): the session goes on
+    // (the game page offers Resume / Stop), but the controller works in DeckOS again
+    QObject::connect(m_deckos->ingame(), &deckos::InGame::returnedToFront, [this](){
+        m_hide_timer->stop();
+        startGamepad();
+    });
+    // DECKOS: another game while one still runs behind DeckOS: that session ends (its play time is
+    // saved) and the new launch goes on - Pegasus allowed one launch at a time
+    QObject::connect(m_api_public, &model::ApiObject::launchWhileRunning, [this](){
+        m_deckos->ingame()->finishSession();
+    });
+    QObject::connect(m_launcher, &ProcessLauncher::processLaunchError, [this](){ runPendingScan(); });
 
     // Setting changes
     QObject::connect(m_api_private->settings().localesPtr(), &model::Locales::localeChanged,
@@ -287,7 +301,12 @@ Backend::Backend(const CliArgs& args)
                      m_frontend, &FrontendLayer::clearCache);
 
     // quit/reboot/shutdown request
-    QObject::connect(&m_api_private->system(), &model::System::appCloseRequested, on_app_close);
+    // DECKOS: a game still running behind DeckOS: its play time is saved first
+    QObject::connect(&m_api_private->system(), &model::System::appCloseRequested, [this](AppCloseType type){
+        if (type != AppCloseType::SUSPEND)
+            m_deckos->ingame()->finishSession();
+        on_app_close(type);
+    });
 }
 
 void Backend::start()
@@ -299,8 +318,37 @@ void Backend::start()
 
 void Backend::onScanRequested(const bool force_refresh)
 {
+    // DECKOS: not while a launched game's session is open (on Android it can last as long as the game
+    // runs behind DeckOS): the reload would delete the game file it ends with. It runs right after.
+    if (m_api_public->launchInProgress()) {
+        Log::info(LOGMSG("Library reload postponed until the game ends"));
+        m_pending_scan = std::max(m_pending_scan, force_refresh ? 1 : 0);
+        return;
+    }
     m_api_public->clearGameData();
     m_providerman->run(force_refresh);
+}
+
+void Backend::runPendingScan()
+{
+    if (m_pending_scan < 0)
+        return;
+    // after the current call chain: a new launch may be on its way (launchWhileRunning)
+    QTimer::singleShot(0, m_api_public, [this](){
+        if (m_pending_scan < 0 || m_api_public->launchInProgress())
+            return;
+        const bool force = m_pending_scan == 1;
+        m_pending_scan = -1;
+        onScanRequested(force);
+    });
+}
+
+void Backend::startGamepad()
+{
+    if (m_gamepad_on)
+        return;
+    m_gamepad_on = true;
+    m_api_private->gamepad().start(m_args);
 }
 
 void Backend::onScanFinished()
@@ -329,6 +377,7 @@ void Backend::onProcessLaunched()
     if (m_deckos->ingame()->keepLoaded()) {
         Log::info(LOGMSG("Keeping DeckOS loaded while the game runs"));
         m_api_private->gamepad().stop();
+        m_gamepad_on = false;
         m_deckos->ingame()->beginSession();
         return;
     }
@@ -352,6 +401,7 @@ void Backend::onProcessLaunched()
     }
 
     m_api_private->gamepad().stop();
+    m_gamepad_on = false;
 }
 
 void Backend::onProcessFinished()
@@ -363,7 +413,8 @@ void Backend::onProcessFinished()
     else
         m_frontend->rebuild();
 
-    m_api_private->gamepad().start(m_args);
+    startGamepad(); // DECKOS: once (returnedToFront may have started it)
+    runPendingScan(); // DECKOS: a library reload asked for while the game ran
 }
 
 } // namespace backend

@@ -367,15 +367,15 @@ SortFilterProxyModel {
                         MouseArea {
                             anchors.fill: parent
                             onClicked: {
+                                // DECKOS: a tap opens the game at once, like touch on the Deck (selected
+                                // first, so B comes back to it) - it took a second tap
                                 if (!isFocused) {
                                     gridView.currentIndex = index
                                     gridView.forceActiveFocus()
                                     root.goToZone(2)
-                                    sNav.stop(); sNav.play();
-                                } else {
-                                    if (modelData && modelData.launch) {
-                                        gameSelected(modelData);
-                                    }
+                                }
+                                if (modelData && modelData.launch) {
+                                    gameSelected(modelData);
                                 }
                             }
                             onPressAndHold: {
@@ -1432,15 +1432,13 @@ function toggleSortMenu() {
                             MouseArea {
                                 anchors.fill: parent
                                 onClicked: {
-                                    if (!isFocused) {
+                                    if (!isFocused) { // DECKOS: then opened at once (see the games grid)
                                         gridCollections.currentIndex = index
                                         gridCollections.forceActiveFocus()
                                         root.goToZone(2)
-                                        sNav.stop(); sNav.play();
-                                    } else {
-                                        collectionGamesLoader.collection = modelData
-                                        collectionGamesLoader.active = true
                                     }
+                                    collectionGamesLoader.collection = modelData
+                                    collectionGamesLoader.active = true
                                 }
                             }
                         }
@@ -1727,16 +1725,14 @@ function toggleSortMenu() {
                             MouseArea {
                                 anchors.fill: parent
                                 onClicked: {
-                                    if (!isFocused) {
+                                    if (!isFocused) { // DECKOS: then opened at once (see the games grid)
                                         gridView.currentIndex = index
                                         gridView.forceActiveFocus()
                                         root.goToZone(2)
-                                        sNav.stop(); sNav.play();
-                                    } else {
-                                        if (modelData && modelData.launch) {
-                                            theme.currentGame = modelData;
-                                            theme.openPage(8);
-                                        }
+                                    }
+                                    if (modelData && modelData.launch) {
+                                        theme.currentGame = modelData;
+                                        theme.openPage(8);
                                     }
                                 }
                                 onPressAndHold: {

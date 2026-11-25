@@ -1,10 +1,10 @@
 # Ships a DeckOS test build (docs/13-release-flow.md):
 #   checks -> CHANGELOG "## Unreleased" becomes "## <version> - <date>" -> commit + tag v<version> locally
 #   -> the gate (tools\check.ps1 -Clean) on exactly that commit -> push main + tag -> GitHub builds the APK
-#   and publishes the pre-release. If the gate fails, the commit and tag are undone and nothing is pushed.
+#   and publishes the release (a pre-release for 0.0.x). If the gate fails, the commit and tag are undone and nothing is pushed.
 # Usage:  tools\ship.ps1 [-Phase N] [-DryRun] [-Trailer "Co-Authored-By: ..."]
 #   -Phase   roadmap phase of this build; defaults to the phase of the last tag (0 before the first one).
-#            A new phase restarts the build number: 0.0.7 -> (-Phase 1) -> 0.1.1.
+#            A new phase starts at build 0: 0.0.15 -> (-Phase 1) -> 0.1.0, then 0.1.1, 0.1.2...
 #   -DryRun  print the version and release notes, change nothing.
 param([int]$Phase = -1, [switch]$DryRun, [string]$Trailer)
 . "$PSScriptRoot\env.ps1"
@@ -43,7 +43,7 @@ if (-not $lm.Success) { Stop-Ship "can't parse last tag '$last'" }
 $major = [int]$lm.Groups[1].Value; $lastPhase = [int]$lm.Groups[2].Value; $lastBuild = [int]$lm.Groups[3].Value
 if ($Phase -lt 0) { $Phase = $lastPhase }
 if ($Phase -lt $lastPhase) { Stop-Ship "phase $Phase is older than the last release $last" }
-$build = if ($Phase -eq $lastPhase) { $lastBuild + 1 } else { 1 }
+$build = if ($Phase -eq $lastPhase) { $lastBuild + 1 } else { 0 }  # a new phase: x.y.0
 if ($build -gt 999) { Stop-Ship 'build number above 999 - versionCode would overflow into the next phase' }
 $version = "$major.$Phase.$build"
 $tag = "v$version"

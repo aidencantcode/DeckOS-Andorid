@@ -149,44 +149,32 @@ public class SessionService extends Service {
     };
 
     /// Every 2 s: which app is in front (Foreground's usage stats, exact). Without them and without the
-    /// accessibility service (which reports it at once), from PServer / root every 6 s; that also tells
-    /// whether the emulator's process still runs. None: play time counts until DeckOS is back.
+    /// accessibility service (which reports it at once), from PServer / root every 6 s. None: play time
+    /// counts until DeckOS is back. (Whether the game's process still runs: GameProcess.)
     private void checkForeground() {
         if (!Session.hasGame())
             return;
         boolean usage = Foreground.poll(this, main);
-        if (ticks % 6 != 0 || !Privileged.available())
-            return;
-        boolean wantFront = !usage && ShortcutService.instance() == null;
-        String pkg = Session.gamePackage;
-        if (!wantFront && pkg.isEmpty())
+        if (ticks % 6 != 0 || !Privileged.available() || usage || ShortcutService.instance() != null)
             return;
         if (fgPending != null) {
             String out = Privileged.readText(new java.io.File(fgPending));
             fgPending = null;
-            if (out != null && !out.isEmpty()) {
-                java.util.regex.Matcher m = FG_ACTIVITY.matcher(out);
-                final String front = wantFront && m.find() ? m.group(1) : null;
-                // "pid=" with no number: the emulator's process has ended
-                final boolean gone = out.contains("pid=") && !PID.matcher(out).find();
-                main.post(() -> {
-                    if (gone) Session.onGameProcessGone();
-                    else if (front != null) Session.onForegroundPackage(front);
-                });
+            java.util.regex.Matcher m = FG_ACTIVITY.matcher(out == null ? "" : out);
+            if (m.find()) {
+                final String front = m.group(1);
+                main.post(() -> Session.onForegroundPackage(front));
             }
         }
         java.io.File f = Privileged.outputFile(this, "foreground.txt");
-        String body = "{"
-                    + (wantFront ? " dumpsys activity activities 2>/dev/null | grep -m1 -E 'topResumedActivity|mResumedActivity|ResumedActivity:';" : "")
-                    + (pkg.isEmpty() ? "" : " echo \"pid=$(pidof " + Privileged.quote(pkg) + ")\";")
-                    + " } > " + Privileged.quote(f.getAbsolutePath()) + " 2>/dev/null";
+        String body = "dumpsys activity activities 2>/dev/null | grep -m1 -E 'topResumedActivity|mResumedActivity|ResumedActivity:'"
+                    + " > " + Privileged.quote(f.getAbsolutePath()) + " 2>/dev/null";
         if (Privileged.runScript(this, "foreground.sh", body))
             fgPending = f.getAbsolutePath();
     }
 
     // "topResumedActivity=ActivityRecord{1a2b3c u0 com.retroarch/.browser.RetroActivityFuture t12}"
     private static final java.util.regex.Pattern FG_ACTIVITY = java.util.regex.Pattern.compile("u\\d+\\s+([A-Za-z0-9_.]+)/");
-    private static final java.util.regex.Pattern PID = java.util.regex.Pattern.compile("pid=\\d");
 
     /// the notification is the way into Quick Access: put it back if it's gone (swiped away on Android 14+)
     private void ensureNotification() {

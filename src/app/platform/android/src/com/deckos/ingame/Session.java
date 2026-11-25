@@ -5,7 +5,9 @@
 // to the background (onFrontendStopped), SessionService starts: an ongoing notification with the
 // play time; tapping it opens the Steam-style Quick Access overlay (QuickAccessActivity); the
 // performance overlay (HUD) is drawn over the game if its level is above 0. When DeckOS comes
-// back to the front (onFrontendResumed), the session ends.
+// back to the front (onFrontendResumed), the session ends - unless PServer / root can see that the
+// game's process still runs (GameProcess): then it goes on behind DeckOS (the game page offers Resume
+// and Stop) until that process ends or the game is stopped, and C++ ends it (sessionFinished).
 
 package com.deckos.ingame;
 
@@ -42,6 +44,7 @@ public final class Session {
     static final String KEY_ADVANCED = "advanced_view";
     static final String KEY_COVER = "launch_cover";
     static final String KEY_COVER_SECONDS = "launch_cover_seconds";
+    static final String KEY_COUNT_RUNNING = "count_while_running";
 
     private static Context sApp;
 
@@ -74,6 +77,9 @@ public final class Session {
 
     static boolean hasGame() { return !title.isEmpty(); }
 
+    /// a game launched from DeckOS has a session (GameProcess watches it meanwhile)
+    static boolean sessionOpen() { return sGameLaunched; }
+
 
     // --- called from C++ (Qt's thread) ------------------------------------------------------------
 
@@ -93,8 +99,11 @@ public final class Session {
             // the app the launch's intent opens (MainActivity, onGameIntent) beats the command's text
             gamePackage = startedAt - sIntentAt < 5000 && !sIntentPackage.isEmpty() ? sIntentPackage : o.optString("package", "");
             raGameId = 0;
+            sRunningMode = countWhileRunning(); // for the whole session
+            sBackground = false;
             resetPlayTime();
             sGameLaunched = true;
+            GameProcess.start();
             Foreground.startSession(startedAt);
             if (sApp != null && !Foreground.usageAllowed(sApp) && Foreground.grantUsage(sApp))
                 Log.i(TAG, "usage access requested through PServer / root (play time)");
@@ -351,6 +360,12 @@ public final class Session {
 
     public static void onFrontendStopped(Activity activity) {
         frontendInFront = false;
+        if (sBackground) {
+            // back into the game that ran behind DeckOS (Resume, or Android's recent apps)
+            sBackground = false;
+            if (sGameLaunched && !sRunningMode && sApp != null && !Foreground.usageActive(sApp) && ShortcutService.instance() == null)
+                setGameFocused(true); // nothing can tell which app is in front: the game, as at a launch
+        }
         if (sApp == null || !notificationEnabled())
             return;
         if (!sGameLaunched) {
@@ -368,23 +383,126 @@ public final class Session {
     /// C++ reads it (playedSeconds)
     public static void onFrontendResumed(Activity activity) {
         frontendInFront = true;
-        setGameFocused(false);
         QuickAccessOverlay.hide();
         LaunchCover.hide();
         GameExit.onFrontendResumed();
-        sGameLaunched = false;
         SessionService.stop(activity);
+        if (sGameLaunched && !gameClosed && GameProcess.alive()) {
+            // the game still runs behind DeckOS: its session goes on until its process ends or it's
+            // stopped (C++ asks gameRunning(), then calls sessionFinished)
+            sBackground = true;
+            if (!sRunningMode)
+                setGameFocused(false);
+            Log.i(TAG, "back in DeckOS, the game still runs: " + gamePackage);
+            return;
+        }
+        setGameFocused(false);
+        sGameLaunched = false;
+        sBackground = false;
+        GameProcess.stop();
     }
 
 
-    // --- play time: only while the game is in front -------------------------------------------------
-    // The game is the app DeckOS opened (onGameIntent). Which app is in front: see Foreground (usage
-    // stats, else the accessibility service, else PServer / root every few seconds). With none of them,
-    // the game counts as in front until DeckOS comes back, as before.
+    // --- a game running behind DeckOS (PServer / root) ----------------------------------------------
+
+    /// the game is "running" while DeckOS is in front (Steam's blue STOP / Resume on its page)
+    private static volatile boolean sBackground = false;
+    /// this session counts play time while the game runs, not only while it's in front
+    private static volatile boolean sRunningMode = false;
+
+    /// From C++ as DeckOS comes back to the front: the session goes on behind DeckOS
+    public static boolean backgroundSession() {
+        return sGameLaunched && sBackground;
+    }
+
+    /// From C++ (every second while the game runs behind DeckOS): false once its process has ended
+    public static boolean gameRunning() {
+        return sGameLaunched && !gameClosed;
+    }
+
+    /// From C++ once it has read the play time: the session is over
+    public static void sessionFinished() {
+        sGameLaunched = false;
+        sBackground = false;
+        GameProcess.stop();
+    }
+
+    /// PServer or root: DeckOS can tell when the game's process ends (and stop it)
+    public static boolean processTracking() {
+        return sApp != null && Privileged.available();
+    }
+
+    /// Settings > Overlay > Play time: count while the game runs, like Steam (on by default), instead of
+    /// only while it's in front. Needs PServer / root - only they can tell when the game ends.
+    public static boolean countWhileRunning() {
+        return processTracking() && prefs().getBoolean(KEY_COUNT_RUNNING, true);
+    }
+
+    public static void setCountWhileRunning(boolean on) {
+        if (sApp != null) prefs().edit().putBoolean(KEY_COUNT_RUNNING, on).apply();
+    }
+
+    /// the game page's Stop: closes the game's app at once (`am force-stop`, PServer / root; unsaved
+    /// progress is lost - the page asks first). False if it can't.
+    public static boolean stopGame() {
+        final String pkg = gamePackage;
+        if (sApp == null || !sGameLaunched || pkg.isEmpty() || !Privileged.available())
+            return false;
+        Log.i(TAG, "stop game: " + pkg);
+        onGameProcessGone(); // play time ends now
+        return Privileged.run("am force-stop " + Privileged.quote(pkg));
+    }
+
+    /// the game page's Resume: the game's app back in front as it was left - like its icon in Android's
+    /// launcher, which brings a running app back instead of starting it again (launching the game again
+    /// would restart it in most emulators). False if it has no launcher entry.
+    public static boolean resumeGame() {
+        final String pkg = gamePackage;
+        if (sApp == null || pkg.isEmpty())
+            return false;
+        android.content.pm.PackageManager pm = sApp.getPackageManager();
+        Intent i = pm.getLaunchIntentForPackage(pkg);
+        if (i == null && Build.VERSION.SDK_INT >= 21)
+            i = pm.getLeanbackLaunchIntentForPackage(pkg);
+        if (i == null)
+            return false;
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            sApp.startActivity(i);
+            Log.i(TAG, "resume game: " + pkg);
+            return true;
+        }
+        catch (Exception e) {
+            Log.w(TAG, "can't resume " + pkg + ": " + e);
+            return false;
+        }
+    }
+
+    /// GameProcess, every 2 s: counting while the game runs, except while the screen is off (Android
+    /// pauses the game then; a handheld left asleep with a game open didn't play it)
+    static void onProcessTick() {
+        if (!sGameLaunched || !sRunningMode || gameClosed || sApp == null)
+            return;
+        boolean screenOn = true;
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager) sApp.getSystemService(Context.POWER_SERVICE);
+            if (pm != null) screenOn = pm.isInteractive();
+        }
+        catch (Exception ignored) {}
+        setGameFocused(screenOn);
+    }
+
+
+    // --- play time: while the game runs (PServer / root), else only while it's in front ---------------
+    // The game is the app DeckOS opened (onGameIntent). Counting while it runs (countWhileRunning): from
+    // the launch until its process ends (GameProcess), except while the screen is off. Otherwise only
+    // while it's in front - which app is: see Foreground (usage stats, else the accessibility service,
+    // else PServer / root every few seconds). With none of them, the game counts as in front until DeckOS
+    // comes back, as before.
 
     /// the emulator's package (the app the launch opened, else the first app in front after it)
     static volatile String gamePackage = "";
-    /// the emulator's process is gone (PServer can tell)
+    /// the emulator's process is gone (GameProcess), or the game was stopped / exited from DeckOS
     static volatile boolean gameClosed = false;
     private static boolean sFocused = true;
     private static long sPlayedMs = 0, sFocusedSince = 0;
@@ -473,7 +591,8 @@ public final class Session {
         }
         if (pkg.equals(gamePackage))
             gameClosed = false; // started again (from Android's recent apps)
-        setGameFocused(pkg.equals(gamePackage), at);
+        if (!sRunningMode) // counting while the game runs: which app is in front doesn't matter
+            setGameFocused(pkg.equals(gamePackage), at);
     }
 
     private static volatile String sResumedPkg = "", sResumedClass = "";
@@ -488,13 +607,14 @@ public final class Session {
             sResumedClass = c;
             onForegroundPackage(pkg, at);
         }
-        else if (type == Foreground.SCREEN_OFF)
-            setGameFocused(false, at);
+        else if (type == Foreground.SCREEN_OFF) {
+            if (!sRunningMode) setGameFocused(false, at); // (onProcessTick knows the screen too)
+        }
         else if (pkg != null && pkg.equals(sResumedPkg) && (c.isEmpty() || sResumedClass.isEmpty() || c.equals(sResumedClass))) {
             // the activity in front paused or stopped (not an older one of the same app stopping late)
             sResumedPkg = "";
             sResumedClass = "";
-            setGameFocused(false, at);
+            if (!sRunningMode) setGameFocused(false, at);
         }
     }
 
@@ -505,7 +625,7 @@ public final class Session {
         "com.android.permissioncontroller", "com.google.android.permissioncontroller",
         "com.android.packageinstaller", "com.google.android.packageinstaller", "com.android.intentresolver"));
 
-    /// PServer saw the emulator's process end
+    /// the emulator's process ended (GameProcess), or DeckOS closed it (Stop, Exit game)
     static void onGameProcessGone() {
         if (!sGameLaunched || gameClosed)
             return;

@@ -35,6 +35,17 @@ class InGame : public QObject {
     Q_PROPERTY(bool keepLoaded READ keepLoaded WRITE setKeepLoaded NOTIFY changed)
     /// a game started from DeckOS is running (Android, with keepLoaded): DeckOS is waiting for it
     Q_PROPERTY(bool playing READ playing NOTIFY playingChanged)
+    /// ...and DeckOS is back in front while it still runs (PServer / root sees its process): its page
+    /// shows Resume and Stop, like Steam, until the game ends
+    Q_PROPERTY(bool running READ running NOTIFY playingChanged)
+    /// the game of the session (a Game), null without one
+    Q_PROPERTY(QObject* runningGame READ runningGame NOTIFY playingChanged)
+    /// its title (for when the library was reloaded meanwhile and the Game object changed)
+    Q_PROPERTY(QString runningTitle READ runningTitle NOTIFY playingChanged)
+    /// PServer / root: DeckOS can tell when a game ends, and stop it
+    Q_PROPERTY(bool processTracking READ processTracking NOTIFY changed)
+    /// play time counts while the game runs, like Steam (needs processTracking); off: only while it's in front
+    Q_PROPERTY(bool countWhileRunning READ countWhileRunning WRITE setCountWhileRunning NOTIFY changed)
 
     // the overlay's own settings (its Overlay tab shows the same values: Java Session prefs)
     /// Quick Access and performance overlay size, percent of Steam Deck size (75-200)
@@ -76,6 +87,12 @@ public:
     bool keepLoaded() const;
     void setKeepLoaded(bool on);
     bool playing() const { return m_playing; }
+    bool running() const { return m_playing && m_background; }
+    QObject* runningGame() const { return m_playing ? m_session_game.data() : nullptr; }
+    QString runningTitle() const { return m_playing ? m_session_title : QString(); }
+    bool processTracking() const;
+    bool countWhileRunning() const;
+    void setCountWhileRunning(bool on);
     int overlayScale() const;
     void setOverlayScale(int percent);
     bool keepRunning() const;
@@ -126,15 +143,27 @@ public:
     /// re-reads the values (the permission is granted outside DeckOS)
     Q_INVOKABLE void recheck() { emit changed(); }
 
+    /// the running game's page: Steam's STOP - closes the game's app at once (PServer / root) and ends
+    /// the session. false if it can't.
+    Q_INVOKABLE bool stopGame();
+    /// ...and Resume: the game's app back in front as it was left (not launched again)
+    Q_INVOKABLE bool resumeGame();
+
     void onGameLaunching(const model::GameFile* file);
-    /// the game started and DeckOS stays loaded: sessionEnded() follows once DeckOS is back in front
+    /// the game started and DeckOS stays loaded: sessionEnded() follows once DeckOS is back in front,
+    /// or - while PServer / root sees the game still running - once it ends or is stopped
     void beginSession();
+    /// ends the session now if there is one (another game is launched, DeckOS closes)
+    void finishSession();
 
 signals:
     void changed();
     void playingChanged();
-    /// DeckOS came back to the front after the game (or the game never covered it)
+    /// DeckOS came back to the front after the game (or the game never covered it), or the game that
+    /// ran behind DeckOS ended
     void sessionEnded();
+    /// DeckOS is in front again while the game still runs behind it (the session goes on)
+    void returnedToFront();
     /// after sessionEnded: the game was closed with Quick Access's "Exit game", so Home is shown
     void exitedToHome();
 
@@ -143,8 +172,13 @@ private:
     RaMatcher* const m_ra;
     QPointer<QObject> m_launched; // the game whose RA id is being looked up
     QTimer* const m_no_show_timer; // ends a session whose game never covered DeckOS
+    QTimer* const m_running_timer; // while the game runs behind DeckOS: has it ended?
+    QPointer<QObject> m_session_game;
+    QString m_session_title;
     bool m_playing = false;
     bool m_left_front = false;
+    bool m_background = false;     // DeckOS in front, the game still running behind it
+    bool m_pc_count_running = true;
     int m_pc_hud = 0;
     bool m_pc_notification = true;
     bool m_pc_keep_loaded = true;

@@ -53,8 +53,12 @@ private:
     ProviderManager* m_providerman;
     deckos::DeckosApi* m_deckos; // DECKOS: `deckos` QML object (game edits, scraper)
     QTimer* m_hide_timer;
+    int m_pending_scan = -1;       // DECKOS: a rescan asked for while a game ran (-1 none, 0, 1 forced)
+    bool m_gamepad_on = false;     // DECKOS: started, not stopped since (it's started on two paths now)
 
     void onScanRequested(bool force_refresh = false);
+    void runPendingScan();
+    void startGamepad();
     void onScanFinished();
     void onFavoritesChanged();
     void onProcessLaunched();

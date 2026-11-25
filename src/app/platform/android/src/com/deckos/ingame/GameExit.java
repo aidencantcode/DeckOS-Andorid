@@ -51,7 +51,7 @@ final class GameExit {
         Log.i(Session.TAG, "exit game: " + pkg);
         Runnable close = () -> {
             Session.requestHomeAfterExit();
-            Session.setGameFocused(false); // play time ends now
+            Session.onGameProcessGone(); // play time ends now, and the session ends with DeckOS back (not "running")
             boolean stopped = Privileged.available() && Privileged.run("am force-stop " + Privileged.quote(pkg));
             bringDeckOS(ctx);
             if (dismiss != null) dismiss.run();
