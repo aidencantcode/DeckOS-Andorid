@@ -3,8 +3,6 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
-
-## 0.0.15 — 2026-11-26
 **Fixes from your report on the Steam menu's highlight and on play time.**
 - **Play time counts only while the app DeckOS opened is in front.**
   - DeckOS now records the exact app Android opens for a launch. Before, it guessed it from the launch command, and when the guess failed it took whatever app came to the front next.
