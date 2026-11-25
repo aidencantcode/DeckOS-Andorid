@@ -3,6 +3,18 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**Faster starts and a quick Refresh.** DeckOS now starts from the saved game list and only does a full scan when a game folder actually changed.
+
+### Test checklist
+1. Settings → Library → turn **Full scan on every start** off (new installs have it off already). Restart: the boot animation ends and Home appears without the long scan on a big library.
+2. Copy a new ROM into one of your game folders (on the PC or with a file manager), then Settings → Library → **Refresh library**: the new game shows up. Delete it again → Refresh → it's gone.
+3. **Full rescan** still reads everything (for when something looks wrong).
+4. Settings → Customization → **Show Boot Animation** off → restart: no animation, straight to Home after loading.
+5. The SteamGridDB key is shared: set it once (Library page or Customization page) and both the scraper and "Change artwork…" use it.
+
+### Under the hood
+- Game index cache fingerprint now includes the game folders and their direct subfolders (folder modification times change when files are added or removed); "Scan for games on launch" defaults to off.
+- `deckos.refreshLibrary()`: cache-aware reload (Pegasus's reload always forced a full scan).
 
 ## 0.0.4 — 2026-11-25
 **Scraping: artwork, descriptions and game info for your whole library — plus rename a game and edit its description.**

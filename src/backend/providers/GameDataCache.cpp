@@ -163,6 +163,27 @@ void add_metadata_fingerprints(QJsonArray& out, const QString& dir_path)
         add_file_fingerprint(out, it.next());
 }
 
+// DECKOS: a folder's modification time changes when files are added to or removed from it. Including the
+// game folders and their direct subfolders (e.g. ROMs/snes) makes the cache notice new or deleted ROMs,
+// so starting from the cache is safe - a full scan only happens when something actually changed.
+void add_folder_fingerprints(QJsonArray& out, const QString& dir_path)
+{
+    const QFileInfo root(dir_path);
+    if (!root.isDir())
+        return;
+
+    auto add = [&out](const QFileInfo& fi) {
+        QJsonObject item;
+        item[QStringLiteral("dir")] = fi.absoluteFilePath();
+        item[QStringLiteral("mtime")] = QString::number(fi.lastModified().toMSecsSinceEpoch());
+        out.append(item);
+    };
+    add(root);
+    const QFileInfoList subdirs = QDir(dir_path).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks, QDir::Name);
+    for (const QFileInfo& sub : subdirs)
+        add(sub);
+}
+
 QJsonObject collection_to_json(const model::Collection& collection)
 {
     QJsonObject obj;
@@ -256,6 +277,11 @@ QString GameDataCache::buildFingerprint(
     for (const QString& dir : sctx.root_game_dirs())
         add_metadata_fingerprints(metadata_files, dir);
     root[QStringLiteral("metadata_files")] = metadata_files;
+
+    QJsonArray game_folders; // DECKOS: new/deleted ROMs invalidate the cache
+    for (const QString& dir : sctx.root_game_dirs())
+        add_folder_fingerprints(game_folders, dir);
+    root[QStringLiteral("game_folders")] = game_folders;
 
     const QJsonDocument doc(root);
     const QByteArray hash = QCryptographicHash::hash(doc.toJson(QJsonDocument::Compact), QCryptographicHash::Sha256).toHex();

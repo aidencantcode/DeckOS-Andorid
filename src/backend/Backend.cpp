@@ -259,6 +259,8 @@ Backend::Backend(const CliArgs& args)
                      m_api_private->scannerPtr(), &model::ScannerState::onUiReady);
     QObject::connect(m_api_public, &model::ApiObject::gamedataReady, // DECKOS: auto-scrape
                      m_deckos, &deckos::DeckosApi::onLibraryReady);
+    QObject::connect(m_deckos, &deckos::DeckosApi::libraryRefreshRequested, // DECKOS: cache-aware reload
+                     [this](){ onScanRequested(false); });
 
     // partial QML reload
     QObject::connect(&m_api_private->meta(), &model::Meta::qmlClearCacheRequested,

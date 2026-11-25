@@ -60,13 +60,20 @@ DeckSettingsPage {
                      activate: function () { Internal.settings.requestAndroidDir() } })
         }
 
-        r.push({ type: "button", label: needsReload ? "Reload games now" : "Reload all games", accent: needsReload,
-                 desc: needsReload ? "Your changes take effect after the library is reloaded" : "Scan every game folder and data source again",
+        r.push({ type: "button", label: needsReload ? "Reload games now" : "Refresh library", accent: needsReload,
+                 desc: needsReload ? "Your changes take effect after the library is reloaded"
+                                   : "Quick: finds new and removed games, re-reads only what changed",
+                 activate: function () {
+                     if (libraryPage.needsReload || typeof deckos === "undefined" || !deckos) libraryPage.reloadGames()
+                     else deckos.refreshLibrary()
+                 } })
+        r.push({ type: "button", label: "Full rescan",
+                 desc: "Read every game folder and data source again (slow on big libraries)",
                  activate: function () { libraryPage.reloadGames() } })
 
         r.push({ type: "section", label: "Scanning" })
-        r.push({ type: "toggle", label: "Scan for games on launch",
-                 desc: "Off: start faster with the games found last time",
+        r.push({ type: "toggle", label: "Full scan on every start",
+                 desc: "Off (faster): start from the saved game list - new or deleted ROMs are still noticed",
                  value: function () { return Internal.settings.scanOnLaunch },
                  toggle: function () { Internal.settings.scanOnLaunch = !Internal.settings.scanOnLaunch } })
         r.push({ type: "toggle", label: "Check that game files exist",

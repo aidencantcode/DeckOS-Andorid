@@ -236,6 +236,9 @@ Window {
 
         loading: dataLoading || skinLoading
         showDataProgressText: dataLoading
+        // DECKOS: Settings > Customization > "Show Boot Animation" (the built-in theme's memory is loaded
+        // before this window is created)
+        playVideo: !(api.memory.has("showBootAnimation") && api.memory.get("showBootAnimation") === false)
         progress: Internal.scanner.progress
         stage: Internal.scanner.stage
 

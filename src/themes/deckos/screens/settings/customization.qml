@@ -46,7 +46,7 @@ Item {
     property string steamGridApiKey: api.memory.has("steamGridApiKey") ? api.memory.get("steamGridApiKey") : ""
 property bool keyboardOpen: false
 
-onSteamGridApiKeyChanged: api.memory.set("steamGridApiKey", steamGridApiKey)
+onSteamGridApiKeyChanged: { api.memory.set("steamGridApiKey", steamGridApiKey); if (steamGridApiKey !== "" && typeof deckos !== "undefined" && deckos) deckos.scraper.steamGridDbKey = steamGridApiKey } // DECKOS: one key for picker + scraper
 
 function handleAccept() {
     if (keyboardOpen) return
@@ -151,7 +151,7 @@ function openKeyboard() {
                 spacing: 30
 
                 Text { text: "Show Boot Animation"; color: "white"; font.pixelSize: 30; font.family: bold.name }
-                Text { text: "Enable or disable custom startup animations."; color: "lightgray"; font.pixelSize: 25; font.family: bold.name }
+                Text { text: "Play the Steam Deck boot animation when DeckOS starts." /* DECKOS */; color: "lightgray"; font.pixelSize: 25; font.family: bold.name }
             }
 
             Rectangle {

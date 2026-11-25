@@ -29,10 +29,17 @@ public:
     /// { edited: bool, titleEdited, descriptionEdited, scraped: ISO date or "", sources: "TheGamesDB, ..." }
     Q_INVOKABLE QVariantMap gameChanges(QObject* game) const;
 
+    /// Reloads the library: from the game index cache if no game folder or metadata file changed
+    /// (seconds), otherwise a full scan. Settings > Library > "Reload all games" forces a full scan.
+    Q_INVOKABLE void refreshLibrary();
+
     Scraper* scraper() const { return m_scraper; }
     QObject* scraperObj() const;
 
     void onLibraryReady();
+
+signals:
+    void libraryRefreshRequested();
 
 private:
     Scraper* const m_scraper;

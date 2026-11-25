@@ -22,6 +22,11 @@ QObject* DeckosApi::scraperObj() const
     return m_scraper;
 }
 
+void DeckosApi::refreshLibrary()
+{
+    emit libraryRefreshRequested();
+}
+
 void DeckosApi::onLibraryReady()
 {
     m_scraper->onLibraryReady();

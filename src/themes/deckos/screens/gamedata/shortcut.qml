@@ -11,7 +11,7 @@ Item {
     property string steamGridApiKey: api.memory.has("steamGridApiKey") ? api.memory.get("steamGridApiKey") : ""
 property bool keyboardOpen: false
 
-onSteamGridApiKeyChanged: api.memory.set("steamGridApiKey", steamGridApiKey)
+onSteamGridApiKeyChanged: { api.memory.set("steamGridApiKey", steamGridApiKey); if (steamGridApiKey !== "" && typeof deckos !== "undefined" && deckos) deckos.scraper.steamGridDbKey = steamGridApiKey } // DECKOS: one key for picker + scraper
 
 function handleAccept() {
     if (keyboardOpen) return
