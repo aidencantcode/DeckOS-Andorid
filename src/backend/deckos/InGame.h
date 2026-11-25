@@ -48,8 +48,6 @@ class InGame : public QObject {
     Q_PROPERTY(bool showFps READ showFps WRITE setShowFps NOTIFY changed)
     /// AYN / Retroid's PServer is there (modes, underclocking, frame rate)
     Q_PROPERTY(bool privileged READ privileged NOTIFY changed)
-    /// name of the imported ClusterTune profile used as "Custom" underclock ("" = none)
-    Q_PROPERTY(QString customUnderclock READ customUnderclock NOTIFY changed)
     /// the launch cover: the launch screen stays over the game while it loads, hiding the emulator's own
     /// loading screens (Android; Java LaunchCover)
     Q_PROPERTY(bool launchCover READ launchCover WRITE setLaunchCover NOTIFY changed)
@@ -83,7 +81,6 @@ public:
     bool showFps() const;
     void setShowFps(bool on);
     bool privileged() const;
-    QString customUnderclock() const;
     bool launchCover() const;
     void setLaunchCover(bool on);
     int launchCoverSeconds() const;
@@ -94,8 +91,6 @@ public:
     Q_INVOKABLE void openAccessibilitySettings();
     /// model, chip, PServer, vendor settings and sensors - for checking a new handheld
     Q_INVOKABLE QString deviceInfo() const;
-    /// reads a ClusterTune export file and keeps its first profile as "Custom"; "" or an error message
-    Q_INVOKABLE QString importClusterTune(const QString& path);
 
     /// Right before a launch: snapshots the window with `spinner` and `logo` (an AnimatedImage) hidden
     /// and shows it over everything for `holdMs`, the two drawn again natively on top, so the game can

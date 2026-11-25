@@ -207,6 +207,7 @@ FocusScope {
                         ["Sound",         "S", "settings/sound.qml"],
                         ["Power",         "~", "settings/power.qml"],
                         ["Overlay",       "4", "settings/ingame.qml"], /* DECKOS: in-game menu + performance overlay */
+                        ["Underclocking", "|", "settings/underclock.qml"], /* DECKOS: ClusterTune built in */
                         ["High Contrast", "●", "settings/highcontrast.qml"],
                         ["Customization", "☆", "settings/customization.qml"],
                         ["Controller",    "G", "settings/controller.qml"],

@@ -106,6 +106,13 @@ Under the overlay level slider, each one is a 3–5 step slider like the overlay
   - ClusterTune presets for the chip; Custom is the first profile of an imported ClusterTune export.
   - Applied through PServer and restored to Stock when the game session ends, if *Reset after game* is on.
   - If ClusterTune is installed, a note says its own app profiles may override DeckOS's.
+- [x] **ClusterTune built in → Settings › Underclocking** (owner request; 0.0.13, device check pending). Its core ported to C++ and Java (MIT, `docs/clustertune-port.md`):
+  - The applied profile, live limits per cluster and GPU, ClusterTune's presets for the chip.
+  - Your own profiles: new (from the live limits), duplicate, rename, reorder, delete. Each CPU cluster's and the GPU's maximum is stepped through the chip's own frequency table.
+  - Import and export in ClusterTune's file format; *Restore ClusterTune presets*.
+  - Re-applied after a restart (boot receiver), optional.
+  - Quick Access's slider is Stock, the presets and the profile chosen as "Custom"; the HUD names the applied one.
+  - Unit tests on a fake `/sys` tree; PC simulates a Snapdragon 8 Elite.
 - [x] **FPS** on HUD levels 1–4 via PServer, plus the active profiles ("PERF High · FAN Smart · CPU Medium"). (0.0.11, device check pending)
 - [x] **Device info dump** (Settings › Overlay › Device info): model, SoC, PServer yes/no, vendor `Settings.System` keys with fan/perf in their name, readable sensors. The owner copies it for us, which settles the *verify* items above. (0.0.11)
 
@@ -118,6 +125,7 @@ Under the overlay level slider, each one is a 3–5 step slider like the overlay
 Proposed order. Each line becomes a milestone when its release starts. The owner can reorder.
 - **0.2 — Your games, your stats:**
   - Per-game performance profiles: mode, fan and underclock remembered per game, applied at launch, restored after.
+  - ClusterTune's remaining parts (`docs/clustertune-port.md`): Auto Tune (per-game frame rate target that lowers the ceilings it doesn't need), a sleep profile, switch history.
   - Session summary toast on return ("Played 42 min · 3 achievements").
   - A Quick Access **Screenshot** button (PServer `screencap`, saved per game; it feeds the Activity tab).
   - Accurate play time from Android usage stats.

@@ -3,6 +3,34 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**ClusterTune built in.** Underclocking is now its own settings tab, **Settings › Underclocking**, with ClusterTune's tuner ported into DeckOS (MIT, by Aurelio Bernal). The separate app isn't needed any more.
+- **Applied profile:** switch profiles right on the page. The page shows the chip and every CPU cluster's and the GPU's current limit next to its stock limit.
+- **ClusterTune's presets** for the chip (Small / Medium / Large on the Snapdragon 8 Elite and 8 Gen 2). Like in ClusterTune, they can be edited or deleted, and *Restore ClusterTune presets* puts them back.
+- **Your own profiles:**
+  - *New profile* starts from the limits in effect now.
+  - Each CPU cluster's and the GPU's maximum steps through the chip's own frequencies, left and right.
+  - Rename, duplicate, move up or down, and delete (press A twice).
+  - Editing the applied profile applies the change as you make it.
+- **ClusterTune files:** *Import from ClusterTune…* takes every profile in an export that fits the chip. *Export profiles* writes them to Downloads in ClusterTune's format, so ClusterTune can import them too.
+- **Apply again after a restart** (on by default): the chip resets to its own limits at every restart, and DeckOS puts the profile back.
+- **Quick Access:** the underclock slider is Stock, the presets, and the profile you choose as *Custom* on the page. The performance overlay names the applied profile.
+- Settings › Overlay's old "Import ClusterTune profile" (one Custom profile) is replaced by a link to the new tab.
+
+**Notes**
+- Limits are written through the AYN / Retroid system service (PServer), the way ClusterTune does it on these handhelds. Without it, the page shows the limits but can't change them.
+- Not in yet: ClusterTune's Auto Tune, per-app profiles (DeckOS will do per-game ones), and the sleep profile. They're on the roadmap.
+- Checked on PC against a simulated Snapdragon 8 Elite, with unit tests for the ported code. Not tried on a handheld yet.
+
+**Test checklist**
+1. Settings › Underclocking (new tab under Overlay). *Chip* names your chip, and each CPU cluster and the GPU show "X of Y".
+2. Odin 3: Small, Medium and Large Underclock are listed as ClusterTune presets.
+3. Applied profile → Medium. After about a second the text below says "Medium Underclock applied", and the cluster rows show the lower limits. CPU-Z or ClusterTune shows the same limits.
+4. Switch the vendor performance mode in Quick Access: the underclock limits stay.
+5. *New profile*, lower one cluster a few steps, then *Apply*. Back in the list it shows your values.
+6. Set it as Quick Access "Custom", open Quick Access › Performance: the slider reads Stock / Small / Medium / Large / Custom, and moving it applies each one.
+7. Restart the handheld with a profile applied: after the restart the limits come back by themselves within a few seconds.
+8. *Export profiles*, then *Import from ClusterTune…* with the same file (Downloads): it says "Imported N profiles". The file also imports into ClusterTune.
+9. Applied profile → Stock: every limit is back at the chip's own.
 
 ## 0.0.12 — 2026-11-25
 **Launch cover and overlay font.** Two owner requests on top of 0.0.11:

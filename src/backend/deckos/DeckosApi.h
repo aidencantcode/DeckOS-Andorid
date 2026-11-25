@@ -15,6 +15,7 @@ class Scraper;
 class RomLibrary;
 class RaMatcher;
 class InGame;
+class Underclock;
 
 class DeckosApi : public QObject {
     Q_OBJECT
@@ -24,6 +25,8 @@ class DeckosApi : public QObject {
     Q_PROPERTY(QObject* ra READ raObj CONSTANT)
     /// Android in-game layer settings: performance overlay level, notification, overlay permission
     Q_PROPERTY(QObject* ingame READ ingameObj CONSTANT)
+    /// underclocking: ClusterTune built in (Settings > Underclocking; Underclock.h)
+    Q_PROPERTY(QObject* underclock READ underclockObj CONSTANT)
 
 public:
     explicit DeckosApi(model::ApiObject* api, QObject* parent = nullptr);
@@ -58,6 +61,7 @@ public:
     QObject* libraryObj() const;
     QObject* raObj() const;
     QObject* ingameObj() const;
+    QObject* underclockObj() const;
     InGame* ingame() const { return m_ingame; }
 
     void onLibraryReady();
@@ -72,6 +76,7 @@ private:
     RomLibrary* const m_library;
     RaMatcher* const m_ra;
     InGame* const m_ingame;
+    Underclock* const m_underclock;
     bool m_started = false;
 };
 

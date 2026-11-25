@@ -11,6 +11,9 @@ HEADERS += \
     $$PWD/RaMatcher.h \
     $$PWD/RomLibrary.h \
     $$PWD/Scraper.h \
+    $$PWD/ClusterTunePresets.h \
+    $$PWD/Underclock.h \
+    $$PWD/UnderclockCore.h \
 
 SOURCES += \
     $$PWD/Catalog.cpp \
@@ -20,4 +23,6 @@ SOURCES += \
     $$PWD/RaMatcher.cpp \
     $$PWD/RomLibrary.cpp \
     $$PWD/Scraper.cpp \
+    $$PWD/Underclock.cpp \
+    $$PWD/UnderclockCore.cpp \
 

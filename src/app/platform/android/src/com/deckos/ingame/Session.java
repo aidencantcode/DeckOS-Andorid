@@ -252,15 +252,26 @@ public final class Session {
         return sApp == null ? "" : DeviceControl.deviceInfo(sApp);
     }
 
-    /// a ClusterTune export file's text: keeps its first profile as "Custom". Its name, or "!error".
-    public static String importClusterTune(String json) {
-        return sApp == null ? "!" : DeviceControl.importClusterTune(json);
+    // --- underclocking (C++ deckos/Underclock owns the profiles; see Underclock.java) ---
+
+    /// Quick Access's steps and the restart setting, as JSON with ready-made scripts
+    public static void setUnderclockSteps(String json) {
+        if (sApp != null) prefs().edit().putString(Underclock.PREF_STEPS, json == null ? "{}" : json).apply();
     }
 
-    public static String customUnderclockName() {
-        if (sApp == null) return "";
-        org.json.JSONObject p = DeviceControl.customProfile(sApp);
-        return p == null ? "" : p.optString("name", "Custom");
+    /// the applied profile's current script, run again after a restart
+    public static void setUnderclockBootScript(String id, String script) {
+        if (sApp != null && id != null && id.equals(Underclock.activeId()))
+            prefs().edit().putString(Underclock.PREF_ACTIVE_SCRIPT, script == null ? "" : script).apply();
+    }
+
+    /// applies a profile (DeckOS's settings page); false if PServer couldn't be reached
+    public static boolean runUnderclock(String id, String name, String label, String script) {
+        return sApp != null && Underclock.run(sApp, id, label, script);
+    }
+
+    public static String underclockActiveId() {
+        return sApp == null ? Underclock.STOCK : Underclock.activeId();
     }
 
     static void openSettings(Intent intent) {

@@ -4,3 +4,4 @@ SUBDIRS += \
     gameoverrides \
     ramatcher \
     romlibrary \
+    underclock \

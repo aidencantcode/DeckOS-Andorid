@@ -23,5 +23,9 @@ Written for DeckOS (no third-party code): `screens/ProfileBadge.qml`, `screens/g
 Outside this folder, `src/app/platform/android/assets/fonts/unispace_*.otf` is Unispace by Ray Larabie (Typodermic), released
 under CC0 (public domain) and supplied by the owner for the performance overlay; it may be redistributed freely.
 
+`screens/settings/underclock.qml` (written for DeckOS) is the page for the underclocking code ported from
+[ClusterTune](https://github.com/AurelioB/ClusterTune) by Aurelio Bernal, MIT License
+(`src/backend/deckos/ClusterTune-LICENSE.txt`, `docs/clustertune-port.md`).
+
 Outside this folder, `src/frontend/assets/boot.mp4` is the Steam Deck startup animation (Valve), supplied by the
 owner and re-encoded to 1080p; it falls under the same personal-use-only terms as the Deck sounds above.

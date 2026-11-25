@@ -5,6 +5,7 @@
 
 #include "GameOverrides.h"
 #include "InGame.h"
+#include "Underclock.h"
 #include "RaMatcher.h"
 #include "RomLibrary.h"
 #include "Scraper.h"
@@ -30,6 +31,7 @@ DeckosApi::DeckosApi(model::ApiObject* api, QObject* parent)
     , m_library(new RomLibrary(this))
     , m_ra(new RaMatcher(this))
     , m_ingame(new InGame(api, m_ra, this))
+    , m_underclock(new Underclock(this))
 {
     // a scan that changed system files reloads the library (from the cache for everything else)
     connect(m_library, &RomLibrary::scanFinished, this, [this](int, int changed) {
@@ -51,6 +53,11 @@ QObject* DeckosApi::raObj() const
 QObject* DeckosApi::ingameObj() const
 {
     return m_ingame;
+}
+
+QObject* DeckosApi::underclockObj() const
+{
+    return m_underclock;
 }
 
 QVariantList DeckosApi::gameScreenshots(QObject* obj, int limit) const

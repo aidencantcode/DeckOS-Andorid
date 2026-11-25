@@ -696,15 +696,19 @@ final class QuickAccessPanel extends FrameLayout {
             if (!write)
                 note("Switching needs the AYN / Retroid system service (PServer), which wasn't found. The quick settings of the device still work.", Ui.DIM);
         }
-        if (DeviceControl.hasUnderclock()) {
-            final boolean custom = DeviceControl.customProfile(ctx) != null;
-            String[] labels = custom ? DeviceControl.UC_LABELS
-                                     : java.util.Arrays.copyOf(DeviceControl.UC_LABELS, DeviceControl.UC_LABELS.length - 1);
-            int current = Math.min(DeviceControl.underclockLevel(), labels.length - 1);
-            LevelSlider uc = new LevelSlider(ctx, u, labels, current, i -> DeviceControl.applyUnderclock(ctx, i));
-            sliderCard("Underclock (CPU limit)", null, uc);
+        // underclock profiles from DeckOS › Settings › Underclocking (ClusterTune built in)
+        if (Underclock.available()) {
+            final java.util.List<Underclock.Step> steps = Underclock.steps();
+            String[] labels = new String[steps.size()];
+            boolean custom = false;
+            for (int i = 0; i < labels.length; i++) {
+                labels[i] = steps.get(i).label;
+                custom = custom || "Custom".equals(labels[i]);
+            }
+            LevelSlider uc = new LevelSlider(ctx, u, labels, Underclock.index(steps), i -> Underclock.apply(ctx, steps.get(i)));
+            sliderCard("Underclock (CPU / GPU limit)", null, uc);
             if (!custom)
-                note("Custom: import a ClusterTune profile file in DeckOS › Settings › Overlay.", Ui.DIM);
+                note("Custom: make your own profile in DeckOS › Settings › Underclocking.", Ui.DIM);
         }
 
         final boolean advanced = Session.prefs().getBoolean(Session.KEY_ADVANCED, false);

@@ -166,6 +166,7 @@
         <file>deckos/screens/settings/general.qml</file>
         <file>deckos/screens/settings/highcontrast.qml</file>
         <file>deckos/screens/settings/ingame.qml</file>
+        <file>deckos/screens/settings/underclock.qml</file>
         <file>deckos/screens/settings/library.qml</file>
         <file>deckos/screens/settings/parts/DeckSettingsPage.qml</file>
         <file>deckos/screens/settings/parts/FolderPicker.qml</file>

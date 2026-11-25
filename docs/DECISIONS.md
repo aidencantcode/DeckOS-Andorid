@@ -177,6 +177,19 @@ Format: `## YYYY-MM-DD — Title` · **Decision** · **Why** · **Alternatives c
   - The owner's account login (stored only in the local `secrets/api-keys.env`, never in the repo) was refused by `ssuserInfos.php`: 403 "Vérifier les identifiants utilisateurs". That is the same answer as with no login at all, so the account may not be activated yet. One request each; no retries, to avoid a lockout.
   - Trailer scraping stays blocked until both work.
 
+## 2026-11-25 — ClusterTune built in: ported, not embedded
+- **Owner request:** bake ClusterTune into DeckOS as a Settings tab with its presets and custom profiles, and keep it updatable from upstream. It's a personal build, and ClusterTune is MIT, so including its code is fine with attribution: `src/backend/deckos/ClusterTune-LICENSE.txt` and the in-app "Based on ClusterTune" row.
+- **Decision:** port its core instead of embedding the app.
+  - ClusterTune is ~25k lines of Kotlin and Jetpack Compose. DeckOS's Qt 5.15 Gradle build has Java 8, `compileSdk` 30 and no Kotlin, so Compose would need a new build (a toolkit change). Its UI is also touch-first.
+  - The detectors, the share-file codec, the presets, the import merge and the apply rules went into C++ (`UnderclockCore`, with unit tests on a fake `/sys` tree), plus a thin Java side for Quick Access and boot.
+  - The map of upstream files to DeckOS files and the update steps are in `docs/clustertune-port.md`.
+- **Applying:** one shell script per apply through PServer, built in C++. Java only runs it, so Quick Access and the boot receiver don't need Qt. C++ hands Java ready-made scripts for Quick Access's steps and for the applied profile.
+  - Upstream's privileged host process with a journaled rollback was not ported. DeckOS reads the limits back 1.5 s later and says on the page if one didn't take.
+  - Caps are made read-only as upstream does, so the vendor's performance modes can't raise them; Stock makes them writable again.
+- **Quick Access keeps the owner's earlier rule:** Stock, the presets, and one profile shown as "Custom", chosen on the page.
+- **Not ported yet:** Auto Tune, per-app automation (DeckOS will do per-game profiles), the sleep profile, history, root (`su`).
+- **Replaced:** 0.0.11's single imported "Custom" profile (`DeviceControl` presets and import) is gone. Settings › Overlay now points to the new page.
+
 ## 2026-11-25 — Upstream bug fixed: PlaytimeStats use-after-free
 - **Found:** Linux CI (qmake job) segfaulted after `test_Playtime` had passed all 7 cases; the same code had passed one push earlier and 300 local Windows runs → timing-dependent. Cause in upstream `PlaytimeStats`: the `QtConcurrent` writer captures `this` and emits `finishedWriting()` as its last step; whoever waits for that signal (the test; in the app, shutdown right after a game session is saved) can destroy the object while the worker is still inside the emit.
 - **Fix:** writer futures are tracked in a `QFutureSynchronizer<void>`; `~PlaytimeStats()` waits for them. No deadlock risk: the writer never waits on the GUI thread. `// DECKOS:` marked; a candidate to offer upstream.

@@ -4,11 +4,8 @@
 //    directly, written through PServer (`settings put system ...`). Values from ClusterTune's HUD code
 //    (performance 0/1/2 = Standard/Performance/High, fan 0 Off, 1 Quiet, 4 Smart, 5 Sport, 6 Custom);
 //    *verify* on each handheld with the device info dump.
-//  - underclocking: each CPU cluster's scaling_max_freq (and optionally the GPU's max_gpuclk), the way
-//    ClusterTune does it - ClusterTune itself has no interface for other apps. Presets are ClusterTune's
-//    (MIT, github.com/AurelioB/ClusterTune, bundled_profiles, v1.3.0) for the chips it ships them for,
-//    otherwise ~85/70/55% steps of each cluster's own frequency table. "Custom" is the first profile of
-//    an imported ClusterTune export file.
+//  - the CPU cluster list for the device info dump (underclocking itself: Underclock.java and C++
+//    deckos/Underclock, ClusterTune built in).
 //  - frame rate: SurfaceFlinger's page-flip counter (`service call SurfaceFlinger 1013`), sampled once a
 //    second by a small loop started through PServer, only while the HUD shows it.
 //  - a device info dump (Settings > System) to confirm all of the above on real hardware.
@@ -49,11 +46,6 @@ final class DeviceControl {
     static final int FAN_CUSTOM = 6;
     static final int[] FAN_VALUES = { 1, 4, 5, FAN_CUSTOM };
     static final String[] FAN_LABELS = { "Quiet", "Smart", "Sport", "Max" };
-
-    static final String[] UC_LABELS = { "Stock", "Small", "Medium", "Large", "Custom" };
-    static final String PREF_UC_LEVEL = "uc_level";
-    static final String PREF_UC_CUSTOM = "uc_custom";      // ClusterTune profile JSON
-    static final String PREF_GPU_STOCK = "gpu_stock_hz";
 
     private static final String CPUFREQ = "/sys/devices/system/cpu/cpufreq";
     private static final String KGSL = "/sys/class/kgsl/kgsl-3d0";
@@ -153,7 +145,7 @@ final class DeviceControl {
     }
 
 
-    // --- underclocking -----------------------------------------------------------------------------
+    // --- CPU clusters (device info) ----------------------------------------------------------------
 
     static final class Policy {
         int id;
@@ -191,134 +183,6 @@ final class DeviceControl {
         java.util.Collections.sort(out, (a, b) -> a.id - b.id);
         return out;
     }
-
-    /// ClusterTune's bundled presets (policy -> kHz) for level 1-3, or null for other chips
-    private static Map<Integer, Integer> bundled(String soc, int level) {
-        int[][] table = null;
-        int[] ids = null;
-        if ("CQ8725S".equalsIgnoreCase(soc)) { // Snapdragon 8 Elite (Odin 3)
-            ids = new int[] { 0, 6 };
-            table = new int[][] { { 2745600, 3072000 }, { 2227200, 2246400 }, { 1785600, 1958400 } };
-        }
-        else if ("QCS8550".equalsIgnoreCase(soc)) { // Snapdragon 8 Gen 2 (Odin 2 family, Thor)
-            ids = new int[] { 0, 3, 7 };
-            table = new int[][] { { 1785600, 2323200, 2476800 }, { 1555200, 2054400, 2092800 }, { 1459200, 1785600, 1843200 } };
-        }
-        if (table == null || level < 1 || level > 3) return null;
-        Map<Integer, Integer> m = new HashMap<>();
-        for (int i = 0; i < ids.length; i++) m.put(ids[i], table[level - 1][i]);
-        return m;
-    }
-
-    /// policy -> kHz for a level (1 small .. 3 large; 4 = custom), null when there's nothing to apply
-    static Map<Integer, Integer> targets(Context ctx, int level, List<Policy> pols) {
-        if (level == 4) return customTargets(ctx);
-        Map<Integer, Integer> m = bundled(socModel(), level);
-        if (m != null) {
-            // only if every frequency exists on this device (the same check ClusterTune makes)
-            for (Policy p : pols) {
-                Integer f = m.get(p.id);
-                if (f != null && p.freqs.length > 0 && Arrays.binarySearch(p.freqs, f) < 0) { m = null; break; }
-            }
-        }
-        if (m != null) return m;
-        float[] share = { 1f, 0.85f, 0.70f, 0.55f };
-        m = new HashMap<>();
-        for (Policy p : pols) {
-            int want = Math.round(p.hwMax * share[Math.max(0, Math.min(3, level))]);
-            int pick = p.hwMax;
-            for (int f : p.freqs) if (f <= want) pick = f;
-            if (p.freqs.length == 0) pick = want;
-            m.put(p.id, pick);
-        }
-        return m;
-    }
-
-    static Map<Integer, Integer> customTargets(Context ctx) {
-        JSONObject prof = customProfile(ctx);
-        if (prof == null) return null;
-        Map<Integer, Integer> m = new HashMap<>();
-        JSONObject f = prof.optJSONObject("maxFrequencies");
-        if (f == null) return null;
-        Iterator<String> it = f.keys();
-        while (it.hasNext()) {
-            String k = it.next();
-            int v = f.optInt(k, 0);
-            if (v > 0) {
-                try { m.put(Integer.parseInt(k), v); } catch (NumberFormatException ignored) {}
-            }
-        }
-        return m.isEmpty() ? null : m;
-    }
-
-    static JSONObject customProfile(Context ctx) {
-        String s = Session.prefs().getString(PREF_UC_CUSTOM, "");
-        if (s.isEmpty()) return null;
-        try { return new JSONObject(s); } catch (Exception e) { return null; }
-    }
-
-    /// From a ClusterTune export ({profiles:[{name, maxFrequencies:{policy: kHz}, gpuMaxFrequencyHz}]}):
-    /// keeps the first profile as "Custom". Returns its name, or an error starting with "!".
-    static String importClusterTune(String json) {
-        try {
-            JSONObject root = new JSONObject(json);
-            org.json.JSONArray list = root.optJSONArray("profiles");
-            if (list == null || list.length() == 0) return "!No profiles in that file";
-            JSONObject first = list.getJSONObject(0);
-            if (first.optJSONObject("maxFrequencies") == null) return "!The first profile has no frequencies";
-            Session.prefs().edit().putString(PREF_UC_CUSTOM, first.toString()).apply();
-            return first.optString("name", "Custom");
-        }
-        catch (Exception e) {
-            return "!Not a ClusterTune profile file";
-        }
-    }
-
-    static int underclockLevel() {
-        return Session.prefs().getInt(PREF_UC_LEVEL, 0);
-    }
-
-    static boolean hasUnderclock() {
-        return !policies().isEmpty() && Privileged.available();
-    }
-
-    /// 0 = stock limits; 1-3 presets; 4 custom
-    static boolean applyUnderclock(Context ctx, int level) {
-        List<Policy> pols = policies();
-        if (pols.isEmpty()) return false;
-        StringBuilder sh = new StringBuilder();
-        Map<Integer, Integer> t = level > 0 ? targets(ctx, level, pols) : null;
-        if (level > 0 && t == null) return false;
-        for (Policy p : pols) {
-            int f = p.hwMax;
-            if (t != null && t.containsKey(p.id)) f = Math.min(p.hwMax, t.get(p.id));
-            sh.append("echo ").append(f).append(" > ").append(p.path).append("/scaling_max_freq\n");
-        }
-        // the GPU only for a custom profile that sets it; back to the saved stock value otherwise
-        SharedPreferences prefs = Session.prefs();
-        JSONObject prof = level == 4 ? customProfile(ctx) : null;
-        int gpu = prof != null ? prof.optInt("gpuMaxFrequencyHz", 0) : 0;
-        if (gpu > 0) {
-            if (!prefs.contains(PREF_GPU_STOCK)) {
-                int stock = parseInt(Stats.firstLine(KGSL + "/max_gpuclk"), 0);
-                if (stock > 0) prefs.edit().putInt(PREF_GPU_STOCK, stock).apply();
-            }
-            sh.append("echo ").append(gpu).append(" > ").append(KGSL).append("/max_gpuclk\n");
-        }
-        else if (prefs.contains(PREF_GPU_STOCK)) {
-            sh.append("echo ").append(prefs.getInt(PREF_GPU_STOCK, 0)).append(" > ").append(KGSL).append("/max_gpuclk\n");
-            prefs.edit().remove(PREF_GPU_STOCK).apply();
-        }
-        boolean sent = Privileged.runScript(ctx, "underclock.sh", sh.toString());
-        if (sent) prefs.edit().putInt(PREF_UC_LEVEL, level).apply();
-        return sent;
-    }
-
-    static String underclockName() {
-        int l = underclockLevel();
-        return l > 0 && l < UC_LABELS.length ? UC_LABELS[l] : "";
-    }
-
 
     // --- frame rate --------------------------------------------------------------------------------
 

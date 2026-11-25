@@ -103,6 +103,15 @@
             <meta-data android:name="android.accessibilityservice" android:resource="@xml/deckos_accessibility" />
         </service>
 
+        <!-- DECKOS: underclocking - the applied profile again after a restart (Settings › Underclocking) -->
+        <receiver
+            android:name="com.deckos.ingame.UnderclockBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="org.pegasus_frontend.android.LaunchFileProvider"
             android:authorities="${applicationId}.files"
@@ -133,6 +142,8 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <!-- DECKOS: underclocking - re-apply the profile after a restart -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />

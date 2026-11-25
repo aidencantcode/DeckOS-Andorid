@@ -153,7 +153,7 @@ public class SessionService extends Service {
     /// "High Performance · Fan Smart · CPU Medium" for the HUD (AYN / Retroid only; empty elsewhere)
     private String profileLine() {
         StringBuilder b = new StringBuilder();
-        String perf = DeviceControl.perfName(this), fan = DeviceControl.fanName(this), uc = DeviceControl.underclockName();
+        String perf = DeviceControl.perfName(this), fan = DeviceControl.fanName(this), uc = Underclock.activeLabel();
         if (!perf.isEmpty()) b.append(perf);
         if (!fan.isEmpty()) b.append(b.length() > 0 ? " · " : "").append("Fan ").append(fan);
         if (!uc.isEmpty()) b.append(b.length() > 0 ? " · " : "").append("CPU ").append(uc);

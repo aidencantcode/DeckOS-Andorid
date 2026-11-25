@@ -144,14 +144,9 @@ DeckSettingsPage {
         r.push({ type: "info", label: "Performance mode, fan and underclock",
                  desc: function () { return ig && ig.privileged ? "In the quick access menu's Performance tab"
                                                                : "Need the AYN / Retroid system service (PServer), which wasn't found" } })
-        r.push({ type: "button", label: "Import ClusterTune profile…",
-                 desc: function () {
-                     if (ingamePage.importMessage !== "" && ingamePage.importMessage !== "Copied") return ingamePage.importMessage
-                     return "The underclock slider's \"Custom\" step: the first profile of a file exported from ClusterTune"
-                 },
-                 value: function () { return ig && ig.customUnderclock !== "" ? ig.customUnderclock : "None" },
-                 enabled: function () { return !!ig },
-                 activate: function () { ingamePage.importMessage = ""; profilePicker.open() } })
+        r.push({ type: "button", label: "Underclocking profiles",
+                 desc: "ClusterTune is built in: its presets, your own profiles and ClusterTune files are in Settings › Underclocking",
+                 activate: function () { if (typeof theme !== "undefined" && theme) theme.openSettingsPage("settings/underclock.qml") } })
         r.push({ type: "button", label: "Device info",
                  desc: "Model, chip, system service, vendor settings and sensors - to check a new handheld",
                  enabled: function () { return !!ig },
@@ -172,18 +167,4 @@ DeckSettingsPage {
     }
 
     rows: (showingInfo, buildRows())
-
-    FolderPicker {
-        id: profilePicker
-        title: "Import a ClusterTune profile"
-        hint: "In ClusterTune, share or export your profiles to a file first. Open folders with A, go back with B, and pick the .json file."
-        filesMode: true
-        fileExtensions: [".json", ".JSON", ".txt"]
-        onPicked: {
-            var err = ingamePage.ig ? ingamePage.ig.importClusterTune(path) : "Not available"
-            ingamePage.importMessage = err === "" ? "Imported - \"Custom\" uses it now" : err
-            goToZone(1)
-        }
-        onClosed: goToZone(1)
-    }
 }

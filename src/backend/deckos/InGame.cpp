@@ -187,7 +187,6 @@ bool InGame::shortcutEnabled() const { DECKOS_GET(jni_bool("shortcutServiceEnabl
 int InGame::hudPosition() const { DECKOS_GET(jni_int("hudPosition"), m_pc_hud_pos); }
 bool InGame::showFps() const { DECKOS_GET(jni_bool("showFps"), m_pc_fps); }
 bool InGame::privileged() const { DECKOS_GET(jni_bool("privilegedAvailable"), false); }
-QString InGame::customUnderclock() const { DECKOS_GET(jni_string("customUnderclockName"), QString()); }
 bool InGame::launchCover() const { DECKOS_GET(jni_bool("launchCover"), m_pc_cover); }
 int InGame::launchCoverSeconds() const { DECKOS_GET(jni_int("launchCoverSeconds"), m_pc_cover_seconds); }
 bool InGame::launchCoverPossible() const { DECKOS_GET(jni_bool("launchCoverPossible"), qEnvironmentVariableIsSet("DECKOS_COVER_DUMP")); }
@@ -282,27 +281,6 @@ QString InGame::deviceInfo() const
 #else
     return QStringLiteral("DeckOS device info\nPC build: the in-game layer, PServer and vendor modes are Android only.\n");
 #endif
-}
-
-QString InGame::importClusterTune(const QString& path)
-{
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly))
-        return tr("Can't read %1").arg(QFileInfo(path).fileName());
-    if (file.size() > 1024 * 1024)
-        return tr("That file is too big to be a ClusterTune profile");
-    const QString json = QString::fromUtf8(file.readAll());
-#ifdef Q_OS_ANDROID
-    const QString result = QAndroidJniObject::callStaticObjectMethod(JNI_SESSION, "importClusterTune",
-        "(Ljava/lang/String;)Ljava/lang/String;", QAndroidJniObject::fromString(json).object<jstring>()).toString();
-#else
-    // PC: check the file the same way, nothing to store it for
-    const QJsonArray profiles = QJsonDocument::fromJson(json.toUtf8()).object().value(QLatin1String("profiles")).toArray();
-    const QString result = profiles.isEmpty() ? QStringLiteral("!No profiles in that file")
-                                              : profiles.first().toObject().value(QLatin1String("name")).toString();
-#endif
-    emit changed();
-    return result.startsWith(QLatin1Char('!')) ? result.mid(1) : QString();
 }
 
 void InGame::beginSession()
