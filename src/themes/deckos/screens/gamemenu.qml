@@ -317,6 +317,10 @@ FocusScope {
                 ? Math.max(parent.height * 1.5,
                            zone1.height + zone2.height + zone2_5.height +
                            zone3Tabs.height + 40 + yourStuffContent.realHeight + 120)
+                : zone3Tabs.currentIndex === 0 // DECKOS: ACTIVITY is as tall as its feed
+                ? Math.max(parent.height * 1.5,
+                           zone1.height + zone2.height + zone2_5.height +
+                           zone3Tabs.height + 40 + activityContent.height + 160)
                 : parent.height * 1.5
                   // DECKOS: +260 while the ACHIEVEMENTS tab is open, so the locked row can scroll above the footer
                   + (zone3Tabs.currentIndex === root.achievementsTab ? 260 : 0)
@@ -906,14 +910,34 @@ FocusScope {
         }
 
         Keys.onUpPressed: {
-            root.goToZone(1)
+            // DECKOS: ACTIVITY scrolls back up to the tabs before leaving them
+            var tabsY = zone1.height + zone2.height + zone2_5.height - 330
+            if (currentIndex === 0 && flick.contentY > tabsY + 10) {
+                flick.contentY = Math.max(tabsY, flick.contentY - 400)
+            } else {
+                root.goToZone(1)
+            }
             sNav.stop();
             sNav.play();
             event.accepted = true
         }
 
+        // DECKOS: Y switches the ACTIVITY achievements between list and grid
+        Keys.onPressed: {
+            if (event.isAutoRepeat) return
+            if (currentIndex === 0 && (api.keys.isFilters(event) || event.key === Qt.Key_Y)) {
+                activityContent.toggleView()
+                sTab.play()
+                event.accepted = true
+            }
+        }
+
         Keys.onDownPressed: {
-            if (currentIndex === 1) {
+            if (currentIndex === 0) { // DECKOS: ACTIVITY has no focusable items; Down scrolls through it
+                flick.contentY = Math.min(Math.max(0, flick.contentHeight - flick.height), flick.contentY + 400)
+                sNav.stop();
+                sNav.play();
+            } else if (currentIndex === 1) {
                 if (yourStuffContent.mediaCount > 0) {
                     stuffGrid.forceActiveFocus()
                     var baseOffsetY = zone1.height + zone2.height + zone2_5.height + 50
@@ -951,6 +975,25 @@ FocusScope {
         game: theme ? theme.currentGame : null
         onTabFocusRequested: root.leaveAchievements()
         onLoginRequested: { theme.loginReturnPage = 8; theme.openPage(13) } // DECKOS: our RA sign-in page
+    }
+
+    // DECKOS: ACTIVITY tab content - recent achievements (list or grid, Y) and screenshots
+    GameActivity {
+        id: activityContent
+        anchors {
+            left: zone3.left
+            right: zone3.right
+            top: zone3Tabs.bottom
+            leftMargin: 60
+            rightMargin: 60
+            topMargin: 40
+        }
+        visible: zone3Tabs.currentIndex === 0
+        game: theme ? theme.currentGame : null
+        achievements: raSection._achievements
+        raLoggedIn: raSection._hasCredentials
+        raLoading: raSection._loading || raSection._searching
+        numTotal: raSection._raNumAch
     }
 
 
@@ -1936,7 +1979,7 @@ FocusScope {
                         State {
                             name: "focused"
                             when: topButtonsRow.currentIndex === 0 && topButtonsRow.focus
-                            PropertyChanges { target: searchText; x: targetX; opacity: 1; visible: true }
+                            PropertyChanges { target: searchText; x: searchText.targetX; opacity: 1; visible: true }
                         }
                     ]
 
@@ -1948,7 +1991,7 @@ FocusScope {
                                 PauseAnimation { duration: 150 }
                                 ParallelAnimation {
                                     NumberAnimation { target: searchText; property: "opacity"; to: 1; duration: 200; easing.type: Easing.OutCubic }
-                                    NumberAnimation { target: searchText; property: "x"; to: targetX; duration: 100; easing.type: Easing.OutCubic }
+                                    NumberAnimation { target: searchText; property: "x"; to: searchText.targetX; duration: 100; easing.type: Easing.OutCubic }
                                 }
                             }
                         },
@@ -1957,7 +2000,7 @@ FocusScope {
                             SequentialAnimation {
                                 ParallelAnimation {
                                     NumberAnimation { target: searchText; property: "opacity"; to: 0; duration: 150; easing.type: Easing.InCubic }
-                                    NumberAnimation { target: searchText; property: "x"; to: targetX + 20; duration: 150; easing.type: Easing.InCubic }
+                                    NumberAnimation { target: searchText; property: "x"; to: searchText.targetX + 20; duration: 150; easing.type: Easing.InCubic }
                                 }
                                 PropertyAction { target: searchText; property: "visible"; value: false }
                             }

@@ -142,6 +142,7 @@
         <file>deckos/ra/assets/icons/retroachievements.svg</file>
         <file>deckos/ra/qmldir</file>
         <file>deckos/screens/ProfileBadge.qml</file>
+        <file>deckos/screens/GameActivity.qml</file>
         <file>deckos/screens/downloads.qml</file>
         <file>deckos/screens/exit.qml</file>
         <file>deckos/screens/friends.qml</file>

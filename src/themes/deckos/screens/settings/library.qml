@@ -62,7 +62,7 @@ DeckSettingsPage {
         r.push({ type: "button", label: "Rescan one system…",
                  desc: "Only that system's folder is read again",
                  enabled: function () { return lib.systems.length > 0 && !lib.scanning },
-                 activate: function () { libraryPage.pickingSystem = true; libraryPage.activeItemIndex = 0 } })
+                 activate: function () { libraryPage.returnRow = libraryPage.activeItemIndex; libraryPage.pickingSystem = true; libraryPage.activeItemIndex = 0 } })
         r.push({ type: "toggle", label: "Look for new ROMs on start",
                  desc: "A quick check in the background after DeckOS starts",
                  value: function () { return lib.scanOnStart },
@@ -74,14 +74,90 @@ DeckSettingsPage {
 
     // "Rescan one system": the page shows the systems instead of the settings until one is picked or B
     property bool pickingSystem: false
-    backHandler: function () { if (!pickingSystem) return false; pickingSystem = false; return true }
+    backHandler: function () {
+        if (pickingSystem) { pickingSystem = false; restoreRow(); return true }
+        if (pickingRescrape) { pickingRescrape = false; restoreRow(); return true }
+        return false
+    }
+
+    // the row a picker was opened from, focused again when it closes (after the rows are rebuilt)
+    property int returnRow: 0
+    function restoreRow() {
+        var row = returnRow
+        Qt.callLater(function () { libraryPage.activeItemIndex = row })
+    }
+
+    // "Re-scrape…": pick the collections to re-scrape, or everything
+    property bool pickingRescrape: false
+    property bool rescrapeEverything: true
+    property var rescrapeChosen: ({}) // collection name -> true
+
+    function openRescrapePicker() {
+        returnRow = activeItemIndex
+        rescrapeEverything = true
+        rescrapeChosen = {}
+        pickingRescrape = true
+        activeItemIndex = 0
+    }
+
+    function chosenCollections() {
+        var names = []
+        for (var name in rescrapeChosen)
+            if (rescrapeChosen[name]) names.push(name)
+        return names
+    }
+
+    function rescrapeGameCount() {
+        if (rescrapeEverything) return api.allGames.count
+        var n = 0
+        for (var i = 0; i < api.collections.count; i++) {
+            var c = api.collections.get(i)
+            if (rescrapeChosen[c.name]) n += c.games.count
+        }
+        return n // a game in two picked collections counts twice here; the scraper queues it once
+    }
+
+    function rescrapePickRows() {
+        var r = [{ type: "section", label: "Re-scrape which games?" }]
+        r.push({ type: "toggle", label: "Everything",
+                 desc: api.allGames.count + " games - or turn this off and pick collections below",
+                 value: function () { return libraryPage.rescrapeEverything },
+                 toggle: function () { libraryPage.rescrapeEverything = !libraryPage.rescrapeEverything } })
+        for (var i = 0; i < api.collections.count; i++) {
+            (function (coll) {
+                var name = coll.name
+                r.push({ type: "toggle", label: name,
+                         desc: coll.games.count + (coll.games.count === 1 ? " game" : " games"),
+                         enabled: function () { return !libraryPage.rescrapeEverything },
+                         value: function () { return libraryPage.rescrapeEverything || !!libraryPage.rescrapeChosen[name] },
+                         toggle: function () {
+                             var m = Object.assign({}, libraryPage.rescrapeChosen)
+                             m[name] = !m[name]
+                             libraryPage.rescrapeChosen = m
+                         } })
+            })(api.collections.get(i))
+        }
+        r.push({ type: "button", label: "Start re-scrape", accent: true,
+                 desc: function () {
+                     var n = libraryPage.rescrapeGameCount()
+                     return n === 0 ? "Pick at least one collection"
+                                    : "Replaces scraped artwork and info for " + n + (n === 1 ? " game" : " games")
+                 },
+                 enabled: function () { return libraryPage.rescrapeGameCount() > 0 },
+                 activate: function () {
+                     var names = libraryPage.rescrapeEverything ? [] : libraryPage.chosenCollections()
+                     libraryPage.pickingRescrape = false; libraryPage.restoreRow()
+                     libraryPage.startScrape(false, names)
+                 } })
+        return r
+    }
     function systemPickRows() {
         var r = [{ type: "section", label: "Rescan which system?" }]
         var list = lib.systems
         for (var i = 0; i < list.length; i++) {
             (function (sys) {
                 r.push({ type: "button", label: sys.name, desc: sys.games + (sys.games === 1 ? " game" : " games"),
-                         activate: function () { libraryPage.pickingSystem = false; lib.scan([sys.id]) } })
+                         activate: function () { libraryPage.pickingSystem = false; libraryPage.restoreRow(); lib.scan([sys.id]) } })
             })(list[i])
         }
         return r
@@ -91,6 +167,8 @@ DeckSettingsPage {
         var r = []
         if (lib && pickingSystem)
             return systemPickRows()
+        if (scraper && pickingRescrape)
+            return rescrapePickRows()
         if (lib)
             romFolderRows(r)
         var dirs = Internal.settings.gameDirs
@@ -170,14 +248,10 @@ DeckSettingsPage {
                      value: function () { return scraper.running ? scraper.done + " / " + scraper.total : "" },
                      enabled: function () { return !scraper.running },
                      activate: function () { libraryPage.startScrape(true) } })
-            r.push({ type: "button", label: "Re-scrape every game",
-                     desc: function () { return libraryPage.confirmRescrape ? "Press A again: replaces scraped artwork and info for all games" : "Uses one TheGamesDB lookup per game" },
+            r.push({ type: "button", label: "Re-scrape…",
+                     desc: "Everything, or only the collections you pick. Uses one TheGamesDB lookup per game",
                      enabled: function () { return !scraper.running },
-                     activate: function () {
-                         if (!libraryPage.confirmRescrape) { libraryPage.confirmRescrape = true; return }
-                         libraryPage.confirmRescrape = false
-                         libraryPage.startScrape(false)
-                     } })
+                     activate: function () { libraryPage.openRescrapePicker() } })
             r.push({ type: "button", label: "Stop scraping",
                      enabled: function () { return scraper.running },
                      activate: function () { scraper.cancel() } })
@@ -205,11 +279,10 @@ DeckSettingsPage {
     }
 
     readonly property var scraper: (typeof deckos !== "undefined" && deckos) ? deckos.scraper : null
-    property bool confirmRescrape: false
     property string keysMessage: ""
 
-    function startScrape(onlyMissing) {
-        var n = scraper.scrapeAll(onlyMissing)
+    function startScrape(onlyMissing, collections) {
+        var n = scraper.scrapeAll(onlyMissing, collections || [])
         if (n === 0)
             keysMessage = (scraper.steamGridDbKey === "" && scraper.theGamesDbKey === "" && !scraper.useLibretroThumbnails)
                         ? "Add an API key first" : "Nothing to scrape"

@@ -54,7 +54,8 @@ public:
     Q_INVOKABLE void scrapeGame(QObject* game);
     /// Queues every game; with onlyMissing, only games that lack something and were never tried.
     /// Returns how many games were queued.
-    Q_INVOKABLE int scrapeAll(bool onlyMissing);
+    /// collections: only games in these collections (by name); empty = every game.
+    Q_INVOKABLE int scrapeAll(bool onlyMissing, const QStringList& collections = {});
     Q_INVOKABLE void cancel();
 
     /// <config>/api-keys.env - KEY=VALUE lines (STEAMGRIDDB_API_KEY, THEGAMESDB_API_KEY, RA_USERNAME,

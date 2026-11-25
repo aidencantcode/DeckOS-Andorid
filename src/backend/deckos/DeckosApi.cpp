@@ -11,8 +11,15 @@
 #include "Catalog.h"
 #include "model/gaming/Game.h"
 #include "model/gaming/Collection.h"
+#include "model/gaming/GameFile.h"
+#include "Paths.h"
 
+#include <QDateTime>
+#include <QDir>
+#include <QFileInfo>
 #include <QJsonObject>
+#include <QUrl>
+#include <algorithm>
 
 
 namespace deckos {
@@ -44,6 +51,53 @@ QObject* DeckosApi::raObj() const
 QObject* DeckosApi::ingameObj() const
 {
     return m_ingame;
+}
+
+QVariantList DeckosApi::gameScreenshots(QObject* obj, int limit) const
+{
+    QVariantList out;
+    auto game = qobject_cast<model::Game*>(obj);
+    if (!game || limit <= 0)
+        return out;
+    const auto& files = game->filesModel()->entries();
+    if (files.empty())
+        return out;
+    const QFileInfo rom = files.front()->fileinfo();
+    const QString base = rom.completeBaseName();
+    if (base.isEmpty())
+        return out;
+
+    // RetroArch names screenshots "<content name>-YYMMDD-HHMMSS.png" and saves them next to the content
+    // by default, or in its screenshots folder (checked 2026-11-25 against RetroArch's task_screenshot.c)
+    const QStringList filters {
+        base + QStringLiteral("-*.png"), base + QStringLiteral("-*.jpg"),
+    };
+    QStringList dirs { rom.absolutePath() };
+#ifdef Q_OS_ANDROID
+    dirs << QStringLiteral("/storage/emulated/0/RetroArch/screenshots");
+#endif
+    QVector<QFileInfo> found;
+    for (const QString& path : qAsConst(dirs)) {
+        const QDir dir(path);
+        if (dir.exists())
+            found += dir.entryInfoList(filters, QDir::Files | QDir::Readable).toVector();
+    }
+    const QDir own(paths::writableConfigDir() + QStringLiteral("/deckos/screenshots/") + base);
+    if (own.exists())
+        found += own.entryInfoList({ QStringLiteral("*.png"), QStringLiteral("*.jpg") }, QDir::Files | QDir::Readable).toVector();
+
+    std::sort(found.begin(), found.end(), [](const QFileInfo& a, const QFileInfo& b) {
+        return a.lastModified() > b.lastModified();
+    });
+    for (const QFileInfo& fi : qAsConst(found)) {
+        if (out.size() >= limit)
+            break;
+        QVariantMap entry;
+        entry.insert(QStringLiteral("url"), QUrl::fromLocalFile(fi.absoluteFilePath()).toString());
+        entry.insert(QStringLiteral("time"), fi.lastModified().toMSecsSinceEpoch());
+        out.append(entry);
+    }
+    return out;
 }
 
 void DeckosApi::onGameLaunching(const model::GameFile* file)

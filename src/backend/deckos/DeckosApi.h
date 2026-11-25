@@ -48,6 +48,11 @@ public:
     /// (seconds), otherwise a full scan. Settings > Library > "Reload all games" forces a full scan.
     Q_INVOKABLE void refreshLibrary();
 
+    /// The game's own screenshots, newest first: RetroArch's (named after the ROM, next to it or in
+    /// RetroArch's screenshots folder) and DeckOS's (<config>/deckos/screenshots/<rom name>/).
+    /// Each entry: { url, time (ms since epoch) }. At most `limit`.
+    Q_INVOKABLE QVariantList gameScreenshots(QObject* game, int limit = 12) const;
+
     Scraper* scraper() const { return m_scraper; }
     QObject* scraperObj() const;
     QObject* libraryObj() const;

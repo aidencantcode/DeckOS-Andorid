@@ -1922,7 +1922,7 @@ else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
                         State {
                             name: "focused"
                             when: topButtonsNames.currentIndex === 0 && root.focusZone === 0
-                            PropertyChanges { target: searchText; x: targetX; opacity: 1; visible: true }
+                            PropertyChanges { target: searchText; x: searchText.targetX; opacity: 1; visible: true }
                         }
                     ]
 
@@ -1934,7 +1934,7 @@ else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
                                 PauseAnimation { duration: 150 }
                                 ParallelAnimation {
                                     NumberAnimation { target: searchText; property: "opacity"; to: 1; duration: 200; easing.type: Easing.OutCubic }
-                                    NumberAnimation { target: searchText; property: "x"; to: targetX; duration: 200; easing.type: Easing.OutCubic }
+                                    NumberAnimation { target: searchText; property: "x"; to: searchText.targetX; duration: 200; easing.type: Easing.OutCubic }
                                 }
                             }
                         },
@@ -1943,7 +1943,7 @@ else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
                             SequentialAnimation {
                                 ParallelAnimation {
                                     NumberAnimation { target: searchText; property: "opacity"; to: 0; duration: 150; easing.type: Easing.InCubic }
-                                    NumberAnimation { target: searchText; property: "x"; to: targetX + 20; duration: 150; easing.type: Easing.InCubic }
+                                    NumberAnimation { target: searchText; property: "x"; to: searchText.targetX + 20; duration: 150; easing.type: Easing.InCubic }
                                 }
                                 PropertyAction { target: searchText; property: "visible"; value: false }
                             }

@@ -15,6 +15,7 @@
 #include "types/AssetType.h"
 
 #include <QDateTime>
+#include <algorithm>
 #include <QDate>
 #include <QDir>
 #include <QFile>
@@ -467,7 +468,7 @@ void Scraper::scrapeGame(QObject* obj)
     enqueue(job, true);
 }
 
-int Scraper::scrapeAll(bool only_missing)
+int Scraper::scrapeAll(bool only_missing, const QStringList& collections)
 {
     if (m_sgdb_key.isEmpty() && m_tgdb_key.isEmpty() && !m_libretro)
         return 0;
@@ -478,6 +479,14 @@ int Scraper::scrapeAll(bool only_missing)
         const QString key = GameOverrides::keyFor(*game);
         if (key.isEmpty() || m_queued_keys.contains(key))
             continue;
+        if (!collections.isEmpty()) { // DECKOS: "Re-scrape" limited to the chosen collections
+            const auto& in = game->collectionsModel()->entries();
+            const bool picked = std::any_of(in.cbegin(), in.cend(), [&collections](const model::Collection* c) {
+                return collections.contains(c->name());
+            });
+            if (!picked)
+                continue;
+        }
         if (only_missing) {
             // Android apps and other entries without a ROM file: only on request
             if (key.startsWith(QLatin1String("uri:")))
