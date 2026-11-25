@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.0.5 — 2026-11-25
 **Faster starts and a quick Refresh.** DeckOS now starts from the saved game list and only does a full scan when a game folder actually changed.
 
 ### Test checklist
