@@ -1,6 +1,10 @@
 buildscript {
+    // DECKOS: Google's mirror of Maven Central first - Maven Central itself rate-limits GitHub's build
+    // machines (HTTP 429), which failed the APK build before any code was compiled
     repositories {
         google()
+        maven { url 'https://maven-central.storage-download.googleapis.com/maven2/' }
+        mavenCentral()
         jcenter()
     }
 
@@ -11,6 +15,8 @@ buildscript {
 
 repositories {
     google()
+    maven { url 'https://maven-central.storage-download.googleapis.com/maven2/' } // DECKOS: see above
+    mavenCentral()
     jcenter()
 }
 

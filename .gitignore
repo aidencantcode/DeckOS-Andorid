@@ -26,3 +26,6 @@ build*/
 /reference/
 /third_party_refs/
 /toolchain/
+
+# DECKOS: local Gradle state (IDE tooling) next to the Android build files
+src/app/platform/android/.gradle/

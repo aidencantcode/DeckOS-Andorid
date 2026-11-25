@@ -67,6 +67,17 @@ jobs:
           if [ -z "$KEYSTORE_B64" ]; then echo "::error::Repo secret DECKOS_KEYSTORE_B64 is missing (docs/13-release-flow.md)"; exit 1; fi
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/deckos.p12"
 
+      # Gradle's downloads (Android build tools and their libraries) kept between runs, so a build
+      # doesn't depend on Maven Central answering every time (it rate-limits GitHub's machines)
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('src/app/platform/android/build.gradle', 'src/app/platform/android/gradle.properties') }}
+          restore-keys: gradle-
+
       - name: Package (signed)
         env:
           KS_PASS: ${{ secrets.DECKOS_KEYSTORE_PASSWORD }}
