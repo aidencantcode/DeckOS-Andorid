@@ -1,7 +1,8 @@
-# DeckOS services
+# DeckOS services (keep in step with deckos.pri)
 target_sources(pegasus-backend PRIVATE
     Catalog.cpp
     Catalog.h
+    ClusterTunePresets.h
     DeckosApi.cpp
     DeckosApi.h
     GameOverrides.cpp
@@ -14,4 +15,8 @@ target_sources(pegasus-backend PRIVATE
     RomLibrary.h
     Scraper.cpp
     Scraper.h
+    Underclock.cpp
+    Underclock.h
+    UnderclockCore.cpp
+    UnderclockCore.h
 )
