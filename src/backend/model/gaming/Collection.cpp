@@ -53,6 +53,17 @@ Collection& Collection::setGames(std::vector<model::Game*>&& games)
     return *this;
 }
 
+Collection& Collection::setName(const QString& new_name)
+{
+    if (new_name.isEmpty() || new_name == m_data.name)
+        return *this;
+    if (m_data.sort_by == m_data.name)
+        m_data.sort_by = new_name;
+    m_data.name = new_name;
+    emit nameChanged();
+    return *this;
+}
+
 Collection& Collection::addGames(const std::vector<model::Game*>& added)
 {
     if (!m_games)

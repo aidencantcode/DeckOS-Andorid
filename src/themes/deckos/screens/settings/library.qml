@@ -76,7 +76,6 @@ DeckSettingsPage {
     property bool pickingSystem: false
     backHandler: function () {
         if (pickingSystem) { pickingSystem = false; restoreRow(); return true }
-        if (pickingRescrape) { pickingRescrape = false; restoreRow(); return true }
         return false
     }
 
@@ -87,70 +86,6 @@ DeckSettingsPage {
         Qt.callLater(function () { libraryPage.activeItemIndex = row })
     }
 
-    // "Re-scrape…": pick the collections to re-scrape, or everything
-    property bool pickingRescrape: false
-    property bool rescrapeEverything: true
-    property var rescrapeChosen: ({}) // collection name -> true
-
-    function openRescrapePicker() {
-        returnRow = activeItemIndex
-        rescrapeEverything = true
-        rescrapeChosen = {}
-        pickingRescrape = true
-        activeItemIndex = 0
-    }
-
-    function chosenCollections() {
-        var names = []
-        for (var name in rescrapeChosen)
-            if (rescrapeChosen[name]) names.push(name)
-        return names
-    }
-
-    function rescrapeGameCount() {
-        if (rescrapeEverything) return api.allGames.count
-        var n = 0
-        for (var i = 0; i < api.collections.count; i++) {
-            var c = api.collections.get(i)
-            if (rescrapeChosen[c.name]) n += c.games.count
-        }
-        return n // a game in two picked collections counts twice here; the scraper queues it once
-    }
-
-    function rescrapePickRows() {
-        var r = [{ type: "section", label: "Re-scrape which games?" }]
-        r.push({ type: "toggle", label: "Everything",
-                 desc: api.allGames.count + " games - or turn this off and pick collections below",
-                 value: function () { return libraryPage.rescrapeEverything },
-                 toggle: function () { libraryPage.rescrapeEverything = !libraryPage.rescrapeEverything } })
-        for (var i = 0; i < api.collections.count; i++) {
-            (function (coll) {
-                var name = coll.name
-                r.push({ type: "toggle", label: name,
-                         desc: coll.games.count + (coll.games.count === 1 ? " game" : " games"),
-                         enabled: function () { return !libraryPage.rescrapeEverything },
-                         value: function () { return libraryPage.rescrapeEverything || !!libraryPage.rescrapeChosen[name] },
-                         toggle: function () {
-                             var m = Object.assign({}, libraryPage.rescrapeChosen)
-                             m[name] = !m[name]
-                             libraryPage.rescrapeChosen = m
-                         } })
-            })(api.collections.get(i))
-        }
-        r.push({ type: "button", label: "Start re-scrape", accent: true,
-                 desc: function () {
-                     var n = libraryPage.rescrapeGameCount()
-                     return n === 0 ? "Pick at least one collection"
-                                    : "Replaces scraped artwork and info for " + n + (n === 1 ? " game" : " games")
-                 },
-                 enabled: function () { return libraryPage.rescrapeGameCount() > 0 },
-                 activate: function () {
-                     var names = libraryPage.rescrapeEverything ? [] : libraryPage.chosenCollections()
-                     libraryPage.pickingRescrape = false; libraryPage.restoreRow()
-                     libraryPage.startScrape(false, names)
-                 } })
-        return r
-    }
     function systemPickRows() {
         var r = [{ type: "section", label: "Rescan which system?" }]
         var list = lib.systems
@@ -167,8 +102,6 @@ DeckSettingsPage {
         var r = []
         if (lib && pickingSystem)
             return systemPickRows()
-        if (scraper && pickingRescrape)
-            return rescrapePickRows()
         if (lib)
             romFolderRows(r)
         var dirs = Internal.settings.gameDirs
@@ -250,50 +183,15 @@ DeckSettingsPage {
                      activate: function () { libraryPage.folderMessage = ""; mediaPicker.open() } })
         }
 
-        if (scraper) {
-            r.push({ type: "section", label: "Artwork and game info" })
-            r.push({ type: "toggle", label: "Auto-scrape new games",
-                     desc: "After the library loads, fetch artwork and descriptions for games that have none",
-                     value: function () { return scraper.autoScrape },
-                     toggle: function () { scraper.autoScrape = !scraper.autoScrape } })
-            r.push({ type: "button", label: "Scrape games with missing artwork or info",
-                     desc: function () { return scraper.running ? scraper.status : (scraper.status !== "" ? scraper.status : "Games scraped before are skipped") },
-                     value: function () { return scraper.running ? scraper.done + " / " + scraper.total : "" },
-                     enabled: function () { return !scraper.running },
-                     activate: function () { libraryPage.startScrape(true) } })
-            r.push({ type: "button", label: "Re-scrape…",
-                     desc: "Everything, or only the collections you pick. Uses one TheGamesDB lookup per game",
-                     enabled: function () { return !scraper.running },
-                     activate: function () { libraryPage.openRescrapePicker() } })
-            r.push({ type: "button", label: "Stop scraping",
-                     enabled: function () { return scraper.running },
-                     activate: function () { scraper.cancel() } })
-            r.push({ type: "toggle", label: "Descriptions",
-                     desc: "Also fetch descriptions and release dates (TheGamesDB)",
-                     value: function () { return scraper.fetchDescriptions },
-                     toggle: function () { scraper.fetchDescriptions = !scraper.fetchDescriptions } })
-            r.push({ type: "toggle", label: "libretro thumbnails",
-                     desc: "Box art and screenshots by ROM file name, no key needed",
-                     value: function () { return scraper.useLibretroThumbnails },
-                     toggle: function () { scraper.useLibretroThumbnails = !scraper.useLibretroThumbnails } })
-            r.push({ type: "button", label: "SteamGridDB API key",
-                     desc: "Covers, heroes and logos. Free key: steamgriddb.com > Preferences > API",
-                     value: function () { return scraper.steamGridDbKey !== "" ? "Set" : "Not set" },
-                     activate: function () { keyEntry.target = "sgdb"; keyEntry.title = "SteamGridDB API key"; keyEntry.open(scraper.steamGridDbKey) } })
-            r.push({ type: "button", label: "TheGamesDB API key",
-                     desc: function () { return scraper.theGamesDbAllowance >= 0 ? scraper.theGamesDbAllowance + " lookups left this month" : "Descriptions, release dates and box art" },
-                     value: function () { return scraper.theGamesDbKey !== "" ? "Set" : "Not set" },
-                     activate: function () { keyEntry.target = "tgdb"; keyEntry.title = "TheGamesDB API key"; keyEntry.open(scraper.theGamesDbKey) } })
-            r.push({ type: "button", label: "Load keys from a file",
-                     desc: function () { return libraryPage.keysMessage !== "" ? libraryPage.keysMessage : "Reads " + scraper.keysFilePath() },
-                     activate: function () { libraryPage.importKeys() } })
-        }
+        // DECKOS: scraping has its own tab now (settings/scraping.qml)
+        r.push({ type: "section", label: "Artwork and game info" })
+        r.push({ type: "button", label: "Scraping…",
+                 desc: "Scrape and re-scrape artwork, the sources and the API keys",
+                 activate: function () { if (theme) theme.openSettingsPage("settings/scraping.qml") } })
         return r
     }
 
-    readonly property var scraper: (typeof deckos !== "undefined" && deckos) ? deckos.scraper : null
     readonly property var media: (typeof deckos !== "undefined" && deckos) ? deckos.media : null
-    property string keysMessage: ""
     property string folderMessage: ""
 
     function useFolder(path) {
@@ -303,20 +201,6 @@ DeckSettingsPage {
         goToZone(1)
     }
 
-    function startScrape(onlyMissing, collections) {
-        var n = scraper.scrapeAll(onlyMissing, collections || [])
-        if (n === 0)
-            keysMessage = (scraper.steamGridDbKey === "" && scraper.theGamesDbKey === "" && !scraper.useLibretroThumbnails)
-                        ? "Add an API key first" : "Nothing to scrape"
-    }
-
-    function importKeys() {
-        var th = (typeof theme !== "undefined" && theme) ? theme : null
-        var res = th ? th.importKeysFile() : scraper.importKeys() // DECKOS: the same import as at start
-        if (res.error) { keysMessage = res.error; return }
-        keysMessage = res.found === 0 ? "No keys found in " + res.path
-                    : res.found + (res.found === 1 ? " key" : " keys") + " loaded" + (res.raUser ? " (RetroAchievements account too)" : "")
-    }
 
     // re-built whenever the folder list, Android grants or the reload hint change
     rows: (Internal.settings.gameDirs, Internal.settings.androidGrantedDirs, needsReload, providerList.count,
@@ -365,18 +249,5 @@ DeckSettingsPage {
             goToZone(1) // focus back to the settings screen
         }
         onClosed: goToZone(1)
-    }
-
-    TextEntry {
-        id: keyEntry
-        property string target: ""
-        secret: true
-        maxLength: 128
-        hint: "Paste it with Y if you copied it on this device."
-        onAccepted: {
-            if (target === "sgdb") scraper.steamGridDbKey = text
-            else if (target === "tgdb") scraper.theGamesDbKey = text
-            goToZone(1)
-        }
     }
 }

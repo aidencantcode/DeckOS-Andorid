@@ -55,6 +55,10 @@ DeckSettingsPage {
             r.push({ type: "toggle", label: "Fullscreen",
                      value: function () { return Internal.settings.fullscreen },
                      toggle: function () { Internal.settings.fullscreen = !Internal.settings.fullscreen } })
+        // DECKOS: was the only option of the Power tab
+        r.push({ type: "toggle", label: "Show battery percent", desc: "Show the battery percentage on the top bar",
+                 value: function () { return th ? th.showBatteryPercent : true },
+                 toggle: function () { if (th) th.showBatteryPercent = !th.showBatteryPercent } }) // the theme saves it
         r.push({ type: "toggle", label: "Mouse and touch",
                  desc: "Show the pointer and react to clicks and taps",
                  value: function () { return Internal.settings.mouseSupport },

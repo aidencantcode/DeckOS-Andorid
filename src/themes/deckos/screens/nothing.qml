@@ -846,7 +846,7 @@ Keys.onPressed: {
         else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
     if (currentIndex === 7) { // Close button
         toggle() // Закрываем левое меню
-        root.closeMenuVisible = true // Открываем CloseMenu
+        theme.openPowerMenu() /* DECKOS: one Close menu (theme.qml) */ // Открываем CloseMenu
         focusTimer.start()
     } else {
         theme.openPage(currentIndex)
@@ -1000,7 +1000,7 @@ Item {
             if (buttonIndex === 7) { // Close button
                 leftBar.toggle() // Закрываем левое меню
                 closeMenu.forceActiveFocus()
-                closeMenuVisible = true // Открываем CloseMenu
+                theme.openPowerMenu() /* DECKOS: one Close menu (theme.qml) */ // Открываем CloseMenu
             } else {
                 theme.openPage(buttonIndex)
                 leftBar.toggle()

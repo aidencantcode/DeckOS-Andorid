@@ -41,12 +41,35 @@ FocusScope {
     readonly property bool gridActiveFocus: {
         if (typeof _earnedListView !== "undefined" && _earnedListView.activeFocus) return true
             if (typeof _lockedListView !== "undefined" && _lockedListView.activeFocus) return true
+            if (typeof _achList !== "undefined" && _achList.activeFocus) return true
                 return false
     }
     readonly property bool hasGrid: true
     readonly property var currentGame: null
 
+    // DECKOS: "list" (one row per achievement, like Steam's achievements page) or "grid" (BigScreenFE's
+    // badge strips). Y or the icons switch; remembered for every game.
+    property string viewMode: api.memory.has("achievementsView") ? api.memory.get("achievementsView") : "list"
+    onViewModeChanged: api.memory.set("achievementsView", viewMode)
+    function toggleView() {
+        var hadFocus = gridActiveFocus
+        viewMode = viewMode === "list" ? "grid" : "list"
+        if (hadFocus) Qt.callLater(gridFocusAtZero)
+    }
+    function earnedText(s) {
+        var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || "")
+        if (!m) return s || ""
+        return Qt.formatDate(new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3])), "MMM d, yyyy")
+    }
+
     function gridFocusAtZero() {
+        if (viewMode === "list") {
+            if (_achievements.length > 0) {
+                _achList.currentIndex = 0
+                _achList.forceActiveFocus()
+            }
+            return
+        }
         if (_earnedList.length > 0) {
             root._activeSection = "earned"
             _earnedListView.forceActiveFocus()
@@ -888,12 +911,49 @@ FocusScope {
         }
     }
 
+    // DECKOS: list / grid switch (Y), like the ACTIVITY tab's
+    Row {
+        anchors { top: parent.top; right: parent.right }
+        spacing: vpx(8)
+        z: 2
+        visible: _errorMsg === "" && !_searching && !_loading && _raNumAch > 0
+        Rectangle {
+            width: vpx(24); height: vpx(24); radius: vpx(12)
+            color: "white"
+            anchors.verticalCenter: parent.verticalCenter
+            Text { anchors.centerIn: parent; text: "Y"; color: "#0e141b"; font.pixelSize: vpx(14); font.bold: true; font.family: global.fonts.sans }
+        }
+        Repeater {
+            model: [["list", "List"], ["grid", "Grid"]]
+            Rectangle {
+                width: _viewLabel.implicitWidth + vpx(22)
+                height: vpx(26)
+                radius: vpx(13)
+                color: root.viewMode === modelData[0] ? _bgHighlight : "transparent"
+                border.width: vpx(1)
+                border.color: _bgHighlight
+                Text {
+                    id: _viewLabel
+                    anchors.centerIn: parent
+                    text: modelData[1]
+                    color: root.viewMode === modelData[0] ? _textPrimary : "#8b929a"
+                    font.pixelSize: vpx(14); font.bold: true; font.family: global.fonts.sans
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: if (root.viewMode !== modelData[0]) root.toggleView()
+                }
+            }
+        }
+    }
+
     Column {
         anchors { top: parent.top; left: parent.left; right: parent.right }
         spacing: vpx(12)
         visible: _errorMsg === ""
 
         Column {
+            id: _headerCol
             width: parent.width
             spacing: vpx(6)
 
@@ -965,10 +1025,123 @@ FocusScope {
             }
         }
 
+        // DECKOS: list mode - every achievement in a row, unlocked first (Steam's achievements page)
+        Item {
+            width: parent.width
+            height: Math.max(vpx(200), root.height - _headerCol.height - vpx(12))
+            visible: root.viewMode === "list" && root._achievements.length > 0
+
+            ListView {
+                id: _achList
+                anchors.fill: parent
+                clip: true
+                spacing: vpx(6)
+                focus: root.viewMode === "list"
+                keyNavigationEnabled: false
+                model: root.viewMode === "list" ? root._achievements : []
+                highlightMoveDuration: 150
+                highlightRangeMode: ListView.ApplyRange
+                preferredHighlightBegin: height * 0.15
+                preferredHighlightEnd: height * 0.85
+
+                Keys.onUpPressed: {
+                    event.accepted = true
+                    if (currentIndex > 0) { currentIndex--; try { sNav.stop(); sNav.play() } catch (e) {} }
+                    else root.tabFocusRequested()
+                }
+                Keys.onDownPressed: {
+                    event.accepted = true
+                    if (currentIndex < count - 1) { currentIndex++; try { sNav.stop(); sNav.play() } catch (e) {} }
+                }
+                Keys.onLeftPressed: { event.accepted = true }
+                Keys.onRightPressed: { event.accepted = true }
+                Keys.onPressed: {
+                    if (event.isAutoRepeat) return
+                    if (api.keys.isFilters(event) || event.key === Qt.Key_Y) { event.accepted = true; root.toggleView() }
+                    else if (api.keys.isCancel(event)) { event.accepted = true; root.tabFocusRequested() }
+                    else if (api.keys.isPageDown(event) || api.keys.isNextPage(event)) { event.accepted = true; currentIndex = Math.min(count - 1, currentIndex + 5) }
+                    else if (api.keys.isPageUp(event) || api.keys.isPrevPage(event)) { event.accepted = true; currentIndex = Math.max(0, currentIndex - 5) }
+                }
+
+                delegate: Rectangle {
+                    id: _row
+                    readonly property bool _sel: ListView.isCurrentItem && _achList.activeFocus
+                    readonly property var _a: modelData || {}
+                    width: _achList.width
+                    height: vpx(84)
+                    radius: vpx(3)
+                    color: _sel ? _bgHighlight : "#23262e"
+                    border.width: _sel ? vpx(2) : 0
+                    border.color: _textPrimary
+
+                    Image {
+                        id: _rowBadge
+                        x: vpx(10)
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: vpx(64); height: vpx(64)
+                        source: _row._a.earned ? (_row._a.badgeUrl || "") : (_row._a.badgeLocked || "")
+                        sourceSize.width: 128
+                        asynchronous: true
+                        fillMode: Image.PreserveAspectFit
+                        layer.enabled: !_row._a.earned
+                        layer.effect: Desaturate { desaturation: 0.85 }
+                        Rectangle { anchors.fill: parent; color: _bgCard; visible: parent.status !== Image.Ready }
+                    }
+                    Column {
+                        anchors.left: _rowBadge.right
+                        anchors.leftMargin: vpx(14)
+                        anchors.right: _rowRight.left
+                        anchors.rightMargin: vpx(14)
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: vpx(3)
+                        Text {
+                            width: parent.width
+                            text: _row._a.title || ""
+                            color: _row._a.earned ? _textPrimary : _textMuted
+                            font.pixelSize: vpx(16); font.bold: true; font.family: global.fonts.sans
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            width: parent.width
+                            text: _row._a.description || ""
+                            color: "#8b929a"
+                            font.pixelSize: vpx(13); font.family: global.fonts.sans
+                            elide: Text.ElideRight
+                        }
+                    }
+                    Column {
+                        id: _rowRight
+                        anchors.right: parent.right
+                        anchors.rightMargin: vpx(14)
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: vpx(3)
+                        Text {
+                            anchors.right: parent.right
+                            text: _row._a.earned ? "Unlocked " + root.earnedText(_row._a.dateEarned)
+                                 : (root._raPlayers > 0 ? Math.round((_row._a.numAwarded || 0) / root._raPlayers * 100) + "% of players" : "Locked")
+                            color: _row._a.earned ? "#c7d0d9" : "#8b929a"
+                            font.pixelSize: vpx(13); font.family: global.fonts.sans
+                        }
+                        Text {
+                            anchors.right: parent.right
+                            visible: (_row._a.points || 0) > 0
+                            text: (_row._a.points || 0) + " pts"
+                            color: _row._a.earned ? "#e8b84a" : _textDim
+                            font.pixelSize: vpx(13); font.bold: true; font.family: global.fonts.sans
+                        }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: { _achList.currentIndex = index; _achList.forceActiveFocus() }
+                    }
+                }
+            }
+        }
+
         Column {
             width: parent.width
             spacing: vpx(6)
-            visible: root._earnedList.length > 0
+            visible: root._earnedList.length > 0 && root.viewMode === "grid"
 
             Item {
                 x: -vpx(8)
@@ -986,7 +1159,7 @@ FocusScope {
                     interactive: false
                     clip: false
 
-                    focus: root._earnedList.length > 0
+                    focus: root._earnedList.length > 0 && root.viewMode === "grid"
 
                     Keys.onLeftPressed: {
                         event.accepted = true
@@ -1018,6 +1191,8 @@ FocusScope {
                     Keys.onPressed: {
                         if (!event.isAutoRepeat && api.keys.isCancel(event)) {
                             event.accepted = true; root.tabFocusRequested()
+                        } else if (!event.isAutoRepeat && (api.keys.isFilters(event) || event.key === Qt.Key_Y)) {
+                            event.accepted = true; root.toggleView() // DECKOS
                         }
                     }
                     onActiveFocusChanged: {
@@ -1279,7 +1454,7 @@ FocusScope {
         Column {
             width: parent.width
             spacing: vpx(6)
-            visible: root._lockedList.length > 0
+            visible: root._lockedList.length > 0 && root.viewMode === "grid"
 
             Text {
                 text: "LOCKED ACHIEVEMENTS"
@@ -1304,7 +1479,7 @@ FocusScope {
                     interactive: false
                     clip: false
 
-                    focus: root._earnedList.length === 0
+                    focus: root._earnedList.length === 0 && root.viewMode === "grid"
 
                     Keys.onLeftPressed: {
                         event.accepted = true
@@ -1335,6 +1510,8 @@ FocusScope {
                     Keys.onPressed: {
                         if (!event.isAutoRepeat && api.keys.isCancel(event)) {
                             event.accepted = true; root.tabFocusRequested()
+                        } else if (!event.isAutoRepeat && (api.keys.isFilters(event) || event.key === Qt.Key_Y)) {
+                            event.accepted = true; root.toggleView() // DECKOS
                         }
                     }
                     onActiveFocusChanged: {

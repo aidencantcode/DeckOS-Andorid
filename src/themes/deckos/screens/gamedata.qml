@@ -381,7 +381,10 @@ FocusScope {
             activeZone = 0
             sBack.stop(); sBack.play()
         } else {
-            leftBar.toggle()
+            // DECKOS: back to where Properties was opened from (it opened the Steam menu: the only
+            // way out was the menu's Home or Library)
+            sBack.stop(); sBack.play()
+            theme.openPage(theme.propertiesReturnPage)
         }
         event.accepted = true
     }
@@ -941,7 +944,7 @@ FocusScope {
                 if (currentIndex < buttons.length - 1) { currentIndex++; updateFocus(); sNav.stop(); sNav.play() }
                 event.accepted = true
             } else if (api.keys.isAccept(event) || event.key === Qt.Key_Return) {
-                if (currentIndex === 7) { toggle(); root.closeMenuVisible = true; focusTimer.start() }
+                if (currentIndex === 7) { toggle(); theme.openPowerMenu() /* DECKOS: one Close menu (theme.qml) */; focusTimer.start() }
                 else { theme.openPage(currentIndex); toggle(); if (currentIndex === 6) sShowui.play() }
                 event.accepted = true
             } else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape) {
@@ -1009,7 +1012,7 @@ FocusScope {
                     anchors.fill: parent
                     onClicked: {
                         if (leftBar.currentIndex === buttonIndex) {
-                            if (buttonIndex === 7) { leftBar.toggle(); root.closeMenuVisible = true; focusTimer.start() }
+                            if (buttonIndex === 7) { leftBar.toggle(); theme.openPowerMenu() /* DECKOS: one Close menu (theme.qml) */; focusTimer.start() }
                             else { theme.openPage(buttonIndex); leftBar.toggle(); if (buttonIndex === 6) sShowui.play() }
                         } else {
                             leftBar.currentIndex = buttonIndex; leftBar.updateFocus(); sNav.play()

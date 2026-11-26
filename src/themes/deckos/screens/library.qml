@@ -426,6 +426,7 @@ SortFilterProxyModel {
                 topNavRow.currentIndex = pageSwapAnim.targetIdx
                 collectionGamesLoader.active = false
                 root.animX = root.width * 0.2 * pageSwapAnim.direction
+                Qt.callLater(root.refocusGrid) // DECKOS: Down during the switch: the new tab's grid
             }
         }
         
@@ -557,23 +558,58 @@ function toggleSortMenu() {
     }
 }
 
-    // Функция для получения текущего активного GridView - УПРОЩЕННАЯ
+    // DECKOS: the grid of the tab on screen, or of the tab a switch is going to (null while it loads).
+    // It used to take the first visible page: Down pressed in a tab switch's first 150 ms gave the focus
+    // to the old tab's grid, hidden right after, so no game was highlighted and the D-pad moved the
+    // hidden grid until a tap.
     function getCurrentGridView() {
-        // Проверяем коллекции
-        if (collectionGamesLoader.active && collectionGamesLoader.item) {
-            return collectionGamesLoader.item.gridView;
+        var switching = pageSwapAnim.running
+        if (!switching && collectionGamesLoader.active)
+            return collectionGamesLoader.item ? collectionGamesLoader.item.gridView : null
+        var page = contentContainer.loadedPages[switching ? pageSwapAnim.targetIdx : root.currentPage]
+        if (!page) return null
+        return page.gridView ? page.gridView : (page.gridCollections || null)
+    }
+
+    function overlayOpen() {
+        return leftBar.isOpen || optionsMenuVisible || sortMenuVisible || closeMenuVisible || collectionPicker.visible
+    }
+
+    // DECKOS: in the grid zone, the grid on screen gets the keys (after a tab switch, a grid that loaded
+    // late, or a return to DeckOS)
+    function refocusGrid() {
+        if (focusZone !== 2 || overlayOpen()) return
+        var gv = getCurrentGridView()
+        if (gv && !gv.activeFocus) {
+            gv.focus = true
+            gv.forceActiveFocus()
         }
-        
-        // Просто берем видимую страницу из contentContainer
-        for (var i in contentContainer.loadedPages) {
-            var page = contentContainer.loadedPages[i];
-            if (page && page.visible) {
-                // Возвращаем gridView или gridCollections в зависимости от страницы
-                return page.gridView ? page.gridView : page.gridCollections;
-            }
+    }
+
+    // DECKOS: DeckOS is in front again (theme.qml)
+    function resumeFocus() {
+        if (overlayOpen()) return
+        if (focusZone === 2) refocusGrid()
+        else goToZone(focusZone)
+    }
+
+    // DECKOS: a safety net for the same symptom from any other path: in the grid zone with nothing open
+    // over it, focus lost inside this page (a hidden tab's grid, an item that went away) goes back to
+    // the grid on screen. Focus held outside the page (the theme's power menu) is left alone.
+    Timer {
+        interval: 400
+        repeat: true
+        running: root.visible && root.focusZone === 2 && Qt.application.state === Qt.ApplicationActive
+        onTriggered: {
+            if (pageSwapAnim.running || root.overlayOpen()) return // a menu over the grid has the keys
+            var gv = root.getCurrentGridView()
+            if (!gv || gv.activeFocus) return
+            var win = root.Window.window
+            var f = win ? win.activeFocusItem : null
+            for (var it = f; it; it = it.parent)
+                if (it === root) { console.info("DeckOS: Library focus back to the grid"); root.refocusGrid(); return }
+            if (!f || f === win.contentItem) root.refocusGrid()
         }
-        
-        return null;
     }
 
     // ============================================
@@ -1043,6 +1079,7 @@ function toggleSortMenu() {
                     sourceComponent: gameGridComponent
                     onLoaded: {
                         item.model = sortedAllGames
+                        Qt.callLater(root.refocusGrid) // DECKOS: loaded late (async loading): the focus, if it was waiting for it
                         item.gameSelected.connect(function(game) {
                             theme.currentGame = game;
                             theme.openPage(8);
@@ -1065,6 +1102,7 @@ function toggleSortMenu() {
                     sourceComponent: gameGridComponent
                     onLoaded: {
                         item.model = sortedFavoritesModel
+                        Qt.callLater(root.refocusGrid) // DECKOS: loaded late (async loading): the focus, if it was waiting for it
                         item.gameSelected.connect(function(game) {
                             theme.currentGame = game;
                             theme.openPage(8);
@@ -1463,6 +1501,7 @@ function toggleSortMenu() {
             active: false
             asynchronous: api.memory.has("asyncLoading") ? api.memory.get("asyncLoading") : false
             property var collection
+            onLoaded: Qt.callLater(root.refocusGrid) // DECKOS: async loading: the opened collection's grid gets the focus once it exists
             
             sourceComponent: FocusScope {
                 width: parent.width
@@ -1770,6 +1809,7 @@ function toggleSortMenu() {
                     sourceComponent: gameGridComponent
                     onLoaded: {
                         item.model = sortedAllGames
+                        Qt.callLater(root.refocusGrid) // DECKOS: loaded late (async loading): the focus, if it was waiting for it
                         item.gameSelected.connect(function(game) {
                             theme.currentGame = game;
                             theme.openPage(8);
@@ -2555,7 +2595,7 @@ FocusScope {
                 else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
                     if (currentIndex === 7) {
                         toggle()
-                        root.closeMenuVisible = true
+                        theme.openPowerMenu() /* DECKOS: one Close menu (theme.qml) */
                         focusTimer.start()
                     } else {
                         theme.openPage(currentIndex)
@@ -2701,7 +2741,7 @@ FocusScope {
                             if (buttonIndex === 7) {
                                 leftBar.toggle()
                                 closeMenu.forceActiveFocus()
-                                closeMenuVisible = true
+                                theme.openPowerMenu() /* DECKOS: one Close menu (theme.qml) */
                             } else {
                                 theme.openPage(buttonIndex)
                                 leftBar.toggle()

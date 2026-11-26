@@ -199,6 +199,20 @@ void DeckosApi::setGameDescription(QObject* obj, const QString& text)
     GameOverrides::apply(*game, { { QStringLiteral("description"), clean } }, true);
 }
 
+void DeckosApi::setGameSteamGridTitle(QObject* obj, const QString& title)
+{
+    auto game = qobject_cast<model::Game*>(obj);
+    if (!game)
+        return;
+    const QString key = GameOverrides::keyFor(*game);
+    const QString clean = title.trimmed();
+    const QString current = GameOverrides::instance().entry(key).value(QStringLiteral("sgdb_title")).toString();
+    if (clean == current || (clean.isEmpty() && current.isEmpty()))
+        return; // the page saves on every close: don't rewrite the file for nothing
+    GameOverrides::instance().update(key, { { QStringLiteral("sgdb_title"),
+                                              clean.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(clean) } });
+}
+
 void DeckosApi::resetGame(QObject* obj)
 {
     auto game = qobject_cast<model::Game*>(obj);
@@ -221,6 +235,7 @@ QVariantMap DeckosApi::gameChanges(QObject* obj) const
         { QStringLiteral("launchEdited"), entry.contains(QStringLiteral("launch")) },
         { QStringLiteral("scraped"), entry.value(QStringLiteral("scraped")).toString() },
         { QStringLiteral("sources"), entry.value(QStringLiteral("sources")).toString() },
+        { QStringLiteral("steamGridTitle"), entry.value(QStringLiteral("sgdb_title")).toString() },
     };
 }
 

@@ -41,6 +41,8 @@ public:
     /// Saved at once and shown everywhere; kept across library reloads and restarts.
     Q_INVOKABLE void setGameTitle(QObject* game, const QString& title);
     Q_INVOKABLE void setGameDescription(QObject* game, const QString& text);
+    /// the name the scraper searches SteamGridDB with (Properties › Customization); empty: the game's name
+    Q_INVOKABLE void setGameSteamGridTitle(QObject* game, const QString& title);
     /// Forgets every DeckOS change to this game (edits and scraped info/artwork).
     Q_INVOKABLE void resetGame(QObject* game);
     /// { edited: bool, titleEdited, descriptionEdited, scraped: ISO date or "", sources: "TheGamesDB, ..." }

@@ -2033,7 +2033,7 @@ sNav.stop();
                 } else if (api.keys.isAccept(event) || event.key === Qt.Key_Return) {
                     if (currentIndex === 7) {
                         leftBar.toggle()
-                        closeMenuVisible = true
+                        theme.openPowerMenu() /* DECKOS: one Close menu (theme.qml) */
                     } else {
                         theme.openPage(currentIndex)
                         leftBar.toggle()
@@ -2102,7 +2102,7 @@ sNav.stop();
                         if (leftBar.currentIndex === buttonIndex) {
                             if (buttonIndex === 7) {
                                 leftBar.toggle()
-                                closeMenuVisible = true
+                                theme.openPowerMenu() /* DECKOS: one Close menu (theme.qml) */
                             } else {
                                 theme.openPage(buttonIndex)
                                 leftBar.toggle()

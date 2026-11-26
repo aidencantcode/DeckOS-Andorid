@@ -58,6 +58,8 @@ public:
     /// DECKOS: a collection made or emptied while DeckOS runs (UserCollections.h); the list stays sorted
     void addCollection(model::Collection*);
     void removeCollection(model::Collection*);
+    /// DECKOS: after a collection was renamed: the list sorted again (and its views rebuilt)
+    void sortCollections();
     /// DECKOS: a launch is going on, or its game hasn't finished yet
     bool launchInProgress() const { return m_launch_game_file != nullptr; }
 

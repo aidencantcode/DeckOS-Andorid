@@ -2220,7 +2220,7 @@ FocusScope {
                 } else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
                     if (currentIndex === 7) {
                         toggle()
-                        root.closeMenuVisible = true
+                        theme.openPowerMenu() /* DECKOS: one Close menu (theme.qml) */
                         focusTimer.start()
                     } else {
                         theme.openPage(currentIndex)
@@ -2357,7 +2357,7 @@ FocusScope {
                             if (buttonIndex === 7) {
                                 leftBar.toggle()
                                 closeMenu.forceActiveFocus()
-                                closeMenuVisible = true
+                                theme.openPowerMenu() /* DECKOS: one Close menu (theme.qml) */
                             } else {
                                 theme.openPage(buttonIndex)
                                 leftBar.toggle()

@@ -34,7 +34,7 @@ namespace model {
 struct CollectionData {
     explicit CollectionData(QString name);
 
-    const QString name;
+    QString name; // DECKOS: not const - Settings > Collections renames
     QString sort_by;
 
     QString summary;
@@ -81,9 +81,12 @@ public:
     SETTER(QString, CommonLaunchCmdBasedir, common_relative_basedir)
     Collection& setShortName(QString val) { m_data.set_short_name(std::move(val)); return *this; }
 #undef SETTER
+    /// DECKOS: a new name shown everywhere (Settings > Collections); the short name - DeckOS's system id
+    /// for ROM-folder collections - stays, so the system is still recognised
+    Collection& setName(const QString&);
 
 
-    Q_PROPERTY(QString name READ name CONSTANT)
+    Q_PROPERTY(QString name READ name NOTIFY nameChanged) // DECKOS: renamable
     Q_PROPERTY(QString sortBy READ sortBy CONSTANT)
     Q_PROPERTY(QString shortName READ shortName CONSTANT)
     Q_PROPERTY(QString summary READ summary CONSTANT)
@@ -106,6 +109,9 @@ public:
     Collection& removeGames(const std::vector<model::Game*>&);
     GameListModel* gameList() const { return m_games; }
     Q_PROPERTY(ObjectListModel* games READ gameList CONSTANT)
+
+signals:
+    void nameChanged(); // DECKOS
 
 public:
     explicit Collection(QString name, QObject* parent = nullptr);

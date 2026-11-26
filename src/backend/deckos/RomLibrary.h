@@ -36,6 +36,9 @@ struct ScannedSystem {
 /// The scan itself (no Qt event loop needed): exposed for tests.
 std::vector<ScannedSystem> scan_rom_folders(const QStringList& rom_roots, const QSet<QString>& only_systems);
 std::vector<ScannedSystem> scan_rom_folders(const Catalog&, const QStringList& rom_roots, const QSet<QString>& only_systems);
+/// DECKOS: `links` (system id -> folder) replace the folders found by name for those systems
+std::vector<ScannedSystem> scan_rom_folders(const Catalog&, const QStringList& rom_roots, const QSet<QString>& only_systems,
+                                            const std::map<QString, QString>& links);
 /// "Chrono Trigger (USA) [!].sfc" -> "Chrono Trigger"; keeps the tags when two games would get the same name
 QStringList game_titles(const QStringList& files);
 
@@ -46,7 +49,7 @@ class RomLibrary : public QObject {
     Q_PROPERTY(bool scanning READ scanning NOTIFY scanStateChanged)
     Q_PROPERTY(QString status READ status NOTIFY scanStateChanged)
     /// systems found by the last scans: [{ id, name, games, folders, emulatorId, emulatorName, installed,
-    ///  command, customCommand }]
+    ///  command, customCommand, link }]
     Q_PROPERTY(QVariantList systems READ systemsList NOTIFY systemsChanged)
     Q_PROPERTY(bool scanOnStart READ scanOnStart WRITE setScanOnStart NOTIFY settingsChanged)
 
@@ -64,6 +67,12 @@ public:
     Q_INVOKABLE void setEmulator(const QString& systemId, const QString& emulatorId);
     /// a hand-written launch command for the whole system; empty = back to the emulator's
     Q_INVOKABLE void setCustomCommand(const QString& systemId, const QString& command);
+    /// Settings > Collections: the system's games come from this folder only (empty = the folders found
+    /// by name in the ROM folders again). Rescans that system.
+    Q_INVOKABLE void linkFolder(const QString& systemId, const QString& folder);
+    /// Settings > Emulators > Scan installed emulators: the catalog's emulators installed on the device,
+    /// found without any ROM folder: [{ name, package, systems: [system names] }], by name
+    Q_INVOKABLE QVariantList installedEmulators();
 
     QStringList romFolders() const { return m_rom_folders; }
     bool scanning() const { return m_scanning; }
@@ -92,6 +101,7 @@ private:
         QString command;    // custom command, empty = the emulator's
         int games = 0;
         QStringList folders;
+        QString link;       // the folder picked for it (linkFolder), empty = found by name
     };
 
     QStringList m_rom_folders;

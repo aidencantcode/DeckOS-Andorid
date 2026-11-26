@@ -159,7 +159,7 @@
         <file>deckos/screens/nothing.qml</file>
         <file>deckos/screens/search.qml</file>
         <file>deckos/screens/settings.qml</file>
-        <file>deckos/screens/settings/accessibility.qml</file>
+        <file>deckos/screens/settings/collections.qml</file>
         <file>deckos/screens/settings/controller.qml</file>
         <file>deckos/screens/settings/customization.qml</file>
         <file>deckos/screens/settings/emulators.qml</file>
@@ -173,8 +173,9 @@
         <file>deckos/screens/settings/parts/FolderPicker.qml</file>
         <file>deckos/screens/settings/parts/SteamKeyboard.qml</file>
         <file>deckos/screens/settings/parts/SteamSpinner.qml</file>
+        <file>deckos/screens/settings/parts/SteamToasts.qml</file>
         <file>deckos/screens/settings/parts/TextEntry.qml</file>
-        <file>deckos/screens/settings/power.qml</file>
+        <file>deckos/screens/settings/scraping.qml</file>
         <file>deckos/screens/settings/profile.qml</file>
         <file>deckos/screens/settings/sound.qml</file>
         <file>deckos/screens/settings/system.qml</file>

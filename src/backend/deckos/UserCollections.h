@@ -12,8 +12,11 @@
 
 #pragma once
 
+#include <QMap>
 #include <QMutex>
 #include <QObject>
+#include <QPointer>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
@@ -34,8 +37,18 @@ public:
     static QString defaultPath();
 
     /// after a scan, before ApiObject::setGameData: the user's collections joined in (new ones made,
-    /// existing ones extended), `collections` kept sorted
-    void apply(std::vector<model::Collection*>& collections, const std::vector<model::Game*>& games) const;
+    /// existing ones extended), renamed ones renamed, hidden ones taken out of `collections` (their games
+    /// keep them), `collections` kept sorted
+    void apply(std::vector<model::Collection*>& collections, const std::vector<model::Game*>& games);
+
+    /// Settings > Collections: every collection, hidden ones too, by name: { name, count, hidden,
+    /// shortName (a ROM-folder collection's system id), user (made in DeckOS, not by the library) }
+    Q_INVOKABLE QVariantList allCollections() const;
+    /// hides a collection from the Library and the pickers (its games stay where they are), or shows it again
+    Q_INVOKABLE bool setHidden(const QString& name, bool hidden);
+    /// a new name, kept across scans; "" when done, else what's wrong. A ROM-folder collection keeps its
+    /// system (the short name doesn't change)
+    Q_INVOKABLE QString rename(const QString& name, const QString& newName);
 
     /// every collection for the picker, by name: { name, member (the game is in it), mine (put there by
     /// the user, so it can be taken out), count (games in it) }
@@ -53,6 +66,8 @@ public:
 signals:
     /// a game's collections changed (picker rows, game page)
     void changed(QObject* game);
+    /// a collection was hidden, shown or renamed (Settings > Collections)
+    void listChanged();
 
 private:
     struct Entry {
@@ -63,6 +78,10 @@ private:
     model::ApiObject* const m_api;
     const QString m_path;
     std::vector<Entry> m_entries;
+    QStringList m_hidden_names;                         // saved
+    QMap<QString, QString> m_renames;                   // a library collection's own name -> the user's
+    std::vector<QPointer<model::Collection>> m_hidden;  // the hidden ones since the last apply()
+    QSet<QString> m_library_names;                      // the library's own names (lower case), last apply()
     /// apply() runs on the scan's thread (Backend::onScanFinished), the rest on the UI thread
     mutable QMutex m_lock;
 
@@ -71,6 +90,8 @@ private:
     Entry* entry(const QString& name);
     const Entry* entry(const QString& name) const;
     model::Collection* collection(const QString& name) const;
+    model::Collection* hiddenCollection(const QString& name) const; // takes m_lock
+    QString originalName(const QString& name) const;                // m_lock held; "" = made in DeckOS
 };
 
 } // namespace deckos

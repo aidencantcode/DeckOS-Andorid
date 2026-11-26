@@ -121,6 +121,12 @@ std::vector<ScannedSystem> scan_rom_folders(const QStringList& rom_roots, const 
 
 std::vector<ScannedSystem> scan_rom_folders(const Catalog& catalog, const QStringList& rom_roots, const QSet<QString>& only_systems)
 {
+    return scan_rom_folders(catalog, rom_roots, only_systems, {});
+}
+
+std::vector<ScannedSystem> scan_rom_folders(const Catalog& catalog, const QStringList& rom_roots, const QSet<QString>& only_systems,
+                                            const std::map<QString, QString>& links)
+{
 
     // system id -> folders holding its games
     std::map<QString, QStringList> targets;
@@ -146,6 +152,14 @@ std::vector<ScannedSystem> scan_rom_folders(const Catalog& catalog, const QStrin
         const QFileInfoList subdirs = QDir(root).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::Readable, QDir::Name);
         for (const QFileInfo& sub : subdirs)
             add_target(catalog.byFolderName(sub.fileName()), ::clean_abs_path(sub));
+    }
+
+    // DECKOS: a folder linked to a system (Settings > Collections) is its only folder
+    for (const auto& link : links) {
+        const CatalogSystem* sys = catalog.byId(link.first);
+        if (!sys || link.second.isEmpty() || (!only_systems.isEmpty() && !only_systems.contains(sys->id)))
+            continue;
+        targets[sys->id] = QStringList { ::clean_abs_path(QFileInfo(link.second)) };
     }
 
     std::vector<ScannedSystem> out;
@@ -243,6 +257,7 @@ void RomLibrary::load()
         st.emulator = obj.value(QStringLiteral("emulator")).toString();
         st.command = obj.value(QStringLiteral("command")).toString();
         st.games = obj.value(QStringLiteral("games")).toInt();
+        st.link = obj.value(QStringLiteral("link")).toString();
         for (const QJsonValue& f : obj.value(QStringLiteral("folders")).toArray())
             st.folders << f.toString();
     }
@@ -256,6 +271,7 @@ void RomLibrary::save() const
         QJsonObject obj;
         if (!st.emulator.isEmpty()) obj.insert(QStringLiteral("emulator"), st.emulator);
         if (!st.command.isEmpty()) obj.insert(QStringLiteral("command"), st.command);
+        if (!st.link.isEmpty()) obj.insert(QStringLiteral("link"), st.link);
         obj.insert(QStringLiteral("games"), st.games);
         obj.insert(QStringLiteral("folders"), QJsonArray::fromStringList(st.folders));
         systems.insert(entry.first, obj);
@@ -407,6 +423,7 @@ QVariantList RomLibrary::systemsList() const
             { QStringLiteral("automatic"), st.emulator.isEmpty() },
             { QStringLiteral("command"), commandFor(*sys) },
             { QStringLiteral("customCommand"), st.command },
+            { QStringLiteral("link"), st.link },
         };
     }
     return out;
@@ -436,7 +453,66 @@ void RomLibrary::scan(const QStringList& system_ids)
     setStatus(scope.isEmpty() ? tr("Scanning your ROM folders…") : tr("Rescanning…"));
 
     const QStringList roots = m_rom_folders;
-    m_watcher.setFuture(QtConcurrent::run([roots, scope]() { return scan_rom_folders(roots, scope); }));
+    std::map<QString, QString> links;
+    for (const auto& entry : m_systems) {
+        if (!entry.second.link.isEmpty())
+            links.emplace(entry.first, entry.second.link);
+    }
+    m_watcher.setFuture(QtConcurrent::run([roots, scope, links]() {
+        return scan_rom_folders(Catalog::instance(), roots, scope, links);
+    }));
+}
+
+QVariantList RomLibrary::installedEmulators()
+{
+    refreshInstalled();
+    struct Found {
+        QString name;
+        QStringList systems;
+    };
+    std::map<QString, Found> by_package;
+    for (const CatalogSystem& sys : Catalog::instance().systems()) {
+        for (const CatalogEmulator& emu : sys.emulators) {
+            if (!m_installed.contains(emu.package))
+                continue;
+            Found& found = by_package[emu.package];
+            if (found.name.isEmpty())
+                found.name = emu.retroArch ? QStringLiteral("RetroArch") : emu.name;
+            if (!found.systems.contains(sys.name))
+                found.systems << sys.name;
+        }
+    }
+    QVariantList out;
+    for (const auto& entry : by_package) {
+        out << QVariantMap {
+            { QStringLiteral("name"), entry.second.name },
+            { QStringLiteral("package"), entry.first },
+            { QStringLiteral("systems"), entry.second.systems },
+        };
+    }
+    std::sort(out.begin(), out.end(), [](const QVariant& a, const QVariant& b) {
+        return QString::localeAwareCompare(a.toMap().value(QStringLiteral("name")).toString(),
+                                           b.toMap().value(QStringLiteral("name")).toString()) < 0;
+    });
+    Log::info(LOGTAG, LOGMSG("%1 emulators installed").arg(out.size()));
+    emit systemsChanged(); // "Not installed" marks may have changed too
+    return out;
+}
+
+void RomLibrary::linkFolder(const QString& system_id, const QString& folder)
+{
+    if (!Catalog::instance().byId(system_id))
+        return;
+    SystemState& st = m_systems[system_id];
+    const QString clean = folder.isEmpty() ? QString() : ::clean_abs_path(QFileInfo(folder));
+    if (st.link == clean)
+        return;
+    st.link = clean;
+    Log::info(LOGTAG, clean.isEmpty() ? LOGMSG("`%1` uses the folders found by name again").arg(system_id)
+                                      : LOGMSG("`%1` linked to `%2`").arg(system_id, clean));
+    save();
+    emit systemsChanged();
+    scan({ system_id });
 }
 
 bool RomLibrary::writeSystemFile(const CatalogSystem& sys, const ScannedSystem& scanned) const

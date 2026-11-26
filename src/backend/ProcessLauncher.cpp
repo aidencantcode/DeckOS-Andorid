@@ -251,6 +251,9 @@ void ProcessLauncher::runProcess(const QString& command, const QStringList& args
     if (result.isEmpty()) {
         emit processLaunchOk();
         Log::info(LOGMSG("Activity finished"));
+        const QString touch_note = android::last_launch_note(); // DECKOS: TouchMode.java
+        if (!touch_note.isEmpty())
+            Log::info(touch_note);
     }
     else {
         const QString message = pretty_android_exception(result).arg(result);

@@ -201,11 +201,11 @@ FocusScope {
                     var pages = [
                         ["General",       "w", "settings/general.qml"],
                         ["Library",       "L", "settings/library.qml"],
+                        ["Collections",   "L", "settings/collections.qml"], /* DECKOS: hide, rename, games folder */
+                        ["Scraping",      "♠︎", "settings/scraping.qml"], /* DECKOS: was in Library */
                         ["Emulators",     "D", "settings/emulators.qml"],
                         ["Profile",       "F", "settings/profile.qml"],
-                        ["Accessibility", "¹", "settings/accessibility.qml"],
                         ["Sound",         "S", "settings/sound.qml"],
-                        ["Power",         "~", "settings/power.qml"],
                         ["Overlay",       "4", "settings/ingame.qml"], /* DECKOS: in-game menu + performance overlay */
                         ["Underclocking", "|", "settings/underclock.qml"], /* DECKOS: ClusterTune built in */
                         ["High Contrast", "●", "settings/highcontrast.qml"],
@@ -931,7 +931,7 @@ FocusScope {
                 if (currentIndex < buttons.length - 1) { currentIndex++; updateFocus(); sNav.stop(); sNav.play() }
                 event.accepted = true
             } else if (api.keys.isAccept(event) || event.key === Qt.Key_Return) {
-                if (currentIndex === 7) { toggle(); root.closeMenuVisible = true; focusTimer.start() }
+                if (currentIndex === 7) { toggle(); theme.openPowerMenu() /* DECKOS: one Close menu (theme.qml) */; focusTimer.start() }
                 else { theme.openPage(currentIndex); toggle(); if (currentIndex === 6) sShowui.play() }
                 event.accepted = true
             } else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape) {
@@ -999,7 +999,7 @@ FocusScope {
                     anchors.fill: parent
                     onClicked: {
                         if (leftBar.currentIndex === buttonIndex) {
-                            if (buttonIndex === 7) { leftBar.toggle(); root.closeMenuVisible = true; focusTimer.start() }
+                            if (buttonIndex === 7) { leftBar.toggle(); theme.openPowerMenu() /* DECKOS: one Close menu (theme.qml) */; focusTimer.start() }
                             else { theme.openPage(buttonIndex); leftBar.toggle(); if (buttonIndex === 6) sShowui.play() }
                         } else {
                             leftBar.currentIndex = buttonIndex; leftBar.updateFocus(); sNav.play()

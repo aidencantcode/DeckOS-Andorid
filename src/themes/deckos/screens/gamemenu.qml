@@ -1094,6 +1094,10 @@ FocusScope {
                 activityContent.toggleView()
                 sTab.play()
                 event.accepted = true
+            } else if (currentIndex === root.achievementsTab && (api.keys.isFilters(event) || event.key === Qt.Key_Y)) {
+                raSection.toggleView() // DECKOS: list / grid, like ACTIVITY's
+                sTab.play()
+                event.accepted = true
             }
         }
 
@@ -2663,7 +2667,7 @@ FocusScope {
                         } else if (event.key === Qt.Key_Return || api.keys.isAccept(event)) {
                             if (leftBar.currentIndex === 7) {
                                 leftBar.toggle();
-                                root.closeMenuVisible = true;
+                                theme.openPowerMenu() /* DECKOS: one Close menu (theme.qml) */;
                             } else {
                                 theme.openPage(leftBar.currentIndex);
                                 leftBar.toggle();
@@ -2684,7 +2688,7 @@ FocusScope {
                             if (buttonIndex === 7) {
                                 leftBar.toggle()
                                 closeMenu.forceActiveFocus()
-                                closeMenuVisible = true
+                                theme.openPowerMenu() /* DECKOS: one Close menu (theme.qml) */
                             } else {
                                 theme.openPage(buttonIndex)
                                 leftBar.toggle()

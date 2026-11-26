@@ -208,6 +208,7 @@ struct Scraper::Job {
     QString key;
     QString title;
     QString search;
+    QString sgdb_search;            // SteamGridDB: Properties › Customization's SteamGridDB title, else search
     QString rom_name;
     QString system;
     bool force = false;
@@ -407,6 +408,9 @@ Scraper::Job* Scraper::makeJob(model::Game& game, bool force)
     job->key = GameOverrides::keyFor(game);
     job->title = game.title();
     job->search = search_title(game.title());
+    // the SteamGridDB title set in Properties › Customization (saved with the game's DeckOS changes)
+    const QString sgdb_title = GameOverrides::instance().entry(job->key).value(QStringLiteral("sgdb_title")).toString().trimmed();
+    job->sgdb_search = sgdb_title.isEmpty() ? job->search : search_title(sgdb_title);
     job->force = force;
 
     const auto& files = game.filesModel()->entries();
@@ -479,7 +483,21 @@ void Scraper::scrapeGame(QObject* obj)
     enqueue(job, true);
 }
 
-int Scraper::scrapeAll(bool only_missing, const QStringList& collections)
+namespace {
+bool has_artwork(const model::Game& game)
+{
+    for (const AssetType type : { AssetType::BOX_FRONT, AssetType::POSTER, AssetType::BACKGROUND,
+                                  AssetType::LOGO, AssetType::UI_STEAMGRID }) {
+        for (const QString& uri : game.assets().urisOf(type)) {
+            if (!uri.startsWith(QLatin1String("image://androidicons/")))
+                return true;
+        }
+    }
+    return false;
+}
+} // namespace
+
+int Scraper::scrapeAll(bool only_missing, const QStringList& collections, bool skip_with_media)
 {
     if (m_sgdb_key.isEmpty() && m_tgdb_key.isEmpty() && !m_libretro)
         return 0;
@@ -498,6 +516,8 @@ int Scraper::scrapeAll(bool only_missing, const QStringList& collections)
             if (!picked)
                 continue;
         }
+        if (skip_with_media && has_artwork(*game))
+            continue;
         if (only_missing) {
             // Android apps and other entries without a ROM file: only on request
             if (key.startsWith(QLatin1String("uri:")))
@@ -860,7 +880,7 @@ void Scraper::stepSteamGridDbSearch()
     setStatus(tr("Finding artwork for %1").arg(job->title));
 
     const QString url = QStringLiteral("https://www.steamgriddb.com/api/v2/search/autocomplete/")
-                      + QString::fromUtf8(QUrl::toPercentEncoding(job->search));
+                      + QString::fromUtf8(QUrl::toPercentEncoding(job->sgdb_search));
     whenDone(get(url, true), [this](QNetworkReply* reply) {
         Job* const job = m_current;
         if (reply->error() != QNetworkReply::NoError) {
@@ -869,7 +889,7 @@ void Scraper::stepSteamGridDbSearch()
             return;
         }
         const QJsonArray results = QJsonDocument::fromJson(reply->readAll()).object().value(QStringLiteral("data")).toArray();
-        const QString wanted = normalized(job->search);
+        const QString wanted = normalized(job->sgdb_search);
         int game_id = 0;
         for (const QJsonValue& val : results) {
             const QJsonObject result = val.toObject();

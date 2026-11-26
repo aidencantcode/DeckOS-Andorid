@@ -16,7 +16,14 @@ FocusScope {
 
     property int currentPage: 0
     property var currentGame: null
-        property bool isTransitioning: false 
+    // DECKOS: the Library, Home and Search hand over a sorted model's row: a copy of the game's fields,
+    // with the game itself in modelData. Keep the game: Properties' rename and description edits were
+    // refused for the copy (deckos.setGameTitle needs the game), and its fields never updated anyway.
+    onCurrentGameChanged: {
+        if (currentGame && currentGame.modelData && currentGame.modelData !== currentGame)
+            currentGame = currentGame.modelData
+    }
+        property bool isTransitioning: false
     property bool navTrigger: false
     // Добавить эту строку:
     property bool returnFromLaunch: false 
@@ -359,7 +366,10 @@ FocusScope {
     anchors.centerIn: parent
 
     focus: true
-    enabled: !welcome.visible && !folderSetup.visible // DECKOS: the first-start cards keep the keys
+    // DECKOS: the first-start cards keep the keys. Not for the power menu: disabling the page dropped its
+    // focus chain, and Home came back on its search bar instead of the game row (the menu holds the
+    // focus itself and its backdrop takes the taps)
+    enabled: !welcome.visible && !folderSetup.visible
 
     property Item item: null
     signal loaded()
@@ -529,7 +539,9 @@ function getAssetSource(assetType, game) {
     if ([10, 12, 13, 14].indexOf(currentPage) === -1) {
         api.memory.previousPage = currentPage;
     }
-}else if (index === 9) {
+}else if (index === 14 && [10, 12, 13, 14].indexOf(currentPage) === -1) {
+        propertiesReturnPage = currentPage; // DECKOS: B in Properties goes back there
+    }else if (index === 9) {
         sLeftOpen.play();
     }else if (index === 11) {
         sLeftClose.play();
@@ -538,6 +550,8 @@ function getAssetSource(assetType, game) {
     }
 
     isTransitioning = true;
+    pendingPage = index;               // DECKOS: focusWatch finishes a change that never completes
+    transitionStarted = Date.now();
 
 if (pageLoader.item && typeof pageLoader.item.startExitAnimation === "function" && index !== 11) {
     pageLoader.item.startExitAnimation(index);
@@ -580,6 +594,11 @@ function isInside(item, ancestor) {
     return false
 }
 
+property int propertiesReturnPage: 8 // DECKOS: the page Properties (14) was opened from: Home, Library, Search, the game page
+property int pendingPage: -1          // the page openPage is changing to
+property double transitionStarted: 0
+property var hiddenFocus: null        // focusWatch: an invisible item seen holding the focus
+
 Timer {
     id: focusWatch
     interval: 300
@@ -587,7 +606,14 @@ Timer {
     running: Qt.application.state === Qt.ApplicationActive
     onTriggered: {
         var win = root.Window.window
-        if (!win || welcome.visible || folderSetup.visible || root.isTransitioning) return
+        // a page change whose exit animation never finished would leave every page change and this
+        // check blocked for good: finish it (the animation takes 225 ms)
+        if (root.isTransitioning && root.pendingPage >= 0 && Date.now() - root.transitionStarted > 2500) {
+            console.warn("DeckOS: the change to page " + root.pendingPage + " got stuck, finishing it")
+            root.finalizeNavigation(root.pendingPage)
+            return
+        }
+        if (!win || welcome.visible || folderSetup.visible || powerMenu.visible || root.isTransitioning) return
         var f = win.activeFocusItem
         var bar = root.openLeftBar
         if (bar && bar.isOpen && bar.visible) {
@@ -604,7 +630,25 @@ Timer {
             console.info("DeckOS: focus back to the page")
             if (typeof page.resumeFocus === "function") page.resumeFocus()
             else page.forceActiveFocus()
+            root.hiddenFocus = null
+            return
         }
+        // the keys going to something no longer on screen (a page kept alive behind this one, a closed
+        // panel): nothing looks selected and the controller does nothing. Seen twice in a row (not an
+        // item that is just fading out): the page on screen takes the focus back.
+        if (page && page.visible && f && !f.visible) {
+            if (root.hiddenFocus === f) {
+                console.info("DeckOS: focus was on a hidden item (" + f + "), back to the page")
+                root.hiddenFocus = null
+                if (typeof page.resumeFocus === "function") page.resumeFocus()
+                else if (typeof page.goToZone === "function" && page.focusZone !== undefined) page.goToZone(Math.min(page.focusZone, 2))
+                else page.forceActiveFocus()
+            } else {
+                root.hiddenFocus = f
+            }
+            return
+        }
+        root.hiddenFocus = null
     }
 }
 
@@ -864,6 +908,216 @@ FocusScope {
         hint: "It's made in " + parentPath + ". Done, B or Start creates it."
         maxLength: 60
         onAccepted: folderSetup.create(parentPath, text)
+    }
+}
+
+// DECKOS: Steam-style notifications, top-left over every page (SteamToasts.qml). theme.notify({ id, title,
+// text, icon, progress, timeout }); the same id updates its card. Scraping and ROM scans report here.
+function notify(n) {
+    return toasts.notify(n)
+}
+
+SteamToasts {
+    id: toasts
+    anchors.fill: parent
+    z: 5000
+}
+
+property bool scrapeToastShown: false
+Connections {
+    target: (typeof deckos !== "undefined" && deckos) ? deckos.scraper : null
+    function onProgressChanged() {
+        var s = deckos.scraper
+        if (s.running) {
+            root.scrapeToastShown = true
+            toasts.notify({ id: "scrape", icon: "♠︎", title: "Scraping artwork",
+                            text: (s.currentTitle !== "" ? s.currentTitle + "  ·  " : "") + s.done + " of " + s.total,
+                            progress: s.total > 0 ? s.done / s.total : 0, timeout: 0 })
+        } else if (root.scrapeToastShown) {
+            root.scrapeToastShown = false
+            // the scraper says "stopped" just before it sets the closing status ("Finished 2 of 2"): read it after
+            Qt.callLater(function () {
+                toasts.notify({ id: "scrape", icon: "♠︎", title: "Scraping finished", text: deckos.scraper.status,
+                                progress: 1, timeout: 5000 })
+            })
+        }
+    }
+}
+
+property bool scanToastShown: false
+Connections {
+    target: (typeof deckos !== "undefined" && deckos) ? deckos.library : null
+    function onScanStateChanged() {
+        var lib = deckos.library
+        if (lib.scanning) {
+            root.scanToastShown = true
+            toasts.notify({ id: "romscan", icon: "L", title: "Scanning your ROM folders", text: lib.status, timeout: 0 })
+        } else if (root.scanToastShown) {
+            root.scanToastShown = false
+            toasts.notify({ id: "romscan", icon: "L", title: "ROM folders scanned", text: lib.status, timeout: 4000 })
+        }
+    }
+}
+
+// DECKOS: the Steam menu's Close, one menu for every page (each StMini page had its own Exit/Cancel copy).
+// Exit DeckOS, Restart DeckOS, Restart / Shut down the device (Android: PServer or root; PC: Pegasus's
+// power commands, hidden by --disable-menu-reboot / --disable-menu-shutdown), Cancel.
+function openPowerMenu() {
+    powerMenu.open()
+}
+
+FocusScope {
+    id: powerMenu
+    anchors.fill: parent
+    z: 5002
+    visible: false
+    property int current: 0
+    property string message: ""
+
+    readonly property var ingame: (typeof deckos !== "undefined" && deckos) ? deckos.ingame : null
+    readonly property bool android: !!ingame && ingame.available
+    // on Android the device's power needs PServer / root
+    readonly property bool devicePower: !android || ingame.privileged
+    readonly property var items: {
+        var list = [
+            { id: "exit", label: "Exit DeckOS" },
+            { id: "restart", label: "Restart DeckOS" }
+        ]
+        if (Internal.meta.allowReboot) list.push({ id: "reboot", label: "Restart device", device: true })
+        if (Internal.meta.allowShutdown) list.push({ id: "shutdown", label: "Shut down device", device: true })
+        list.push({ id: "cancel", label: "Cancel" })
+        return list
+    }
+
+    function open() {
+        current = 0
+        message = ""
+        visible = true
+        forceActiveFocus()
+        try { sShowui.play() } catch (e) {}
+    }
+    function close() {
+        visible = false
+        Qt.callLater(function () {
+            var page = pageLoader.item
+            if (!page) return
+            if (typeof page.resumeFocus === "function") page.resumeFocus()
+            else page.forceActiveFocus()
+        })
+    }
+    function run(i) {
+        var it = items[i]
+        if (!it) return
+        if (it.device && !devicePower) {
+            message = "Restarting or shutting down the device needs PServer or root."
+            return
+        }
+        if (it.id === "exit") {
+            Internal.system.quit()
+        } else if (it.id === "restart") {
+            if (ingame) ingame.restartAfterQuit()
+            Internal.system.quit()
+        } else if (it.id === "reboot") {
+            if (android) { if (!ingame.rebootDevice()) message = "The device didn't accept the restart." }
+            else Internal.system.reboot()
+        } else if (it.id === "shutdown") {
+            if (android) { if (!ingame.shutdownDevice()) message = "The device didn't accept the shut down." }
+            else Internal.system.shutdown()
+        } else {
+            try { sBack.play() } catch (e) {}
+            close()
+        }
+    }
+
+    // the page under it moves the focus while it opens (the Steam menu closing, its focus timers): take
+    // it straight back while the menu is up, with a timer as a backstop
+    onActiveFocusChanged: if (visible && !activeFocus) Qt.callLater(function () { if (powerMenu.visible) powerMenu.forceActiveFocus() })
+    Timer {
+        interval: 250; repeat: true
+        running: powerMenu.visible && !powerMenu.activeFocus && Qt.application.state === Qt.ApplicationActive
+        onTriggered: powerMenu.forceActiveFocus()
+    }
+
+    Keys.onPressed: {
+        event.accepted = true
+        if (event.isAutoRepeat && (api.keys.isAccept(event) || api.keys.isCancel(event))) return
+        if (event.key === Qt.Key_Up) {
+            if (current > 0) { current--; try { sNav.stop(); sNav.play() } catch (e) {} }
+        } else if (event.key === Qt.Key_Down) {
+            if (current < items.length - 1) { current++; try { sNav.stop(); sNav.play() } catch (e) {} }
+        } else if (api.keys.isAccept(event) || event.key === Qt.Key_Return) {
+            run(current)
+        } else if (api.keys.isCancel(event) || event.key === Qt.Key_Escape) {
+            try { sBack.play() } catch (e) {}
+            close()
+        }
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        color: "#B3000000"
+        MouseArea { anchors.fill: parent; onClicked: powerMenu.close() }
+    }
+
+    Rectangle {
+        id: powerPanel
+        width: Math.min(parent.width * 0.6, parent.height * 0.62)
+        height: powerColumn.height
+        anchors.centerIn: parent
+        color: "#181B20"
+        MouseArea { anchors.fill: parent } // taps on the panel don't close it
+
+        Text {
+            anchors.bottom: parent.top
+            anchors.bottomMargin: powerMenu.height * 0.025
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Power"
+            color: "white"
+            font.family: bold.name
+            font.pixelSize: powerMenu.height * 0.042
+        }
+
+        Column {
+            id: powerColumn
+            width: parent.width
+            Repeater {
+                model: powerMenu.items
+                Rectangle {
+                    readonly property bool active: powerMenu.current === index
+                    readonly property bool off: !!modelData.device && !powerMenu.devicePower
+                    width: powerColumn.width
+                    height: powerMenu.height * 0.1
+                    color: active ? "white" : "transparent"
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.left: parent.left
+                        anchors.leftMargin: powerMenu.height * 0.03
+                        text: modelData.label
+                        color: active ? "black" : "white"
+                        opacity: off ? 0.45 : 1
+                        font.family: bold.name
+                        font.pixelSize: powerMenu.height * 0.034
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: { if (powerMenu.current === index) powerMenu.run(index); else powerMenu.current = index }
+                    }
+                }
+            }
+        }
+
+        Text {
+            anchors.top: parent.bottom
+            anchors.topMargin: powerMenu.height * 0.02
+            width: parent.width
+            visible: powerMenu.message !== ""
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
+            text: powerMenu.message
+            color: "#F2A73B"
+            font.family: bold.name
+            font.pixelSize: powerMenu.height * 0.024
+        }
     }
 }
 }

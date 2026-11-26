@@ -21,6 +21,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QImage>
+#include <QProcess>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QRegularExpression>
@@ -394,6 +395,42 @@ bool InGame::stopGame()
     return true;
 #else
     return false;
+#endif
+}
+
+bool InGame::rebootDevice()
+{
+#ifdef Q_OS_ANDROID
+    return QAndroidJniObject::callStaticMethod<jboolean>(JNI_SESSION, "powerDevice", "(Z)Z", jboolean(true));
+#else
+    return false;
+#endif
+}
+
+bool InGame::shutdownDevice()
+{
+#ifdef Q_OS_ANDROID
+    return QAndroidJniObject::callStaticMethod<jboolean>(JNI_SESSION, "powerDevice", "(Z)Z", jboolean(false));
+#else
+    return false;
+#endif
+}
+
+void InGame::restartAfterQuit()
+{
+    Log::info(LOGMSG("DeckOS restarts after quitting"));
+#ifdef Q_OS_ANDROID
+    // its own process waits for this one to quit, then opens DeckOS again (RestartActivity.java)
+    QAndroidJniObject::callStaticMethod<jboolean>(JNI_SESSION, "restartApp", "()Z");
+#else
+    static bool hooked = false;
+    if (hooked)
+        return;
+    hooked = true;
+    connect(qApp, &QCoreApplication::aboutToQuit, []() {
+        QProcess::startDetached(QCoreApplication::applicationFilePath(),
+                                QCoreApplication::arguments().mid(1), QDir::currentPath());
+    });
 #endif
 }
 

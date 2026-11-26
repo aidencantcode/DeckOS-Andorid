@@ -35,6 +35,24 @@ DeckSettingsPage {
         return t.length > n ? t.substring(0, n) + "…" : t
     }
 
+    // DECKOS: "Scan installed emulators" - what's on the device, with or without ROM folders
+    property var installed: null // null = not scanned yet
+    function installedRows(r) {
+        r.push({ type: "section", label: "Installed emulators" })
+        r.push({ type: "button", label: "Scan installed emulators",
+                 desc: "Find the emulators on this device that DeckOS knows, even before any ROM folder is added",
+                 value: function () { return emuPage.installed === null ? "" : emuPage.installed.length + " found" },
+                 activate: function () { emuPage.installed = lib ? lib.installedEmulators() : [] } })
+        if (installed === null)
+            return
+        if (installed.length === 0)
+            r.push({ type: "info", label: "None found",
+                     desc: Qt.platform.os === "android" ? "No emulator from DeckOS's list is installed" : "Emulator apps are only found on Android" })
+        for (var i = 0; i < installed.length; i++)
+            r.push({ type: "info", label: installed[i].name, desc: "Runs " + installed[i].systems.join(", "),
+                     value: installed[i].package })
+    }
+
     function systemRows() {
         var r = []
         var list = lib ? lib.systems : []
@@ -43,6 +61,7 @@ DeckSettingsPage {
                      desc: "Add your ROM folder in Settings > Library, then come back here" })
             r.push({ type: "button", label: "Open Library settings",
                      activate: function () { if (theme) theme.openSettingsPage("settings/library.qml") } })
+            if (lib) installedRows(r)
             return r
         }
         r.push({ type: "section", label: "Your systems" })
@@ -54,6 +73,7 @@ DeckSettingsPage {
                          activate: function () { emuPage.systemId = sys.id; emuPage.activeItemIndex = 0 } })
             })(list[i])
         }
+        installedRows(r)
         return r
     }
 
@@ -85,7 +105,7 @@ DeckSettingsPage {
         return r
     }
 
-    rows: (systemId, lib ? lib.systems : null, systemId === "" ? systemRows() : emulatorRows())
+    rows: (systemId, installed, lib ? lib.systems : null, systemId === "" ? systemRows() : emulatorRows())
 
     TextEntry {
         id: commandEntry

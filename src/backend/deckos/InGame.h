@@ -149,6 +149,13 @@ public:
     /// ...and Resume: the game's app back in front as it was left (not launched again)
     Q_INVOKABLE bool resumeGame();
 
+    /// Close menu (Android): the device restarts / shuts down through PServer or root (`svc power`).
+    /// False if neither is there; on PC the theme uses Pegasus's own power commands instead.
+    Q_INVOKABLE bool rebootDevice();
+    Q_INVOKABLE bool shutdownDevice();
+    /// Close > Restart DeckOS: call, then quit as usual - DeckOS opens again once it has quit
+    Q_INVOKABLE void restartAfterQuit();
+
     void onGameLaunching(const model::GameFile* file);
     /// the game started and DeckOS stays loaded: sessionEnded() follows once DeckOS is back in front,
     /// or - while PServer / root sees the game still running - once it ends or is stopped

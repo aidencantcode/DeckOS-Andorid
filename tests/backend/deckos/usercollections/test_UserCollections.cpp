@@ -53,6 +53,7 @@ private slots:
 
     void apply_puts_them_after_the_system();
     void add_and_remove_while_running();
+    void hide_and_rename();
 
 private:
     // a library with two GBA games (A, B) and one Android app (C)
@@ -183,6 +184,56 @@ void test_UserCollections::add_and_remove_while_running()
     QFile saved(path);
     QVERIFY(saved.open(QIODevice::ReadOnly));
     QVERIFY(QJsonDocument::fromJson(saved.readAll()).object().value(QStringLiteral("collections")).toArray().isEmpty());
+}
+
+void test_UserCollections::hide_and_rename()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("collections.json"));
+
+    {
+        auto [collections, games] = library(dir);
+        model::ApiObject api(backend::CliArgs {});
+        deckos::UserCollections user(&api, path);
+        user.apply(collections, games); // nothing saved yet: the library's own names
+        api.setGameData(std::move(collections), std::vector<model::Game*>(games));
+        model::Game* a = by_title(games, QStringLiteral("A"));
+
+        // a library collection renamed: its short name (the system) stays
+        QCOMPARE(user.rename(QStringLiteral("gba"), QStringLiteral("Handhelds")), QString());
+        QCOMPARE(names(api.collections()), (QStringList { QStringLiteral("Android"), QStringLiteral("Handhelds") }));
+        QCOMPARE(a->collectionsModel()->entries().front()->shortName(), QStringLiteral("gba"));
+        QVERIFY(!user.rename(QStringLiteral("Handhelds"), QStringLiteral("android")).isEmpty()); // taken
+
+        // hidden: out of the list, the games keep it
+        QVERIFY(user.setHidden(QStringLiteral("Android"), true));
+        QCOMPARE(names(api.collections()), QStringList { QStringLiteral("Handhelds") });
+        QCOMPARE(user.allCollections().size(), 2);
+        QVERIFY(user.allCollections().at(0).toMap().value(QStringLiteral("hidden")).toBool());
+        QCOMPARE(user.existingName(QStringLiteral("ANDROID")), QStringLiteral("Android"));
+    }
+
+    // the next start: renamed and hidden again
+    auto [collections, games] = library(dir);
+    model::ApiObject api(backend::CliArgs {});
+    deckos::UserCollections user(&api, path);
+    user.apply(collections, games);
+    QStringList all;
+    for (const model::Collection* coll : collections)
+        all << coll->name();
+    QCOMPARE(all, QStringList { QStringLiteral("Handhelds") });
+    api.setGameData(std::move(collections), std::vector<model::Game*>(games));
+
+    QVERIFY(user.setHidden(QStringLiteral("android"), false));
+    QCOMPARE(names(api.collections()), (QStringList { QStringLiteral("Android"), QStringLiteral("Handhelds") }));
+    // renamed back to its own name: nothing left to remember
+    QCOMPARE(user.rename(QStringLiteral("Handhelds"), QStringLiteral("GBA")), QString());
+    QFile saved(path);
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    const QJsonObject root = QJsonDocument::fromJson(saved.readAll()).object();
+    QVERIFY(root.value(QStringLiteral("renames")).toObject().isEmpty());
+    QVERIFY(root.value(QStringLiteral("hidden")).toArray().isEmpty());
 }
 
 

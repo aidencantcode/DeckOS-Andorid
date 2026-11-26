@@ -121,8 +121,15 @@ The first build that is not a pre-release (`ship.ps1 -Phase 1` → `0.1.0`; `and
 - [x] **Your own collections + Android apps opened like the home screen** (owner request; 0.1.2, device check pending):
   - *Add to collection...* (game page ⚙ options, Library Ⓧ): tick or untick any collection, or name a new one. Kept in `<config>/deckos/collections.json`, added after the game's own collections (the first one stays its system), changed live without a library reload.
   - Apps open with the home screen's exact intent (MAIN + LAUNCHER, `NEW_TASK | RESET_TASK_IF_NEEDED`), so a running app comes back instead of getting a second copy on top; Resume uses it too.
+- [x] **Notifications, Settings cleanup, collection management, controller fixes** (owner request; 0.1.3, device check pending):
+  - Steam-style notification cards (scraping progress, ROM scans); Re-scrape can skip games that already have artwork.
+  - Settings: Scraping and Collections tabs (hide, rename, relink a ROM folder); Power and Accessibility folded into General and Customization; Emulators can scan installed emulators with no systems yet.
+  - Achievements tab: Steam-like list or grid (Ⓨ), remembered.
+  - Close menu: Exit, Restart DeckOS, Restart / Shut down device.
+  - Library highlight after LB/RB + Down; Properties Ⓑ goes back; rename and description edits work; custom SteamGridDB title used by the scraper; apps open in touch mode.
 - [ ] SteamGridDB picks (Change artwork…) are still web addresses in memory: download them into the DeckOS folder as the user's own files.
-- [ ] Collections: rename or delete a whole collection (today: take every game out), and add several games at once from the Library.
+- [ ] Collections: delete a whole collection (today: take every game out, or hide it), and add several games at once from the Library.
+- [ ] Achievement unlock notifications through `theme.notify`.
 
 ### E — Performance tab: device profiles (AYN / Retroid)
 Under the overlay level slider, each one is a 3–5 step slider like the overlay one, and the HUD shows what's active:

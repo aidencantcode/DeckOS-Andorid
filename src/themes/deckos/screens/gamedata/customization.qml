@@ -152,6 +152,14 @@ Item {
         customSearchTitle       = (ct.searchTitle           && ct.searchTitle           !== "") ? ct.searchTitle           : originalGameTitle;
         customSteamTitle        = (ct.steamTitle            && ct.steamTitle            !== "") ? ct.steamTitle            : originalGameTitle;
         retroAchievementsTitle  = (ct.retroAchievementsTitle && ct.retroAchievementsTitle !== "") ? ct.retroAchievementsTitle : originalGameTitle;
+        syncSteamGridTitle() // DECKOS: a title saved before 0.1.3 reaches the scraper too
+    }
+
+    // DECKOS: the scraper (C++) searches SteamGridDB with this title too - it used the game's name
+    // even with a SteamGridDB title set here. Saved with the game's DeckOS changes.
+    function syncSteamGridTitle() {
+        if (typeof deckos === "undefined" || !deckos || !game || originalGameTitle === "") return
+        deckos.setGameSteamGridTitle(game, customSteamTitle === originalGameTitle ? "" : customSteamTitle)
     }
 
     // 3. Триггеры: обновляем при загрузке И при каждом открытии страницы
@@ -188,6 +196,7 @@ Item {
             retroAchievementsTitle: (retroAchievementsTitle === "" || retroAchievementsTitle === originalGameTitle) ? "" : retroAchievementsTitle
         }
         api.memory.set("custom_assets_" + originalGameTitle, data)
+        syncSteamGridTitle()
     }
 
     onShowBootAnimationChanged: api.memory.set("showBootAnimation", showBootAnimation)

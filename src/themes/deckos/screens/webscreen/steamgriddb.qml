@@ -55,7 +55,8 @@ FocusScope {
     // ==========================================
     property bool saving: false
     property string pendingDelete: ""
-    property string apiKey: (api.memory.has("steamGridApiKey") && api.memory.get("steamGridApiKey") !== "") ? api.memory.get("steamGridApiKey") : ((typeof deckos !== "undefined" && deckos) ? deckos.scraper.steamGridDbKey : "") // DECKOS: falls back to the scraper's key
+    // DECKOS: the one SteamGridDB key, Settings › Scraping (StMini kept its own copy in Customization)
+    property string apiKey: (typeof deckos !== "undefined" && deckos && deckos.scraper.steamGridDbKey !== "") ? deckos.scraper.steamGridDbKey : ((api.memory.has("steamGridApiKey") && api.memory.get("steamGridApiKey") !== "") ? api.memory.get("steamGridApiKey") : "")
      // Сделай так:
     property string gameName: {
     // 1. Получаем оригинальное название игры из темы

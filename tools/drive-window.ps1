@@ -1,7 +1,7 @@
 # DeckOS dev tool (Windows): drives the PC build with posted key presses and saves window screenshots.
 # Example: tools/drive-window.ps1 -Exe ../windows-build/DeckOS.exe -WorkDir ../windows-build -OutDir shots -Steps "size:1920x1080","wait:6000","key:F1","shot:menu"
 # Launches an exe, posts a key script to its main window and captures screenshots.
-# Steps: "key:F1", "key:DOWN", "key:RETURN", "wait:1500", "shot:name", "tap:F1:80" (press, then wait 80 ms),
+# Steps: "type:Some text" (characters), "key:F1", "key:DOWN", "key:RETURN", "wait:1500", "shot:name", "tap:F1:80" (press, then wait 80 ms),
 #        "min", "restore" (minimize / bring back the window, like leaving and returning on Android)
 param([string]$Exe, [string]$WorkDir, [string]$OutDir, [string[]]$Steps, [int]$StartupSeconds = 6)
 $ErrorActionPreference = 'Stop'
@@ -18,11 +18,13 @@ public static class W32 {
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint mapType);
 }
 "@
 $keys = @{ F1 = @(0x70, 0x3B, 0); DOWN = @(0x28, 0x50, 1); UP = @(0x26, 0x48, 1); LEFT = @(0x25, 0x4B, 1); RIGHT = @(0x27, 0x4D, 1);
            RETURN = @(0x0D, 0x1C, 0); ESCAPE = @(0x1B, 0x01, 0); BACKSPACE = @(0x08, 0x0E, 0); PGUP = @(0x21, 0x49, 1);
-           Y = @(0x59, 0x15, 0); X = @(0x58, 0x2D, 0); F = @(0x46, 0x21, 0); I = @(0x49, 0x17, 0); PGDN = @(0x22, 0x51, 1) }
+           Y = @(0x59, 0x15, 0); X = @(0x58, 0x2D, 0); F = @(0x46, 0x21, 0); I = @(0x49, 0x17, 0); PGDN = @(0x22, 0x51, 1);
+           Q = @(0x51, 0x10, 0); E = @(0x45, 0x12, 0) }  # Q / E: LB / RB (prev / next page)
 
 function Send-Key($h, [string]$name) {
     $k = $keys[$name]
@@ -56,6 +58,14 @@ try {
         switch ($kind) {
             'key'  { Send-Key $h $arg; Start-Sleep -Milliseconds 400 }
             'tap'  { $kn, $ms = $arg -split ':', 2; Send-Key $h $kn; Start-Sleep -Milliseconds ([int]$ms) } # "tap:F1:80" = quick presses
+            'type' { # digits, letters, spaces as real key presses (the window's message loop makes the characters)
+                foreach ($ch in $arg.ToCharArray()) {
+                    $vk = [int][char]::ToUpper($ch); $sc = [W32]::MapVirtualKey([uint32]$vk, 0)
+                    $l = 1 -bor ([int]$sc -shl 16)
+                    [void][W32]::PostMessage($h, 0x0100, [IntPtr]$vk, [IntPtr]$l); Start-Sleep -Milliseconds 40
+                    [void][W32]::PostMessage($h, 0x0101, [IntPtr]$vk, [IntPtr]([int64]$l -bor (1 -shl 30) -bor ([int64]1 -shl 31))); Start-Sleep -Milliseconds 80
+                }
+                Start-Sleep -Milliseconds 300 }
             'wait' { Start-Sleep -Milliseconds ([int]$arg) }
             'min'  { [void][W32]::ShowWindow($h, 6); Start-Sleep -Milliseconds 500 }                     # like Android sending DeckOS to the background
             'restore' { [void][W32]::ShowWindow($h, 9); [void][W32]::SetForegroundWindow($h); Start-Sleep -Milliseconds 800 }

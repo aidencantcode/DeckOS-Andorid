@@ -3,6 +3,43 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**Notifications, a cleaner Settings, collections you can manage, and controller fixes.**
+- **Steam-style notifications** in the top-left corner, over every page: a card with an icon, a title, a line of text and a progress bar. Scraping shows its progress there (game name, *3 of 40*) and then *Scraping finished*; a ROM folder scan shows there too. Achievements and other notices can use the same cards later.
+- **Re-scrape… → *Skip games that already have artwork*** (on by default): only games without a cover, hero, logo or wide capsule are scraped again, so re-scraping a collection doesn't redo the games that are fine. Turn it off to redo everything you pick.
+- **Settings, rearranged:**
+  - New **Scraping** tab: auto-scrape, scrape missing, Re-scrape…, sources, the SteamGridDB and TheGamesDB keys, load keys from a file. Settings › Library keeps a *Scraping…* shortcut.
+  - New **Collections** tab: every collection, with *Show in the Library* (hide one; its games stay in your library), *Rename…* (kept through rescans; the system is still recognised) and, for a ROM folder system, *Games folder…* to point it at another folder (*Use the folders found by name* undoes it). Android apps aren't a folder, so they only get hide and rename.
+  - **Power** tab removed; *Show battery percent* is in General now.
+  - **Accessibility** moved into **Customization** (interface scale, rows, async loading, animated covers, launch animation), under the Look options.
+  - System no longer has the Pegasus theme switcher.
+  - The extra SteamGridDB key field left over from StMini is gone: the artwork browser uses the key from Settings › Scraping.
+- **Emulators tab:** *Scan installed emulators* works even before any ROM folder or system is found, and lists what it found.
+- **Achievements tab: list or grid.** The list is like Steam's achievements page (badge, name, description, unlock date or how many players have it, points). Ⓨ or the List/Grid pills switch; the choice is remembered for every game.
+- **Close menu:** *Exit DeckOS*, *Restart DeckOS*, *Restart device* and *Shut down device* (the last two need PServer or root), *Cancel*. One menu for every page now.
+- **Library: the controller highlight no longer goes missing.** Pressing Down right after LB/RB gave the keys to the tab you were leaving (hidden), so no game was highlighted and the D-pad moved the hidden one until you tapped a game. The Library now always focuses the tab on screen, also when a tab finishes loading late (async loading) and when you come back to DeckOS.
+- **Properties:** Ⓑ on its left list goes back to where you opened it (Home, Library, Search or the game page) instead of opening the Steam menu.
+- **Properties › Details: renaming a game and editing its description work.** From the Library, Home and Search, the page got a copy of the game's data instead of the game, so the change was dropped. A renamed game keeps its SteamGridDB picks and custom titles.
+- **Custom SteamGridDB title** (Properties › Customization) is now used by *Scrape this game*, auto-scrape and re-scrape too, not only by the artwork browser.
+- **Android apps open in touch mode.** Moving through DeckOS with the D-pad switches Android to "keyboard mode", and an app opened from DeckOS started in it. Apps without their own focus style then get Android's default focus highlight over their whole screen (a tint). DeckOS now gives one invisible tap to its own window before opening an app, so the app starts as if you'd tapped its icon. Emulators opened with a game are unchanged.
+- **Fixes:** closing the power menu put Home's focus on the search bar; the scraping notification could show a stale *Downloading…* line; a page change that never finishes no longer blocks the controller-focus safety check, which now also recovers focus left on something hidden.
+
+**Notes**
+- The touch-mode fix is the leading explanation for the remaining tint, not a certainty. DeckOS's log (`logs/lastrun.log` in your DeckOS folder) now has a `touch mode:` line after each app launch, saying whether it switched.
+- *Restart device* / *Shut down device* only appear on devices where Pegasus allows them, and need PServer or root on Android.
+- Checked on PC at 1920×1080, then 1240×1080. The Android code and APK build locally; nothing has been checked on a handheld yet.
+
+**Test checklist**
+1. Settings › Scraping › *Re-scrape…*: leave *Skip games that already have artwork* on, turn *Everything* off, pick a collection, *Start re-scrape*. Top-left, a card shows the progress, then *Scraping finished*. Only games without artwork were scraped.
+2. Settings › Collections: open a collection, turn *Show in the Library* off → it's gone from Library › Collections. Turn it on. *Rename…* it → the new name shows in the Library. For a ROM system, *Games folder…* → pick a folder → its games are rescanned from there.
+3. Settings › General has *Show battery percent*; there's no Power or Accessibility tab; Customization has the accessibility options.
+4. Settings › Emulators › *Scan installed emulators* lists the emulators on the device.
+5. A game page with RetroAchievements: Achievements tab → Ⓨ switches list/grid. Open another game: same view.
+6. Steam menu › Close: Exit, Restart DeckOS, Restart device, Shut down device, Cancel. Try *Restart DeckOS*: DeckOS closes and opens again.
+7. Library: press RB then Down quickly, several times, across all tabs. A game is always highlighted and the D-pad moves it. Same after launching a game and coming back.
+8. Library: Ⓧ on a game › Properties, then Ⓑ: back in the Library on the same game. Same from a game page, Home and Search.
+9. Properties › Details › Name: change it, Ⓑ to save. The new name shows in the Library and on the game page. Same for the description.
+10. Properties › Customization: set a *Custom SteamGridDB Title*, then Details › *Scrape this game*: the artwork found matches that title.
+11. Navigate DeckOS with the D-pad, then open Among Us (or another Android app that showed the tint). No tint. If it's still there, send `logs/lastrun.log`: the `touch mode:` line says what happened.
 
 ## 0.1.2 — 2026-11-26
 **Your own collections, and Android apps that come back instead of starting over.**

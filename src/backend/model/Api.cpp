@@ -91,6 +91,13 @@ void ApiObject::addCollection(model::Collection* coll)
     m_collections->update(std::move(colls));
 }
 
+void ApiObject::sortCollections()
+{
+    std::vector<model::Collection*> colls = m_collections->entries();
+    std::sort(colls.begin(), colls.end(), model::sort_collections);
+    m_collections->update(std::move(colls));
+}
+
 void ApiObject::removeCollection(model::Collection* coll)
 {
     std::vector<model::Collection*> colls = m_collections->entries();

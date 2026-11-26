@@ -32,6 +32,7 @@ QStringList granted_paths();
 void request_saf_permission(const std::function<void()>&);
 
 QString run_am_call(const QStringList&);
+QString last_launch_note(); // DECKOS: what the last app launch did about touch mode (TouchMode.java)
 int run_script(const QStringList&);
 QString to_content_uri(const QString&);
 QString to_document_uri(const QString&);

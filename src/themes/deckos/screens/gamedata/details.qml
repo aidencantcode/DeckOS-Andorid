@@ -33,6 +33,15 @@ DeckSettingsPage {
         }
     }
 
+    // The SteamGridDB picks and the custom titles (Customization) are kept under the game's name: a
+    // renamed game takes them along (the old entry stays, for a rename back)
+    function carryCustomAssets(from, to) {
+        if (!from || !to || from === to) return
+        var oldKey = "custom_assets_" + from, newKey = "custom_assets_" + to
+        if (api.memory.has(oldKey) && !api.memory.has(newKey))
+            api.memory.set(newKey, api.memory.get(oldKey))
+    }
+
     function shortText(text, n) {
         var t = String(text || "").replace(/\s+/g, " ").trim()
         return t.length > n ? t.substring(0, n) + "…" : t
@@ -45,7 +54,7 @@ DeckSettingsPage {
     function backToLaunchRow() {
         Qt.callLater(function () {
             for (var i = 0; i < detailsPage.rows.length; i++)
-                if (detailsPage.rows[i].label === "Launch with2026") { detailsPage.activeItemIndex = i; break }
+                if (detailsPage.rows[i].label === "Launch with…") { detailsPage.activeItemIndex = i; break }
         })
     }
 
@@ -125,7 +134,11 @@ DeckSettingsPage {
         maxLength: 120
         onAccepted: {
             // closing without changes must not mark the name as edited
-            if (detailsPage.dk && detailsPage.game && text !== original) detailsPage.dk.setGameTitle(detailsPage.game, text)
+            if (detailsPage.dk && detailsPage.game && text !== original) {
+                var before = detailsPage.game.title
+                detailsPage.dk.setGameTitle(detailsPage.game, text)
+                detailsPage.carryCustomAssets(before, detailsPage.game.title)
+            }
             detailsPage.refresh()
             goToZone(1)
         }

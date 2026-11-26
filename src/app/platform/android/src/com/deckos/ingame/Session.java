@@ -453,6 +453,19 @@ public final class Session {
         return Privileged.run("am force-stop " + Privileged.quote(pkg));
     }
 
+    /// Close > Restart / Shut down device: `svc power` through PServer / root. False if neither is there.
+    public static boolean powerDevice(boolean reboot) {
+        if (!Privileged.available())
+            return false;
+        Log.i(TAG, reboot ? "restarting the device" : "shutting the device down");
+        return Privileged.run(reboot ? "svc power reboot" : "svc power shutdown");
+    }
+
+    /// Close > Restart DeckOS: RestartActivity opens DeckOS again once it has quit
+    public static boolean restartApp() {
+        return RestartActivity.start(sApp);
+    }
+
     /// the game page's Resume: the game's app back in front as it was left - with the exact intent of its
     /// icon in Android's launcher, which brings a running app back instead of starting it again (launching
     /// the game again would restart it in most emulators; AppLaunch.java). False if it has no launcher entry.

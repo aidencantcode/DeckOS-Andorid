@@ -156,6 +156,12 @@ QString run_am_call(const QStringList& args)
     return result_obj.toString();
 }
 
+// DECKOS: TouchMode.java's note on the last app launch, for the log
+QString last_launch_note()
+{
+    return QAndroidJniObject::callStaticObjectMethod("com/deckos/ingame/TouchMode", "lastNote", "()Ljava/lang/String;").toString();
+}
+
 int run_script(const QStringList& args)
 {
     QAndroidJniEnvironment jni_env;

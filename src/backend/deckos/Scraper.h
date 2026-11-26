@@ -55,7 +55,9 @@ public:
     /// Queues every game; with onlyMissing, only games that lack something and were never tried.
     /// Returns how many games were queued.
     /// collections: only games in these collections (by name); empty = every game.
-    Q_INVOKABLE int scrapeAll(bool onlyMissing, const QStringList& collections = {});
+    /// skipWithMedia: games that already have artwork (a cover, hero, logo or wide capsule - an Android
+    /// app's own icon doesn't count) are left out, so a re-scrape only fills the gaps.
+    Q_INVOKABLE int scrapeAll(bool onlyMissing, const QStringList& collections = {}, bool skipWithMedia = false);
     Q_INVOKABLE void cancel();
 
     /// <DeckOS folder>/keys.txt, else <config>/api-keys.env - KEY=VALUE lines (STEAMGRIDDB_API_KEY, THEGAMESDB_API_KEY, RA_USERNAME,
