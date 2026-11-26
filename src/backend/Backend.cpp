@@ -34,6 +34,7 @@
 #include "model/internal/Internal.h"
 #include "deckos/DeckosApi.h" // DECKOS
 #include "deckos/InGame.h" // DECKOS
+#include "deckos/UserCollections.h" // DECKOS
 #include "providers/pegasus_playtime/PlaytimeStats.h" // DECKOS: in-game play time
 #include "utils/FolderListModel.h"
 #include "SortFilterProxyModel/qqmlsortfilterproxymodel.h"
@@ -358,6 +359,9 @@ void Backend::onScanFinished()
 
     std::vector<model::Game*> games;
     std::swap(m_providerman->foundGames(), games);
+
+    // DECKOS: the user's collections join in here, after the game index cache was saved (never in it)
+    m_deckos->collections()->apply(colls, games);
 
     m_api_public->setGameData(std::move(colls), std::move(games));
 }

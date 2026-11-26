@@ -6,3 +6,4 @@ SUBDIRS += \
     ramatcher \
     romlibrary \
     underclock \
+    usercollections \

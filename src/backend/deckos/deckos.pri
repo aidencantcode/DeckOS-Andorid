@@ -15,6 +15,7 @@ HEADERS += \
     $$PWD/ClusterTunePresets.h \
     $$PWD/Underclock.h \
     $$PWD/UnderclockCore.h \
+    $$PWD/UserCollections.h \
 
 SOURCES += \
     $$PWD/Catalog.cpp \
@@ -27,4 +28,5 @@ SOURCES += \
     $$PWD/Scraper.cpp \
     $$PWD/Underclock.cpp \
     $$PWD/UnderclockCore.cpp \
+    $$PWD/UserCollections.cpp \
 

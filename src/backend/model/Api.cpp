@@ -20,6 +20,8 @@
 #include "Log.h"
 #include "model/gaming/GameFile.h"
 
+#include <algorithm>
+
 
 namespace model {
 ApiObject::ApiObject(const backend::CliArgs&, QObject* parent)
@@ -75,6 +77,29 @@ void ApiObject::setGameData(std::vector<model::Collection*>&& collections, std::
 
     Log::info(LOGMSG("%1 games found").arg(m_all_games->count()));
     emit gamedataReady();
+}
+
+void ApiObject::addCollection(model::Collection* coll)
+{
+    if (!coll || m_collections->contains(coll))
+        return;
+    coll->moveToThread(thread());
+    coll->setParent(this);
+
+    std::vector<model::Collection*> colls = m_collections->entries();
+    colls.insert(std::upper_bound(colls.begin(), colls.end(), coll, model::sort_collections), coll);
+    m_collections->update(std::move(colls));
+}
+
+void ApiObject::removeCollection(model::Collection* coll)
+{
+    std::vector<model::Collection*> colls = m_collections->entries();
+    const auto it = std::find(colls.begin(), colls.end(), coll);
+    if (it == colls.end())
+        return;
+    colls.erase(it);
+    m_collections->update(std::move(colls));
+    // the object stays (parented here): a page may still hold it, as after a library reload
 }
 
 void ApiObject::onGameFileSelectorRequested()

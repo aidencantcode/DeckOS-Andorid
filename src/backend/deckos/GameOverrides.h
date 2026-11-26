@@ -65,6 +65,10 @@ public:
     /// so restore() can put them back without reloading the library.
     static void apply(model::Game&, const QJsonObject& entry, bool live);
     static void restore(model::Game&);
+    /// takes every file of DeckOS's (isOwnMedia) off the game's artwork; the entry puts back what's
+    /// current. A library restored from the game index cache otherwise keeps addresses of files that
+    /// were moved into the DeckOS folder or renamed since (0.1.1)
+    static void dropOwnMedia(model::Game&);
 
     /// asset names used in entries ("boxFront", "logo", ...) - the same names themes use
     static QStringList assetNames();

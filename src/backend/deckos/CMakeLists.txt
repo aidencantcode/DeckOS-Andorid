@@ -21,4 +21,6 @@ target_sources(pegasus-backend PRIVATE
     Underclock.h
     UnderclockCore.cpp
     UnderclockCore.h
+    UserCollections.cpp
+    UserCollections.h
 )

@@ -3,6 +3,30 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**Your own collections, and Android apps that come back instead of starting over.**
+- **Add to collection:** pick *Add to collection...* in a game page's options (the ⚙ button), or with Ⓧ on a game in the Library.
+  - Every collection of your library is listed, with a tick where the game already is. Ⓐ puts the game in or takes it out.
+  - *New collection…* at the bottom names a new one with the keyboard and puts the game in it. Typing the name of one you have (any case) adds the game to that one.
+  - A system's collection, or one from a metadata file, shows as *From your library* and stays.
+  - Collections show in the Library's *Collections* tab straight away; one you empty goes away. They're kept in `deckos/collections.json` in DeckOS's config folder, through rescans and updates.
+- **Android apps open the way the home screen opens them:**
+  - Pegasus (and DeckOS until now) opened apps with a slightly different request than the home screen's. When the app was already open, Android took it for a different request and stacked a second copy of the app's first screen on top of the running one. Games started over and showed their start-up pop-ups again; that's the Among Us pop-up with the dimmed screen.
+  - DeckOS now sends exactly the home screen's request, so a running app comes back as you left it, from DeckOS or from the home screen. Emulators started with a game are unchanged.
+  - The same goes for *Resume* on the game page. For an emulator it used to open the emulator's main menu on top instead of the game.
+  - The launch command shown for Android apps now includes the launcher category.
+- **Fix:** after 0.1.1 moved the artwork into the DeckOS folder, a quick start from the game list cache could still look for old artwork files. Only the current ones are used now.
+
+**Notes**
+- An app still running from an older DeckOS launch may restart once more the first time. After that it comes back.
+- Checked on PC at 1920×1080, then 1240×1080. The Android code and APK build locally; nothing has been checked on a handheld yet.
+
+**Test checklist**
+1. Open a game's page, select the ⚙ button, pick *Add to collection...* → *New collection…*, type "Games", press B. The row "Games" appears ticked; B again goes back to the game page.
+2. Library › Collections: "Games" is there with that game. In the Library, press Ⓧ on an Android game (Among Us) → *Add to collection...* → Ⓐ on "Games".
+3. In the picker, Ⓐ on "Games" again takes the game out (the tick goes). Take all of them out: "Games" leaves the Collections tab.
+4. The game's system (e.g. GBA) shows *From your library*; Ⓐ on it says it stays.
+5. Open Among Us from Android's home screen and leave it on its main menu. Switch to DeckOS (recent apps) and play Among Us from its page: the same game comes back where you left it, with no restart and no Announcements pop-up. Then the other way round: play it from DeckOS, press home, tap its icon. Same game, same place.
+6. Start a game in an emulator from DeckOS, go back to DeckOS, press *Resume*: the game is back, not the emulator's menu.
 
 ## 0.1.1 — 2026-11-26
 **Your own artwork, one DeckOS folder for everything, and the Steam menu with the controller.**

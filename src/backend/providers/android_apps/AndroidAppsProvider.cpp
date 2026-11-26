@@ -67,7 +67,10 @@ HashMap<QString, model::Game*> find_apps_for(model::Collection& collection, prov
         const QString icon_uri = QStringLiteral("image://androidicons/") + package;
         (*game_ptr)
             .setTitle(appname)
-            .setLaunchCmd(QStringLiteral("am start --user 0 -a %1 -n %2").arg(action, component))
+            // DECKOS: the home screen's intent (action, launcher category, component), so a running app
+            // comes back instead of getting a second copy on top; MainActivity adds the home screen's flags
+            .setLaunchCmd(QStringLiteral("am start --user 0 -a %1 -c android.intent.category.LAUNCHER -n %2")
+                .arg(action, component))
             .assetsMut()
             .add_uri(AssetType::BOX_FRONT, icon_uri)
             .add_uri(AssetType::UI_TILE, icon_uri);

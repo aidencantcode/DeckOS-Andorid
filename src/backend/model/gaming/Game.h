@@ -185,6 +185,10 @@ public:
 
     Game& setFiles(std::vector<model::GameFile*>&&);
     Game& setCollections(std::vector<model::Collection*>&&);
+    /// DECKOS: the user's collections, added at the end - never first, the first collection is the game's
+    /// system for DeckOS (artwork folder, scraper, RetroAchievements); see UserCollections.h
+    Game& addCollection(model::Collection*);
+    Game& removeCollection(model::Collection*);
 
 
 private:

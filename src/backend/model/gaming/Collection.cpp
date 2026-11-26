@@ -20,6 +20,8 @@
 #include "Assets.h"
 #include "Game.h"
 
+#include <algorithm>
+
 
 namespace model {
 
@@ -48,6 +50,42 @@ Collection& Collection::setGames(std::vector<model::Game*>&& games)
     Q_ASSERT(!m_games);
     m_games = new GameListModel(this);
     m_games->update(std::move(games));
+    return *this;
+}
+
+Collection& Collection::addGames(const std::vector<model::Game*>& added)
+{
+    if (!m_games)
+        m_games = new GameListModel(this);
+
+    std::vector<model::Game*> games = m_games->entries();
+    bool changed = false;
+    for (model::Game* const game : added) {
+        if (game && std::find(games.cbegin(), games.cend(), game) == games.cend()) {
+            games.push_back(game);
+            changed = true;
+        }
+    }
+    if (changed) {
+        std::sort(games.begin(), games.end(), model::sort_games);
+        m_games->update(std::move(games));
+    }
+    return *this;
+}
+
+Collection& Collection::removeGames(const std::vector<model::Game*>& removed)
+{
+    if (!m_games)
+        return *this;
+
+    std::vector<model::Game*> games = m_games->entries();
+    const auto new_end = std::remove_if(games.begin(), games.end(), [&removed](model::Game* game) {
+        return std::find(removed.cbegin(), removed.cend(), game) != removed.cend();
+    });
+    if (new_end != games.end()) {
+        games.erase(new_end, games.end());
+        m_games->update(std::move(games));
+    }
     return *this;
 }
 

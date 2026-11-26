@@ -4,6 +4,7 @@ import QtQuick.Layouts 1.15
 import QtGraphicalEffects 1.15
 import QtQuick.Window 2.15
 import SortFilterProxyModel 0.2
+import "settings/parts" // DECKOS: CollectionPicker
 
 FocusScope {
     id: root
@@ -470,6 +471,13 @@ SortFilterProxyModel {
     }
 
     
+    // DECKOS: options > Add to collection...: the options close, the picker opens over the page
+    function openCollectionPicker() {
+        var g = currentFocusedGame
+        if (optionsMenuVisible) toggleOptionsMenu()
+        if (g) collectionPicker.open(g)
+    }
+
     function toggleOptionsMenu() {
         console.log("toggleOptionsMenu called. Visible:", optionsMenuVisible, "focusZone:", focusZone);
         
@@ -2283,8 +2291,10 @@ function toggleSortMenu() {
                 }
                 MouseArea { 
                     anchors.fill: parent
-                    onClicked: 
-                        if (collectionGamesLoader.active) {
+                    onClicked:
+                        if (collectionPicker.visible) { // DECKOS: back from Add to collection first
+                            collectionPicker.close()
+                        } else if (collectionGamesLoader.active) {
                             console.log("Back from collection games")
                             collectionGamesLoader.active = false
                             goToZone(2)
@@ -2781,7 +2791,7 @@ FocusScope {
     Behavior on opacity { NumberAnimation { duration: 150 } }
 
     property int currentButtonIndex: 0
-    property var buttons: [playButton, favoriteButton, propertiesButton, artworkButton, cancelButton]
+    property var buttons: [playButton, favoriteButton, collectionButton, propertiesButton, artworkButton, cancelButton]
 
     /* OPTIONS MENU ФОН */
     Item {
@@ -2810,7 +2820,7 @@ FocusScope {
 
     Rectangle {
         width: 550
-        height: 550 
+        height: 660 // DECKOS: 6 rows (Add to collection...)
         anchors.centerIn: parent
         color: "#181B20"
         
@@ -2837,7 +2847,7 @@ FocusScope {
             Rectangle {
                 id: playButton
                 width: parent.width
-                height: parent.height / 5
+                height: parent.height / 6
                 color: optionsMenu.currentButtonIndex === 0 ? "#54B63D" : "transparent"
                 
                 Row {
@@ -2880,7 +2890,7 @@ FocusScope {
             Rectangle {
                 id: favoriteButton
                 width: parent.width
-                height: parent.height / 5
+                height: parent.height / 6
                 color: optionsMenu.currentButtonIndex === 1 ? "white" : "transparent"
                 
                 Text {
@@ -2904,47 +2914,44 @@ FocusScope {
                     }
                 }
             }
-            
-            // ===== 2. PROPERTIES =====
+
+            // ===== 2. ADD TO COLLECTION ===== (DECKOS: CollectionPicker, deckos.collections)
             Rectangle {
-                id: propertiesButton
+                id: collectionButton
                 width: parent.width
-                height: parent.height / 5
+                height: parent.height / 6
                 color: optionsMenu.currentButtonIndex === 2 ? "white" : "transparent"
-                
+
                 Text {
-                    text: "   Properties"
+                    text: "   Add to collection..."
                     color: optionsMenu.currentButtonIndex === 2 ? "black" : "white"
                     font.pixelSize: 35
                     font.family: bold.name
                     anchors.verticalCenter: parent.verticalCenter
                 }
-                
+
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
                         if (optionsMenu.currentButtonIndex !== 2) {
                             optionsMenu.currentButtonIndex = 2
                             sNav.stop(); sNav.play();
-                        } else if (currentFocusedGame) {
-                            theme.currentGame = currentFocusedGame;
-                            api.memory.set("targetGameName", currentFocusedGame.title);
-                            root.toggleOptionsMenu();
-                            theme.openPage(14);
+                        } else {
+                            root.openCollectionPicker()
                         }
                     }
-                }                
+                }
             }
 
-            // ===== 3. CHANGE ARTWORK =====
+            // ===== 3. PROPERTIES =====
             Rectangle {
-                id: artworkButton
+                id: propertiesButton
                 width: parent.width
-                height: parent.height / 5
+                height: parent.height / 6
                 color: optionsMenu.currentButtonIndex === 3 ? "white" : "transparent"
                 
                 Text {
-                    text: "   Change artwork..."
+                    text: "   Properties"
                     color: optionsMenu.currentButtonIndex === 3 ? "black" : "white"
                     font.pixelSize: 35
                     font.family: bold.name
@@ -2961,21 +2968,21 @@ FocusScope {
                             theme.currentGame = currentFocusedGame;
                             api.memory.set("targetGameName", currentFocusedGame.title);
                             root.toggleOptionsMenu();
-                            theme.openPage(12);
+                            theme.openPage(14);
                         }
                     }
                 }                
             }
-            
-            // ===== 4. CANCEL =====
+
+            // ===== 4. CHANGE ARTWORK =====
             Rectangle {
-                id: cancelButton
+                id: artworkButton
                 width: parent.width
-                height: parent.height / 5
+                height: parent.height / 6
                 color: optionsMenu.currentButtonIndex === 4 ? "white" : "transparent"
                 
                 Text {
-                    text: "   Cancel"
+                    text: "   Change artwork..."
                     color: optionsMenu.currentButtonIndex === 4 ? "black" : "white"
                     font.pixelSize: 35
                     font.family: bold.name
@@ -2987,6 +2994,37 @@ FocusScope {
                     onClicked: {
                         if (optionsMenu.currentButtonIndex !== 4) {
                             optionsMenu.currentButtonIndex = 4
+                            sNav.stop(); sNav.play();
+                        } else if (currentFocusedGame) {
+                            theme.currentGame = currentFocusedGame;
+                            api.memory.set("targetGameName", currentFocusedGame.title);
+                            root.toggleOptionsMenu();
+                            theme.openPage(12);
+                        }
+                    }
+                }                
+            }
+            
+            // ===== 5. CANCEL =====
+            Rectangle {
+                id: cancelButton
+                width: parent.width
+                height: parent.height / 6
+                color: optionsMenu.currentButtonIndex === 5 ? "white" : "transparent"
+                
+                Text {
+                    text: "   Cancel"
+                    color: optionsMenu.currentButtonIndex === 5 ? "black" : "white"
+                    font.pixelSize: 35
+                    font.family: bold.name
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        if (optionsMenu.currentButtonIndex !== 5) {
+                            optionsMenu.currentButtonIndex = 5
                             sNav.stop(); sNav.play();
                         } else {
                             root.toggleOptionsMenu()
@@ -3008,9 +3046,9 @@ FocusScope {
                 event.accepted = true
             }
             else if (event.key === Qt.Key_Down) {
-                if (currentButtonIndex < 4) {
+                if (currentButtonIndex < 5) {
                     currentButtonIndex++
-                    sNav.stop(); sNav.play(); 
+                    sNav.stop(); sNav.play();
                 }
                 event.accepted = true
             }
@@ -3027,15 +3065,17 @@ FocusScope {
                         root.toggleOptionsMenu();
                     }
                 } else if (currentButtonIndex === 2) {
-                    if (currentFocusedGame) { theme.currentGame = currentFocusedGame; api.memory.set("targetGameName", currentFocusedGame.title) } root.toggleOptionsMenu(); theme.openPage(14) // DECKOS: Properties did nothing with a controller (mouse only)
+                    root.openCollectionPicker()
                 } else if (currentButtonIndex === 3) {
+                    if (currentFocusedGame) { theme.currentGame = currentFocusedGame; api.memory.set("targetGameName", currentFocusedGame.title) } root.toggleOptionsMenu(); theme.openPage(14) // DECKOS: Properties did nothing with a controller (mouse only)
+                } else if (currentButtonIndex === 4) {
                     if (currentFocusedGame) {
                         theme.currentGame = currentFocusedGame;
                         api.memory.set("targetGameName", currentFocusedGame.title);
                     }
                     root.toggleOptionsMenu();
                     theme.openPage(12);
-                } else if (currentButtonIndex === 4) {
+                } else if (currentButtonIndex === 5) {
                     root.toggleOptionsMenu();
                     sLeftClose.play();
                 }
@@ -3057,6 +3097,16 @@ FocusScope {
         }
     }
 }
+
+    // DECKOS: options > Add to collection... (the same picker as the game page's)
+    CollectionPicker {
+        id: collectionPicker
+        z: 10000
+        onClosed: {
+            var gv = root.getCurrentGridView()
+            if (gv && root.focusZone === 2) gv.forceActiveFocus()
+        }
+    }
 
 
     /* ================= CLOSE MENU ================= */

@@ -31,6 +31,9 @@ Provider& OverridesProvider::run(SearchContext& sctx)
             game = sctx.game_by_uri(key.mid(4));
 
         if (game) {
+            // DECKOS: the whole entry is applied, so DeckOS's files come only from it - not from the
+            // game index cache, which can hold addresses of files moved or renamed since
+            deckos::GameOverrides::dropOwnMedia(*game);
             deckos::GameOverrides::apply(*game, store.entry(key), false);
             applied++;
         }

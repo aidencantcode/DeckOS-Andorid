@@ -4,6 +4,7 @@ import QtQuick.Layouts 1.15
 import QtGraphicalEffects 1.15
 import QtQuick.Window 2.15
 import "../ra" // DECKOS: RetroAchievements (from BigScreenFE)
+import "settings/parts" // DECKOS: CollectionPicker
 
 FocusScope {
     id: root
@@ -155,6 +156,13 @@ FocusScope {
             optionsMenuVisible = true
             optionsMenu.forceActiveFocus()
         }
+    }
+
+    // DECKOS: options > Add to collection...: the options close, the picker opens over the page
+    function openCollectionPicker() {
+        var g = currentFocusedGame || theme.currentGame
+        if (optionsMenuVisible) toggleOptionsMenu()
+        if (g) collectionPicker.open(g)
     }
 
     // ---- Toggle Fullscreen ----
@@ -2458,7 +2466,9 @@ FocusScope {
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
-                        if (!root.closeMenuVisible) {
+                        if (collectionPicker.visible) { // DECKOS: back from Add to collection first
+                            collectionPicker.close()
+                        } else if (!root.closeMenuVisible) {
                             if (root.isLaunching && !theme.gameLaunchingAnimation) {
                                 root.cancelLaunchAnimation()
                             } else if (fullscreenView) {
@@ -3032,7 +3042,8 @@ FocusScope {
         Behavior on opacity { NumberAnimation { duration: 150 } }
 
         property int currentButtonIndex: 0
-        property var buttons: [favoriteButton, propertiesButton, artworkButton, cancelButton1]
+        property var buttons: [favoriteButton, collectionButton, propertiesButton, artworkButton, cancelButton1]
+        readonly property int lastButton: 5
 
         Item {
             id: optionsOverlay
@@ -3058,7 +3069,7 @@ FocusScope {
 
         Rectangle {
             width: 550
-            height: 400
+            height: 500 // DECKOS: 5 rows (Add to collection...)
             anchors.centerIn: parent
             color: "#181B20"
 
@@ -3083,7 +3094,7 @@ FocusScope {
                 Rectangle {
                     id: favoriteButton
                     width: parent.width
-                    height: parent.height / 4
+                    height: parent.height / 5
                     color: optionsMenu.currentButtonIndex === 1 ? "white" : "transparent"
 
                     Text {
@@ -3115,14 +3126,15 @@ FocusScope {
                     }
                 }
 
+                // DECKOS: the user's collections (CollectionPicker, deckos.collections)
                 Rectangle {
-                    id: propertiesButton
+                    id: collectionButton
                     width: parent.width
-                    height: parent.height / 4
+                    height: parent.height / 5
                     color: optionsMenu.currentButtonIndex === 2 ? "white" : "transparent"
 
                     Text {
-                        text: "   Properties"
+                        text: "   Add to collection..."
                         color: optionsMenu.currentButtonIndex === 2 ? "black" : "white"
                         font.pixelSize: 35
                         font.family: bold.name
@@ -3134,6 +3146,33 @@ FocusScope {
                         onClicked: {
                             if (optionsMenu.currentButtonIndex !== 2) {
                                 optionsMenu.currentButtonIndex = 2
+                                sNav.stop(); sNav.play();
+                            } else {
+                                root.openCollectionPicker()
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    id: propertiesButton
+                    width: parent.width
+                    height: parent.height / 5
+                    color: optionsMenu.currentButtonIndex === 3 ? "white" : "transparent"
+
+                    Text {
+                        text: "   Properties"
+                        color: optionsMenu.currentButtonIndex === 3 ? "black" : "white"
+                        font.pixelSize: 35
+                        font.family: bold.name
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            if (optionsMenu.currentButtonIndex !== 3) {
+                                optionsMenu.currentButtonIndex = 3
                                 sNav.stop(); sNav.play();
                             } else {
                                 if (currentFocusedGame) {
@@ -3150,12 +3189,12 @@ FocusScope {
                 Rectangle {
                     id: artworkButton
                     width: parent.width
-                    height: parent.height / 4
-                    color: optionsMenu.currentButtonIndex === 3 ? "white" : "transparent"
+                    height: parent.height / 5
+                    color: optionsMenu.currentButtonIndex === 4 ? "white" : "transparent"
 
                     Text {
                         text: "   Change artwork..."
-                        color: optionsMenu.currentButtonIndex === 3 ? "black" : "white"
+                        color: optionsMenu.currentButtonIndex === 4 ? "black" : "white"
                         font.pixelSize: 35
                         font.family: bold.name
                         anchors.verticalCenter: parent.verticalCenter
@@ -3164,8 +3203,8 @@ FocusScope {
                     MouseArea {
                         anchors.fill: parent
                         onClicked: {
-                            if (optionsMenu.currentButtonIndex !== 3) {
-                                optionsMenu.currentButtonIndex = 3
+                            if (optionsMenu.currentButtonIndex !== 4) {
+                                optionsMenu.currentButtonIndex = 4
                                 sNav.stop(); sNav.play();
                             } else {
                                 if (currentFocusedGame) {
@@ -3181,12 +3220,12 @@ FocusScope {
                 Rectangle {
                     id: cancelButton1
                     width: parent.width
-                    height: parent.height / 4
-                    color: optionsMenu.currentButtonIndex === 4 ? "white" : "transparent"
+                    height: parent.height / 5
+                    color: optionsMenu.currentButtonIndex === 5 ? "white" : "transparent"
 
                     Text {
                         text: "   Cancel"
-                        color: optionsMenu.currentButtonIndex === 4 ? "black" : "white"
+                        color: optionsMenu.currentButtonIndex === 5 ? "black" : "white"
                         font.pixelSize: 35
                         font.family: bold.name
                         anchors.verticalCenter: parent.verticalCenter
@@ -3195,8 +3234,8 @@ FocusScope {
                     MouseArea {
                         anchors.fill: parent
                         onClicked: {
-                            if (optionsMenu.currentButtonIndex !== 4) {
-                                optionsMenu.currentButtonIndex = 4
+                            if (optionsMenu.currentButtonIndex !== 5) {
+                                optionsMenu.currentButtonIndex = 5
                                 sNav.stop(); sNav.play();
                             } else {
                                 root.toggleOptionsMenu()
@@ -3218,7 +3257,7 @@ FocusScope {
                     event.accepted = true
                 }
                 else if (event.key === Qt.Key_Down) {
-                    if (currentButtonIndex < 4) {
+                    if (currentButtonIndex < lastButton) {
                         currentButtonIndex++
                         sNav.stop(); sNav.play();
                     }
@@ -3231,11 +3270,13 @@ FocusScope {
                             root.toggleOptionsMenu()
                         }
                     } else if (currentButtonIndex === 2) {
-                        if (currentFocusedGame) { theme.currentGame = currentFocusedGame; api.memory.set("targetGameName", currentFocusedGame.title) } root.toggleOptionsMenu(); theme.openPage(14) // DECKOS: Properties did nothing with a controller (mouse only)
+                        root.openCollectionPicker()
                     } else if (currentButtonIndex === 3) {
+                        if (currentFocusedGame) { theme.currentGame = currentFocusedGame; api.memory.set("targetGameName", currentFocusedGame.title) } root.toggleOptionsMenu(); theme.openPage(14) // DECKOS: Properties did nothing with a controller (mouse only)
+                    } else if (currentButtonIndex === 4) {
                         root.toggleOptionsMenu()
                         openPage(12)
-                    } else if (currentButtonIndex === 4) {
+                    } else if (currentButtonIndex === 5) {
                         sLeftClose.play()
                         root.toggleOptionsMenu()
                     }
@@ -3314,7 +3355,7 @@ FocusScope {
         running: false
         repeat: false
         onTriggered: {
-            if (!closeMenuVisible && !optionsMenuVisible && !stopMenuVisible && !fullscreenView) {
+            if (!closeMenuVisible && !optionsMenuVisible && !stopMenuVisible && !fullscreenView && !collectionPicker.visible) {
                 if (zone3Tabs.currentIndex === 1) {
                     if (yourStuffContent.mediaCount > 0) {
                         stuffGrid.forceActiveFocus()
@@ -3339,6 +3380,13 @@ FocusScope {
             if (root.isLaunching) root.cancelLaunchAnimation()
             raSection.load()
         }
+    }
+
+    // DECKOS: Add to collection... (options menu); over everything on the page, B gives the page back
+    CollectionPicker {
+        id: collectionPicker
+        z: 5000
+        onClosed: focusTimer.start()
     }
 
 }

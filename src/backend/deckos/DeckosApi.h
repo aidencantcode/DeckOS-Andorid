@@ -17,6 +17,7 @@ class RaMatcher;
 class InGame;
 class Underclock;
 class MediaLibrary;
+class UserCollections;
 
 class DeckosApi : public QObject {
     Q_OBJECT
@@ -30,6 +31,8 @@ class DeckosApi : public QObject {
     Q_PROPERTY(QObject* underclock READ underclockObj CONSTANT)
     /// the DeckOS folder (media, keys.txt, logs) and the user's own artwork (MediaLibrary.h)
     Q_PROPERTY(QObject* media READ mediaObj CONSTANT)
+    /// the user's collections: Add to collection... on the game page (UserCollections.h)
+    Q_PROPERTY(QObject* collections READ collectionsObj CONSTANT)
 
 public:
     explicit DeckosApi(model::ApiObject* api, QObject* parent = nullptr);
@@ -66,7 +69,9 @@ public:
     QObject* ingameObj() const;
     QObject* underclockObj() const;
     QObject* mediaObj() const;
+    QObject* collectionsObj() const;
     InGame* ingame() const { return m_ingame; }
+    UserCollections* collections() const { return m_collections; }
 
     void onLibraryReady();
     /// a game is about to start (before the launcher): hands it to the in-game layer
@@ -82,6 +87,7 @@ private:
     InGame* const m_ingame;
     Underclock* const m_underclock;
     MediaLibrary* const m_media;
+    UserCollections* const m_collections;
     bool m_started = false;
 };
 

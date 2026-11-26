@@ -400,6 +400,14 @@ void GameOverrides::restore(model::Game& game)
     if (found) game.setLaunchCmd(value);
 
     // DeckOS's artwork files (scraped or the user's) are not shown any more (other sources' files stay)
+    dropOwnMedia(game);
+
+    if (changed)
+        emit game.metadataChanged();
+}
+
+void GameOverrides::dropOwnMedia(model::Game& game)
+{
     for (const AssetName& asset : ASSET_NAMES) {
         const QStringList uris = game.assets().urisOf(asset.type); // copy: removing while iterating
         for (const QString& uri : uris) {
@@ -407,9 +415,6 @@ void GameOverrides::restore(model::Game& game)
                 game.assetsMut().remove_uri(asset.type, uri);
         }
     }
-
-    if (changed)
-        emit game.metadataChanged();
 }
 
 } // namespace deckos

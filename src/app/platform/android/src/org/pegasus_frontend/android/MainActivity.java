@@ -261,8 +261,12 @@ public class MainActivity extends org.qtproject.qt5.android.bindings.QtActivity 
 
         try {
             Intent intent = IntentHelper.parseIntentCommand(args);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            // DECKOS: an app opens with the home screen's intent, so a running one comes back instead of
+            // getting a second copy on top (AppLaunch.java); emulators with a game as before
+            if (!com.deckos.ingame.AppLaunch.asHomeScreen(m_self, intent)) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            }
             com.deckos.ingame.Session.onGameIntent(m_self, intent); // DECKOS: the game's app, for play time
             m_self.startActivity(intent);
         }

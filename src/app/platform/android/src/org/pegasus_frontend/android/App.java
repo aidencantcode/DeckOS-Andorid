@@ -17,6 +17,7 @@
 
 package org.pegasus_frontend.android;
 
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -32,15 +33,10 @@ final class App {
         m_package_name = info.activityInfo.packageName;
         m_app_name = info.loadLabel(pm).toString();
 
-        Intent launch_intent = pm.getLaunchIntentForPackage(m_package_name);
-        if (launch_intent != null) {
-            m_launch_action = launch_intent.getAction();
-            m_launch_component = launch_intent.getComponent().flattenToShortString();
-        }
-        else {
-            m_launch_action = "";
-            m_launch_component = "";
-        }
+        // DECKOS: the launcher activity this entry was found by - the one the home screen opens.
+        // getLaunchIntentForPackage prefers an INFO activity when the app has one, a different screen.
+        m_launch_action = Intent.ACTION_MAIN;
+        m_launch_component = new ComponentName(m_package_name, info.activityInfo.name).flattenToShortString();
     }
 
     public String packageName() { return m_package_name; }

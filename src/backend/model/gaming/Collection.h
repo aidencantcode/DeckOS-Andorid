@@ -100,6 +100,10 @@ public:
     Q_PROPERTY(model::Assets* assets READ assetsPtr CONSTANT)
 
     Collection& setGames(std::vector<model::Game*>&&);
+    /// DECKOS: games added or removed while DeckOS runs (the user's collections, UserCollections.h);
+    /// the list stays sorted and its model keeps its address
+    Collection& addGames(const std::vector<model::Game*>&);
+    Collection& removeGames(const std::vector<model::Game*>&);
     GameListModel* gameList() const { return m_games; }
     Q_PROPERTY(ObjectListModel* games READ gameList CONSTANT)
 

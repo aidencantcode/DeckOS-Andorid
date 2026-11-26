@@ -7,6 +7,7 @@
 #include "InGame.h"
 #include "MediaLibrary.h"
 #include "Underclock.h"
+#include "UserCollections.h"
 #include "RaMatcher.h"
 #include "RomLibrary.h"
 #include "Scraper.h"
@@ -34,6 +35,7 @@ DeckosApi::DeckosApi(model::ApiObject* api, QObject* parent)
     , m_ingame(new InGame(api, m_ra, this))
     , m_underclock(new Underclock(this))
     , m_media(new MediaLibrary(api, this))
+    , m_collections(new UserCollections(api, this))
 {
     // a scan that changed system files reloads the library (from the cache for everything else)
     connect(m_library, &RomLibrary::scanFinished, this, [this](int, int changed) {
@@ -45,6 +47,11 @@ DeckosApi::DeckosApi(model::ApiObject* api, QObject* parent)
 QObject* DeckosApi::mediaObj() const
 {
     return m_media;
+}
+
+QObject* DeckosApi::collectionsObj() const
+{
+    return m_collections;
 }
 
 QObject* DeckosApi::libraryObj() const

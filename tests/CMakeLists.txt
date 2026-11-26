@@ -36,6 +36,7 @@ add_subdirectory(backend/deckos/ingame) # DECKOS
 add_subdirectory(backend/deckos/ramatcher) # DECKOS
 add_subdirectory(backend/deckos/romlibrary) # DECKOS
 add_subdirectory(backend/deckos/underclock) # DECKOS
+add_subdirectory(backend/deckos/usercollections) # DECKOS
 add_subdirectory(backend/model/collection)
 add_subdirectory(backend/model/game)
 add_subdirectory(backend/model/gameassets)

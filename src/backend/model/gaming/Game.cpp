@@ -21,6 +21,8 @@
 #include "model/gaming/Collection.h"
 #include "model/gaming/GameFile.h"
 
+#include <algorithm>
+
 
 namespace {
 QString joined_list(const QStringList& list) { return list.join(QLatin1String(", ")); }
@@ -163,6 +165,35 @@ Game& Game::setCollections(std::vector<model::Collection*>&& collections)
     Q_ASSERT(!m_collections);
     m_collections = new CollectionListModel(this);
     m_collections->update(std::move(collections));
+    return *this;
+}
+
+Game& Game::addCollection(model::Collection* collection)
+{
+    if (!collection)
+        return *this;
+    if (!m_collections)
+        m_collections = new CollectionListModel(this);
+
+    std::vector<model::Collection*> collections = m_collections->entries();
+    if (std::find(collections.cbegin(), collections.cend(), collection) == collections.cend()) {
+        collections.push_back(collection);
+        m_collections->update(std::move(collections));
+    }
+    return *this;
+}
+
+Game& Game::removeCollection(model::Collection* collection)
+{
+    if (!m_collections)
+        return *this;
+
+    std::vector<model::Collection*> collections = m_collections->entries();
+    const auto it = std::find(collections.begin(), collections.end(), collection);
+    if (it != collections.end()) {
+        collections.erase(it);
+        m_collections->update(std::move(collections));
+    }
     return *this;
 }
 

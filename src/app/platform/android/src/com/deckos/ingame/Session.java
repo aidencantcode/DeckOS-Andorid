@@ -453,20 +453,16 @@ public final class Session {
         return Privileged.run("am force-stop " + Privileged.quote(pkg));
     }
 
-    /// the game page's Resume: the game's app back in front as it was left - like its icon in Android's
-    /// launcher, which brings a running app back instead of starting it again (launching the game again
-    /// would restart it in most emulators). False if it has no launcher entry.
+    /// the game page's Resume: the game's app back in front as it was left - with the exact intent of its
+    /// icon in Android's launcher, which brings a running app back instead of starting it again (launching
+    /// the game again would restart it in most emulators; AppLaunch.java). False if it has no launcher entry.
     public static boolean resumeGame() {
         final String pkg = gamePackage;
         if (sApp == null || pkg.isEmpty())
             return false;
-        android.content.pm.PackageManager pm = sApp.getPackageManager();
-        Intent i = pm.getLaunchIntentForPackage(pkg);
-        if (i == null && Build.VERSION.SDK_INT >= 21)
-            i = pm.getLeanbackLaunchIntentForPackage(pkg);
+        final Intent i = AppLaunch.forPackage(sApp, pkg);
         if (i == null)
             return false;
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
             sApp.startActivity(i);
             Log.i(TAG, "resume game: " + pkg);
