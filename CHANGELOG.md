@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.1.2 — 2026-11-26
 **Your own collections, and Android apps that come back instead of starting over.**
 - **Add to collection:** pick *Add to collection...* in a game page's options (the ⚙ button), or with Ⓧ on a game in the Library.
   - Every collection of your library is listed, with a tick where the game already is. Ⓐ puts the game in or takes it out.
