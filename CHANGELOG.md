@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.1.3 — 2026-11-26
 **Notifications, a cleaner Settings, collections you can manage, and controller fixes.**
 - **Steam-style notifications** in the top-left corner, over every page: a card with an icon, a title, a line of text and a progress bar. Scraping shows its progress there (game name, *3 of 40*) and then *Scraping finished*; a ROM folder scan shows there too. Achievements and other notices can use the same cards later.
 - **Re-scrape… → *Skip games that already have artwork*** (on by default): only games without a cover, hero, logo or wide capsule are scraped again, so re-scraping a collection doesn't redo the games that are fine. Turn it off to redo everything you pick.
