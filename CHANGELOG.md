@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.1.1 — 2026-11-26
 **Your own artwork, one DeckOS folder for everything, and the Steam menu with the controller.**
 - **A DeckOS folder.** At the first start (and once after this update), DeckOS asks where to keep its things:
   - Ⓐ makes a folder in your storage and lets you name it (DeckOS by default).
