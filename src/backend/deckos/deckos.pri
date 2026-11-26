@@ -8,6 +8,7 @@ HEADERS += \
     $$PWD/DeckosApi.h \
     $$PWD/GameOverrides.h \
     $$PWD/InGame.h \
+    $$PWD/MediaLibrary.h \
     $$PWD/RaMatcher.h \
     $$PWD/RomLibrary.h \
     $$PWD/Scraper.h \
@@ -20,6 +21,7 @@ SOURCES += \
     $$PWD/DeckosApi.cpp \
     $$PWD/GameOverrides.cpp \
     $$PWD/InGame.cpp \
+    $$PWD/MediaLibrary.cpp \
     $$PWD/RaMatcher.cpp \
     $$PWD/RomLibrary.cpp \
     $$PWD/Scraper.cpp \

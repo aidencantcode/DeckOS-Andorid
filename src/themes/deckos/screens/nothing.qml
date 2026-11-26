@@ -534,7 +534,7 @@ Item {
                 anchors.fill: parent; 
                 onClicked: if (!root.closeMenuVisible) { 
 leftBar.toggle() 
-leftBar.currentIndex = currentPage
+leftBar.currentIndex = theme ? theme.menuIndex() : 0 // DECKOS: a menu button for every page
 leftBar.updateFocus()
 }
             }
@@ -1064,7 +1064,7 @@ Item {
             leftBar.buttons = [btn1, btn2, btn3, btn4, btn5, btn6, btn7, btn8]
             
             // Устанавливаем начальный фокус
-        currentIndex = theme ? theme.currentPage : 0 // DECKOS: theme is assigned after creation
+        currentIndex = theme ? theme.menuIndex() : 0 // DECKOS: theme is assigned after creation
         updateFocus()
         }
 

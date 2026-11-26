@@ -16,6 +16,7 @@ class RomLibrary;
 class RaMatcher;
 class InGame;
 class Underclock;
+class MediaLibrary;
 
 class DeckosApi : public QObject {
     Q_OBJECT
@@ -27,6 +28,8 @@ class DeckosApi : public QObject {
     Q_PROPERTY(QObject* ingame READ ingameObj CONSTANT)
     /// underclocking: ClusterTune built in (Settings > Underclocking; Underclock.h)
     Q_PROPERTY(QObject* underclock READ underclockObj CONSTANT)
+    /// the DeckOS folder (media, keys.txt, logs) and the user's own artwork (MediaLibrary.h)
+    Q_PROPERTY(QObject* media READ mediaObj CONSTANT)
 
 public:
     explicit DeckosApi(model::ApiObject* api, QObject* parent = nullptr);
@@ -62,6 +65,7 @@ public:
     QObject* raObj() const;
     QObject* ingameObj() const;
     QObject* underclockObj() const;
+    QObject* mediaObj() const;
     InGame* ingame() const { return m_ingame; }
 
     void onLibraryReady();
@@ -77,6 +81,7 @@ private:
     RaMatcher* const m_ra;
     InGame* const m_ingame;
     Underclock* const m_underclock;
+    MediaLibrary* const m_media;
     bool m_started = false;
 };
 

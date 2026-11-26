@@ -237,6 +237,19 @@ DeckSettingsPage {
             })(providerList.objectAt(p))
         }
 
+        if (media) {
+            // DECKOS: the DeckOS folder (MediaLibrary) - media, keys.txt and the log in one place
+            r.push({ type: "section", label: "DeckOS folder" })
+            r.push({ type: "button", label: media.folderSet ? "DeckOS folder" : "Choose a DeckOS folder",
+                     desc: function () {
+                         if (libraryPage.folderMessage !== "") return libraryPage.folderMessage
+                         return media.folderSet ? "Artwork, trailers, your own pictures, keys.txt and the log. Choosing another moves the media along."
+                                                : "Where artwork, trailers, your own pictures, keys.txt and the log go"
+                     },
+                     value: function () { return media.folderSet ? media.folder : "Not set" },
+                     activate: function () { libraryPage.folderMessage = ""; mediaPicker.open() } })
+        }
+
         if (scraper) {
             r.push({ type: "section", label: "Artwork and game info" })
             r.push({ type: "toggle", label: "Auto-scrape new games",
@@ -279,7 +292,16 @@ DeckSettingsPage {
     }
 
     readonly property var scraper: (typeof deckos !== "undefined" && deckos) ? deckos.scraper : null
+    readonly property var media: (typeof deckos !== "undefined" && deckos) ? deckos.media : null
     property string keysMessage: ""
+    property string folderMessage: ""
+
+    function useFolder(path) {
+        var err = media.setFolder(path)
+        folderMessage = err !== "" ? err : "Using " + path
+        if (err === "" && typeof theme !== "undefined" && theme) theme.importKeysIfChanged()
+        goToZone(1)
+    }
 
     function startScrape(onlyMissing, collections) {
         var n = scraper.scrapeAll(onlyMissing, collections || [])
@@ -289,16 +311,42 @@ DeckSettingsPage {
     }
 
     function importKeys() {
-        var res = scraper.importKeys()
-        if (res.error) { keysMessage = res.error; return }
         var th = (typeof theme !== "undefined" && theme) ? theme : null
-        if (th && res.raUser && res.raKey) { th.savedUsername = res.raUser; th.savedApiKey = res.raKey }
+        var res = th ? th.importKeysFile() : scraper.importKeys() // DECKOS: the same import as at start
+        if (res.error) { keysMessage = res.error; return }
         keysMessage = res.found === 0 ? "No keys found in " + res.path
                     : res.found + (res.found === 1 ? " key" : " keys") + " loaded" + (res.raUser ? " (RetroAchievements account too)" : "")
     }
 
     // re-built whenever the folder list, Android grants or the reload hint change
-    rows: (Internal.settings.gameDirs, Internal.settings.androidGrantedDirs, needsReload, providerList.count, buildRows())
+    rows: (Internal.settings.gameDirs, Internal.settings.androidGrantedDirs, needsReload, providerList.count,
+           media ? media.folder : "", buildRows())
+
+    // DECKOS: the DeckOS folder: pick one, or make a new one in the folder shown
+    FolderPicker {
+        id: mediaPicker
+        title: "Choose your DeckOS folder"
+        hint: "Open folders with A, go back with B. \"Use this folder\" keeps everything in the folder shown; \"New folder here\" makes one in it. Media saved so far moves along."
+        allowNewFolder: true
+        startFolder: libraryPage.media ? libraryPage.media.defaultParent : ""
+        onPicked: libraryPage.useFolder(path)
+        onNewFolderRequested: { folderName.parentPath = parentPath; folderName.open("DeckOS") }
+        onClosed: goToZone(1)
+    }
+    TextEntry {
+        id: folderName
+        property string parentPath: ""
+        title: "Name your DeckOS folder"
+        hint: "It's made in " + parentPath + ". Done, B or Start creates it."
+        maxLength: 60
+        onAccepted: {
+            if (text.trim() === "") { mediaPicker.forceActiveFocus(); return }
+            var path = libraryPage.media.makeFolder(parentPath, text)
+            mediaPicker.visible = false
+            if (path === "") { libraryPage.folderMessage = "Couldn't create \"" + text + "\""; goToZone(1); return }
+            libraryPage.useFolder(path)
+        }
+    }
 
     FolderPicker {
         id: folderPicker

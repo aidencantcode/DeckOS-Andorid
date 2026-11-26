@@ -1,6 +1,7 @@
-// DECKOS: controller-friendly folder browser (Settings > Library > Add a game folder, Profile picture).
-// A opens a folder (or picks a file when filesMode), B goes up one level and closes at the top,
-// the first entry picks the folder being shown.
+// DECKOS: controller-friendly folder browser (Settings > Library > Add a game folder, Profile picture,
+// the DeckOS folder, a game's own artwork). A opens a folder (or picks a file when filesMode), B goes up
+// one level and closes at the top, the first entry picks the folder being shown. With allowNewFolder,
+// the second entry asks for a new folder in the one shown (newFolderRequested).
 import QtQuick 2.15
 import Pegasus.FolderListModel 1.0
 
@@ -14,11 +15,16 @@ FocusScope {
     // filesMode: list files with these extensions and pick one of them instead of a folder
     property bool filesMode: false
     property var fileExtensions: []
+    property bool allowNewFolder: false
+    /// opened here (an absolute path) instead of where it was last
+    property string startFolder: ""
 
     signal picked(string path)
     signal closed()
+    signal newFolderRequested(string parentPath)
 
     function open() {
+        if (startFolder !== "") folders.cd(startFolder)
         visible = true
         list.currentIndex = 0
         forceActiveFocus()
@@ -37,13 +43,17 @@ FocusScope {
 
     // row 0 picks the folder being shown (folder mode only); the model itself lists ".." first, then
     // folders, then matching files. "/" is the virtual list of drives and cannot be picked.
-    readonly property int extraRows: picker.filesMode ? 0 : 1
+    readonly property int extraRows: picker.filesMode ? 0 : (picker.allowNewFolder ? 2 : 1)
     readonly property int rowCount: extraRows + folders.count
     readonly property bool canUseFolder: folders.folder !== "/" && folders.folder !== ""
 
     function activate(i) {
         if (!picker.filesMode && i === 0) {
             if (canUseFolder) { visible = false; picked(folders.folder) }
+            return
+        }
+        if (!picker.filesMode && picker.allowNewFolder && i === 1) {
+            if (canUseFolder) newFolderRequested(folders.folder)
             return
         }
         var e = folders.get(i - extraRows)
@@ -157,16 +167,18 @@ FocusScope {
         delegate: Rectangle {
             readonly property bool active: ListView.isCurrentItem
             readonly property bool isUse: !picker.filesMode && index === 0
+            readonly property bool isNew: !picker.filesMode && picker.allowNewFolder && index === 1
             // reading folders.folder makes this re-evaluate after every cd() (same row count, new names)
             readonly property var entry: folders.folder !== null && index >= picker.extraRows ? folders.get(index - picker.extraRows) : null
             readonly property bool isUp: !!entry && entry.name === ".."
             width: list.width
             height: 80
             color: active ? (isUse ? "#1a9fff" : "#30343A") : "transparent"
-            opacity: isUse && !picker.canUseFolder ? 0.4 : 1.0
+            opacity: (isUse || isNew) && !picker.canUseFolder ? 0.4 : 1.0
 
             Text {
                 text: isUse ? "✓  Use this folder"
+                    : isNew ? "+  New folder here"
                     : isUp ? "‹  Up one level"
                     : entry ? ((entry.isDir ? "▸  " : "    ") + entry.name) : ""
                 color: isUse && !active ? "#1a9fff" : "white"

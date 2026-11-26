@@ -5,6 +5,7 @@
 
 #include "GameOverrides.h"
 #include "InGame.h"
+#include "MediaLibrary.h"
 #include "Underclock.h"
 #include "RaMatcher.h"
 #include "RomLibrary.h"
@@ -32,12 +33,18 @@ DeckosApi::DeckosApi(model::ApiObject* api, QObject* parent)
     , m_ra(new RaMatcher(this))
     , m_ingame(new InGame(api, m_ra, this))
     , m_underclock(new Underclock(this))
+    , m_media(new MediaLibrary(api, this))
 {
     // a scan that changed system files reloads the library (from the cache for everything else)
     connect(m_library, &RomLibrary::scanFinished, this, [this](int, int changed) {
         if (changed > 0)
             emit libraryRefreshRequested();
     });
+}
+
+QObject* DeckosApi::mediaObj() const
+{
+    return m_media;
 }
 
 QObject* DeckosApi::libraryObj() const

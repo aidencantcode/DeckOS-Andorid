@@ -385,6 +385,16 @@ FocusScope {
         }
         event.accepted = true
     }
+    // DECKOS: X and Y for the page (Customization's artwork: browse in DeckOS / remove your own file)
+    else if (api.keys.isDetails(event) && activeZone === 1 && page && typeof page.handleX === "function") {
+        page.handleX()
+        event.accepted = true
+    }
+    else if (api.keys.isFilters(event) && activeZone === 1 && page && typeof page.handleY === "function") {
+        page.handleY()
+        sNav.stop(); sNav.play()
+        event.accepted = true
+    }
     else if (api.keys.isMenu(event)) {
         leftBar.toggle()
         event.accepted = true
@@ -757,7 +767,7 @@ FocusScope {
                 anchors.fill: parent
                 onClicked: if (!root.closeMenuVisible) {
                     leftBar.toggle()
-                    leftBar.currentIndex = theme ? theme.currentPage : 0 // DECKOS: theme is assigned after creation
+                    leftBar.currentIndex = theme ? theme.menuIndex() : 0 // DECKOS: theme is assigned after creation
                     leftBar.updateFocus()
                 }
             }
@@ -1019,7 +1029,7 @@ FocusScope {
             var b6 = menuButtonComponent.createObject(buttonColumn, { "title": "Settings",         "buttonIndex": 6, "icon": "w"  })
             var b7 = menuButtonComponent.createObject(buttonColumn, { "title": "Close",            "buttonIndex": 7, "icon": "C"  })
             leftBar.buttons = [b0, b1, b2, b3, b4, b5, b6, b7]
-            currentIndex = theme ? theme.currentPage : 0 // DECKOS: theme is assigned after creation
+            currentIndex = theme ? theme.menuIndex() : 0 // DECKOS: theme is assigned after creation
             updateFocus()
         }
 

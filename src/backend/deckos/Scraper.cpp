@@ -4,6 +4,7 @@
 #include "Scraper.h"
 
 #include "GameOverrides.h"
+#include "MediaLibrary.h"
 #include "Log.h"
 #include "Paths.h"
 #include "model/Api.h"
@@ -150,13 +151,6 @@ QString libretro_name(QString name)
     for (const QChar ch : QStringLiteral("&*/:`<>?\\|\""))
         name.replace(ch, QLatin1Char('_'));
     return name;
-}
-
-QString safe_dir_name(QString name)
-{
-    static const QRegularExpression bad(QStringLiteral("[^\\w\\-. ()\\[\\]]"));
-    name.replace(bad, QStringLiteral("_"));
-    return name.left(120).trimmed();
 }
 
 QString file_extension(const QNetworkReply* reply)
@@ -354,7 +348,12 @@ void Scraper::setUseLibretroThumbnails(bool val)
 
 QString Scraper::keysFilePath() const
 {
-    return paths::writableConfigDir() + QStringLiteral("/api-keys.env");
+    // the DeckOS folder's keys.txt (MediaLibrary), else <config>/api-keys.env as before
+    const QString own = MediaLibrary::keysFilePath();
+    const QString legacy = paths::writableConfigDir() + QStringLiteral("/api-keys.env");
+    if (!own.isEmpty() && (QFileInfo::exists(own) || !QFileInfo::exists(legacy)))
+        return own;
+    return legacy;
 }
 
 QVariantMap Scraper::importKeys()
@@ -965,23 +964,29 @@ void Scraper::stepDownload()
         const QString asset = job->downloads.at(job->download_index).first;
         const QByteArray data = reply->readAll();
         if (reply->error() == QNetworkReply::NoError && looks_like_image(data)) {
-            const QString dir = GameOverrides::mediaDir() + QLatin1Char('/')
-                + safe_dir_name(job->system.isEmpty() ? QStringLiteral("other") : job->system) + QLatin1Char('/')
-                + safe_dir_name(job->rom_name.isEmpty() ? job->title : job->rom_name);
+            const QString dir = GameOverrides::gameMediaDir(job->system, job->rom_name.isEmpty() ? job->title : job->rom_name);
             QDir().mkpath(dir);
-            // old files of this asset go (once per job: screenshots come several at a time); a new name
-            // per download so image caches show the new one
-            if (!job->cleared.contains(asset)) {
+            // named after what it is (hero.png, capsule.jpg, screenshot-01.png...). The user's own
+            // custom-* files are never touched. Old files of this asset go: screenshots once per job
+            // (several come in a row), the others before each file (another source, another extension).
+            const bool is_shot = asset == QLatin1String("screenshot");
+            const QString stem = GameOverrides::fileStem(asset);
+            if (!is_shot || !job->cleared.contains(asset)) {
                 job->cleared.insert(asset);
-                for (const QFileInfo& old : QDir(dir).entryInfoList({ asset + QStringLiteral("-*") }, QDir::Files))
+                const QStringList patterns { stem + QStringLiteral(".*"), stem + QStringLiteral("-??.*"),
+                                             asset + QStringLiteral("-*") }; // the last: 0.1.0's names
+                for (const QFileInfo& old : QDir(dir).entryInfoList(patterns, QDir::Files))
                     QFile::remove(old.absoluteFilePath());
             }
-            const QString path = dir + QLatin1Char('/') + asset + QLatin1Char('-')
-                + QString::number(QDateTime::currentSecsSinceEpoch()) + QLatin1Char('-') + QString::number(job->download_index)
+            const int shot_no = job->saved_assets.value(asset).toArray().size() + 1;
+            const QString path = dir + QLatin1Char('/') + stem
+                + (is_shot ? QStringLiteral("-%1").arg(shot_no, 2, 10, QLatin1Char('0')) : QString())
                 + QLatin1Char('.') + file_extension(reply);
             QSaveFile file(path);
             if (file.open(QIODevice::WriteOnly) && file.write(data) == data.size() && file.commit()) {
-                const QString uri = QUrl::fromLocalFile(path).toString();
+                // the same name as last time: ?v= makes image caches load the new file
+                const QString uri = QUrl::fromLocalFile(path).toString()
+                    + QStringLiteral("?v=") + QString::number(QDateTime::currentSecsSinceEpoch());
                 if (asset == QLatin1String("screenshot")) { // a list (GameOverrides::apply)
                     QJsonArray list = job->saved_assets.value(asset).toArray();
                     list.append(uri);

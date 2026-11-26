@@ -3,6 +3,35 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**Your own artwork, one DeckOS folder for everything, and the Steam menu with the controller.**
+- **A DeckOS folder.** At the first start (and once after this update), DeckOS asks where to keep its things:
+  - Ⓐ makes a folder in your storage and lets you name it (DeckOS by default).
+  - Ⓧ lets you pick any folder, or make a new one inside it.
+  - Ⓑ asks again next time. You can change it later in Settings › Library › *DeckOS folder*.
+- **What goes in it:**
+  - `media/<system>/<game>/`: the artwork, trailers and screenshots, with names that say what they are (`hero.png`, `logo.png`, `capsule.png`, `wide-capsule.png`, `boxart.png`, `screenshot-01.png`…). Your own files are `custom-hero.png` and so on, and a rescrape never replaces them.
+  - `keys.txt`: your API keys and accounts, one `KEY=value` per line. DeckOS reads it at start and whenever you change it, so you never have to type keys on the handheld. It starts as a template to fill in.
+  - `logs/lastrun.log`: a copy of DeckOS's log, for bug reports.
+  - What was scraped so far moves into it, with the new names.
+- **Your own artwork:** Properties › Customization lists the game's Hero, Logo, Capsule, Wide capsule, Box art, Icon, Trailer and Screenshots. Each row shows what's used now and where it comes from: *Yours*, *Scraped*, *Game files* or *Online pick*.
+  - A tap, or Ⓐ, opens Android's file manager to pick a picture (or a video for the trailer). It's copied into the game's folder and shown everywhere at once.
+  - Ⓧ browses with DeckOS's own controller-friendly browser instead.
+  - Ⓨ removes your file, and the scraped one comes back.
+  - Screenshots are added, not replaced.
+- **Steam menu with the controller:** opening the menu on a game page, in Properties or on the search page left the selection on no button, so nothing was highlighted and the D-pad did nothing. It now always starts on a real button.
+- **Fixes:** the Customization page never knew which game it showed (StMini bug), and the selected row no longer sits under the button bar.
+
+**Notes**
+- Keys: your keys file is in `DECKOS\secrets\keys.txt` on your PC. Copy it over the template `keys.txt` in your DeckOS folder. It's never on GitHub.
+- The ScreenScraper forum request hasn't been posted yet; ScreenScraper keys aren't used until it's answered.
+- Checked on PC at 1920×1080 first, then 1240×1080. The Android code and APK build locally; nothing has been checked on a handheld yet.
+
+**Test checklist**
+1. Start DeckOS: the *Your DeckOS folder* card appears. Press Ⓐ, keep "DeckOS", press Done. In a file manager, `/storage/emulated/0/DeckOS` has `media`, `keys.txt` and `logs`, and `media/<system>/<game>/` has `hero`, `logo`, `capsule`… files for scraped games. Home and the game pages still show their artwork.
+2. Copy your `keys.txt` over the one in the DeckOS folder, then go back to DeckOS. Settings › Library shows the SteamGridDB and TheGamesDB keys as *Set*, and the RetroAchievements account is signed in.
+3. On a game page: options › Properties › Customization › *Hero*. Tap it (or Ⓐ), pick a picture in Android's file manager. The row says *Yours*, and the game page's hero is your picture. `custom-hero.jpg` (or `.png`) is in the game's folder.
+4. Do the same for the Logo and the Capsule, and add a screenshot. Then press Ⓨ on the Hero row: the scraped hero is back.
+5. Open the Steam menu on a game page with a tap on *STEAM MENU*, and once with the menu button. Both times the D-pad moves the highlight, and Ⓐ opens the page.
 
 ## 0.1.0 — 2026-11-26
 **The first stable build: a normal release, no longer a pre-release.**

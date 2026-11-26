@@ -4,6 +4,7 @@ import QtQuick.Layouts 1.15
 import QtGraphicalEffects 1.15
 import QtQuick.Window 2.15
 import "javascript/RetroAchievementsApi.js" as RAApi
+import "screens/settings/parts" // DECKOS: FolderPicker, TextEntry (the DeckOS folder card)
 
 
 
@@ -11,6 +12,7 @@ FocusScope {
     id: root
     anchors.fill: parent
     focus: true
+    readonly property var theme: root // DECKOS: the parts used here (SteamKeyboard) read `theme`
 
     property int currentPage: 0
     property var currentGame: null
@@ -270,10 +272,27 @@ function saveRaAccount() {
     updateProfileData()
 }
 
+// DECKOS: keys.txt in the DeckOS folder (else <config>/api-keys.env): the scraper keys go to the
+// scraper, the RetroAchievements account to the whole app. { found, path, error, raUser, raKey }
+function importKeysFile() {
+    if (typeof deckos === "undefined" || !deckos) return { found: 0, error: "" }
+    var res = deckos.scraper.importKeys()
+    if (!res.error && res.raUser && res.raKey) { savedUsername = res.raUser; savedApiKey = res.raKey }
+    if (deckos.media) deckos.media.keysRead()
+    return res
+}
+// read again whenever keys.txt changed: at start, and back from a file manager
+function importKeysIfChanged() {
+    if (typeof deckos === "undefined" || !deckos || !deckos.media || !deckos.media.keysChanged()) return
+    var res = importKeysFile()
+    console.info("DeckOS: keys.txt read: " + (res.error ? res.error : res.found + " keys")) // never the values
+}
+
 // Дергаем API при первом запуске темы
 Component.onCompleted: {
     updateProfileData();
     pageLoader.show(-1, currentPage) // DECKOS: first page (the page host has no source binding)
+    Qt.callLater(importKeysIfChanged) // DECKOS: keys.txt
 }
 
 
@@ -302,6 +321,7 @@ function toggleLeftBar(component) {
         component.visible = true;
         component.focus = true;
         component.isOpen = true;
+        fixMenuIndex(component); // DECKOS: see menuIndex
         component.updateFocus();
         root.openLeftBar = component; // DECKOS: see focusWatch
         // DECKOS: a close just before (double press) leaves the page's focusTimer (50-100 ms) running,
@@ -339,7 +359,7 @@ FocusScope {
     anchors.centerIn: parent
 
     focus: true
-    enabled: !welcome.visible // DECKOS: the first-start card keeps the keys
+    enabled: !welcome.visible && !folderSetup.visible // DECKOS: the first-start cards keep the keys
 
     property Item item: null
     signal loaded()
@@ -531,6 +551,7 @@ if (pageLoader.item && typeof pageLoader.item.startExitAnimation === "function" 
 Connections {
     target: Qt.application
     function onStateChanged() {
+        if (Qt.application.state === Qt.ApplicationActive) Qt.callLater(root.importKeysIfChanged) // DECKOS: keys.txt edited meanwhile
         if (Qt.application.state === Qt.ApplicationActive && pageLoader.item && typeof pageLoader.item.resumeFocus === "function")
             Qt.callLater(pageLoader.item.resumeFocus)
     }
@@ -540,6 +561,18 @@ Connections {
 // page timer firing while the Steam menu opens): with the menu open the keys belong to it, and with no
 // item focused at all the page takes the focus back. Checked a few times a second while DeckOS is in front.
 property var openLeftBar: null // the page's Steam menu while it's open (toggleLeftBar)
+
+// DECKOS: the Steam menu button for the current page. Pages set the menu's selection from currentPage,
+// but only Home ... Settings (0-6) have a button: on the game page (8), Properties (14) and the others
+// the selection was on no button - nothing highlighted, and the D-pad had nowhere to go.
+function menuIndex() {
+    return currentPage >= 0 && currentPage <= 6 ? currentPage : 0
+}
+function fixMenuIndex(bar) {
+    var n = bar && bar.buttons ? bar.buttons.length : 0
+    if (n > 0 && (bar.currentIndex < 0 || bar.currentIndex >= n))
+        bar.currentIndex = Math.min(menuIndex(), n - 1)
+}
 
 function isInside(item, ancestor) {
     for (var it = item; it; it = it.parent)
@@ -554,10 +587,11 @@ Timer {
     running: Qt.application.state === Qt.ApplicationActive
     onTriggered: {
         var win = root.Window.window
-        if (!win || welcome.visible || root.isTransitioning) return
+        if (!win || welcome.visible || folderSetup.visible || root.isTransitioning) return
         var f = win.activeFocusItem
         var bar = root.openLeftBar
         if (bar && bar.isOpen && bar.visible) {
+            root.fixMenuIndex(bar)
             if (f === bar || !root.isInside(f, bar)) {
                 console.info("DeckOS: focus back to the Steam menu")
                 bar.forceActiveFocus()
@@ -589,7 +623,7 @@ FocusScope {
     property bool dismissed: api.memory.has("welcomeDismissed")
     readonly property bool noFolders: Internal.settings.gameDirs.filter(function (d) { return d !== "" && d !== "." }).length === 0
         && (typeof deckos === "undefined" || !deckos || deckos.library.romFolders.length === 0)
-    visible: noFolders && !dismissed && root.currentPage === 0
+    visible: noFolders && !dismissed && root.currentPage === 0 && !folderSetup.visible // DECKOS: the folder card first
     onVisibleChanged: if (visible) forceActiveFocus()
     Component.onCompleted: if (visible) forceActiveFocus()
     Timer { // the page under it and main.qml move the focus while loading; take it back while shown
@@ -670,6 +704,166 @@ FocusScope {
                 }
             }
         }
+    }
+}
+
+// DECKOS: the DeckOS folder (MediaLibrary): scraped artwork, trailers, the user's own pictures, keys.txt and
+// the log, in one folder any file manager can open. Asked at the first start - and once after updating, so
+// the media saved so far moves in. A: a new folder in the shared storage, named on the keyboard; X: pick
+// one (or make one anywhere); B: later (asked again next start; also in Settings > Library).
+FocusScope {
+    id: folderSetup
+    anchors.fill: parent
+    z: 5001
+    readonly property var media: (typeof deckos !== "undefined" && deckos) ? deckos.media : null
+    property bool later: false
+    property string message: ""
+    visible: !!media && !media.folderSet && !later && root.currentPage === 0
+    onVisibleChanged: if (visible) forceActiveFocus()
+    Component.onCompleted: if (visible) forceActiveFocus()
+    Timer { // the page under it moves the focus while loading; take it back while the card is up
+        interval: 250; repeat: true
+        running: folderSetup.visible && !folderSetup.activeFocus && !setupPicker.visible && !setupName.visible
+        onTriggered: folderSetup.forceActiveFocus()
+    }
+
+    function use(path) {
+        var err = media.setFolder(path)
+        setupPicker.visible = false
+        if (err !== "") { message = err; forceActiveFocus(); return }
+        message = ""
+        root.importKeysIfChanged() // keys.txt may be there already
+        Qt.callLater(function () { if (pageLoader.item) pageLoader.item.forceActiveFocus() })
+    }
+    function create(parentPath, name) {
+        if (name.trim() === "") { // emptied: back to where it was asked
+            if (setupPicker.visible) setupPicker.forceActiveFocus(); else forceActiveFocus()
+            return
+        }
+        var path = media.makeFolder(parentPath, name)
+        if (path === "") { message = "Couldn't create \"" + name + "\" in " + parentPath; setupPicker.visible = false; forceActiveFocus(); return }
+        use(path)
+    }
+    function askName(parentPath) {
+        setupName.parentPath = parentPath
+        setupName.open("DeckOS")
+    }
+
+    Keys.onPressed: {
+        event.accepted = true
+        if (event.isAutoRepeat) return
+        if (api.keys.isAccept(event)) { sAccept.play(); askName(media.defaultParent) }
+        else if (api.keys.isDetails(event)) { sAccept.play(); setupPicker.open() }
+        else if (api.keys.isCancel(event)) {
+            sBack.play()
+            later = true
+            Qt.callLater(function () { if (pageLoader.item) pageLoader.item.forceActiveFocus() })
+        }
+    }
+
+    Rectangle { anchors.fill: parent; color: "#B0000000"; MouseArea { anchors.fill: parent } }
+
+    Rectangle {
+        width: Math.min(parent.width * 0.74, parent.height * 1.2)
+        height: setupColumn.height + parent.height * 0.08
+        anchors.centerIn: parent
+        radius: 8
+        color: "#23262B"
+
+        Column {
+            id: setupColumn
+            width: parent.width * 0.88
+            anchors.centerIn: parent
+            spacing: folderSetup.height * 0.028
+
+            Text {
+                text: "Your DeckOS folder"
+                color: "white"
+                font.family: extrabold.name
+                font.pixelSize: folderSetup.height * 0.052
+            }
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "DeckOS keeps everything of yours in one folder you can open from any file manager: "
+                    + "scraped artwork and trailers, your own pictures (Properties › Customization), "
+                    + "keys.txt for your API keys, and its log. Inside, media is sorted by system and game."
+                color: "#c7d0d9"
+                font.family: bold.name
+                font.pixelSize: folderSetup.height * 0.026
+                lineHeight: 1.2
+            }
+            Text {
+                width: parent.width
+                text: folderSetup.media ? folderSetup.media.defaultParent + "/DeckOS" : ""
+                elide: Text.ElideMiddle
+                color: "#8b929a"
+                font.family: bold.name
+                font.pixelSize: folderSetup.height * 0.024
+            }
+            Text {
+                width: parent.width
+                visible: folderSetup.message !== ""
+                wrapMode: Text.WordWrap
+                text: folderSetup.message
+                color: "#ff6b5b"
+                font.family: bold.name
+                font.pixelSize: folderSetup.height * 0.024
+            }
+            Flow {
+                width: parent.width
+                spacing: folderSetup.height * 0.02
+                Repeater {
+                    model: [
+                        { text: "Ⓐ  Create a folder", color: "#1a9fff", act: "create" },
+                        { text: "Ⓧ  Choose a folder", color: "#3d4450", act: "choose" },
+                        { text: "Ⓑ  Later", color: "#3d4450", act: "later" }
+                    ]
+                    Rectangle {
+                        width: setupButtonText.implicitWidth + folderSetup.height * 0.06
+                        height: folderSetup.height * 0.072
+                        radius: 4
+                        color: modelData.color
+                        Text {
+                            id: setupButtonText
+                            anchors.centerIn: parent
+                            text: modelData.text
+                            color: "white"
+                            font.family: bold.name
+                            font.pixelSize: folderSetup.height * 0.028
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                if (modelData.act === "create") folderSetup.askName(folderSetup.media.defaultParent)
+                                else if (modelData.act === "choose") setupPicker.open()
+                                else { folderSetup.later = true; if (pageLoader.item) pageLoader.item.forceActiveFocus() }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    FolderPicker {
+        id: setupPicker
+        title: "Choose your DeckOS folder"
+        hint: "Open folders with A, go back with B. \"Use this folder\" keeps everything in the folder shown; \"New folder here\" makes one in it."
+        allowNewFolder: true
+        startFolder: folderSetup.media ? folderSetup.media.defaultParent : ""
+        onPicked: folderSetup.use(path)
+        onNewFolderRequested: folderSetup.askName(parentPath)
+        onClosed: folderSetup.forceActiveFocus()
+    }
+
+    TextEntry {
+        id: setupName
+        property string parentPath: ""
+        title: "Name your DeckOS folder"
+        hint: "It's made in " + parentPath + ". Done, B or Start creates it."
+        maxLength: 60
+        onAccepted: folderSetup.create(parentPath, text)
     }
 }
 }

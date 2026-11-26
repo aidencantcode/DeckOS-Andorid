@@ -114,6 +114,11 @@ The first build that is not a pre-release (`ship.ps1 -Phase 1` → `0.1.0`; `and
   - Play time counts while the game runs, except with the screen off (Settings › Overlay; off = only while it's in front, the fallback without PServer / root).
   - Launching another game ends the running game's session first; library reloads wait for the session to end.
 - [x] **0.0.15 report fixes:** Home's game row no longer scrolls onto empty space after Settings or a game page; a tap opens a tile directly; Select+Start works in either order; Quick Access's background can't take the focus (Android's grey focus tint). (0.1.0)
+- [x] **DeckOS folder + own artwork** (owner request; 0.1.1, device check pending):
+  - One folder picked or named at the first start, holding `media/<system>/<game>/` (readable names, `custom-*` for the user's own), `keys.txt` (read again whenever it changed) and `logs/`. Earlier media moves in.
+  - Properties › Customization: Hero, Logo, Capsule, Wide capsule, Box art, Icon, Trailer and Screenshots, each with what's shown now and its source. Android's file manager, DeckOS's own browser, or remove.
+  - Steam menu: always starts on a real button (pages past Settings left it on none).
+- [ ] SteamGridDB picks (Change artwork…) are still web addresses in memory: download them into the DeckOS folder as the user's own files.
 
 ### E — Performance tab: device profiles (AYN / Retroid)
 Under the overlay level slider, each one is a 3–5 step slider like the overlay one, and the HUD shows what's active:

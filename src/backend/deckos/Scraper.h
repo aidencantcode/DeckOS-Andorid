@@ -58,7 +58,7 @@ public:
     Q_INVOKABLE int scrapeAll(bool onlyMissing, const QStringList& collections = {});
     Q_INVOKABLE void cancel();
 
-    /// <config>/api-keys.env - KEY=VALUE lines (STEAMGRIDDB_API_KEY, THEGAMESDB_API_KEY, RA_USERNAME,
+    /// <DeckOS folder>/keys.txt, else <config>/api-keys.env - KEY=VALUE lines (STEAMGRIDDB_API_KEY, THEGAMESDB_API_KEY, RA_USERNAME,
     /// RA_WEB_API_KEY). importKeys() stores the scraper keys and returns
     /// { found: <count>, path, error, raUser, raKey } so the interface can save the RA account.
     Q_INVOKABLE QString keysFilePath() const;

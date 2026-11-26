@@ -759,7 +759,7 @@ FocusScope {
                 anchors.fill: parent
                 onClicked: if (!root.closeMenuVisible) {
                     leftBar.toggle()
-                    leftBar.currentIndex = theme ? theme.currentPage : 0 // DECKOS: theme is assigned after creation
+                    leftBar.currentIndex = theme ? theme.menuIndex() : 0 // DECKOS: theme is assigned after creation
                     leftBar.updateFocus()
                 }
             }
@@ -1019,7 +1019,7 @@ FocusScope {
             var b6 = menuButtonComponent.createObject(buttonColumn, { "title": "Settings",         "buttonIndex": 6, "icon": "w"  })
             var b7 = menuButtonComponent.createObject(buttonColumn, { "title": "Close",            "buttonIndex": 7, "icon": "C"  })
             leftBar.buttons = [b0, b1, b2, b3, b4, b5, b6, b7]
-            currentIndex = theme ? theme.currentPage : 0 // DECKOS: theme is assigned after creation
+            currentIndex = theme ? theme.menuIndex() : 0 // DECKOS: theme is assigned after creation
             updateFocus()
         }
 

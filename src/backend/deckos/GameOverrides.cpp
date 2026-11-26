@@ -6,6 +6,7 @@
 #include "Log.h"
 #include "Paths.h"
 #include "model/gaming/Assets.h"
+#include "model/gaming/Collection.h"
 #include "model/gaming/Game.h"
 #include "model/gaming/GameFile.h"
 #include "types/AssetType.h"
@@ -14,8 +15,11 @@
 #include <QDate>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QUrl>
 
@@ -80,9 +84,84 @@ GameOverrides::GameOverrides(QString path)
     load_locked();
 }
 
+namespace {
+QMutex s_media_lock;
+QString s_media_dir; // MediaLibrary sets it; the library loads read it on their own thread
+} // namespace
+
 QString GameOverrides::mediaDir()
 {
+    const QMutexLocker lock(&s_media_lock);
+    return s_media_dir.isEmpty() ? legacyMediaDir() : s_media_dir;
+}
+
+void GameOverrides::setMediaDir(const QString& dir)
+{
+    const QMutexLocker lock(&s_media_lock);
+    s_media_dir = dir;
+}
+
+QString GameOverrides::legacyMediaDir()
+{
     return paths::writableConfigDir() + QStringLiteral("/deckos/media");
+}
+
+bool GameOverrides::isOwnMedia(const QString& uri)
+{
+    if (!uri.startsWith(QLatin1String("file:")))
+        return false;
+    for (const QString& dir : { mediaDir(), legacyMediaDir() }) {
+        if (uri.startsWith(QUrl::fromLocalFile(dir).toString() + QLatin1Char('/')))
+            return true;
+    }
+    return false;
+}
+
+QString GameOverrides::safeName(QString name)
+{
+    static const QRegularExpression bad(QStringLiteral("[^\\w\\-. ()\\[\\]]"));
+    name.replace(bad, QStringLiteral("_"));
+    return name.left(120).trimmed();
+}
+
+QString GameOverrides::gameMediaDir(const QString& system, const QString& name)
+{
+    return mediaDir() + QLatin1Char('/') + safeName(system.isEmpty() ? QStringLiteral("other") : system)
+         + QLatin1Char('/') + safeName(name);
+}
+
+QString GameOverrides::gameMediaDir(const model::Game& game)
+{
+    QString system;
+    const auto& collections = game.collectionsModel()->entries();
+    if (!collections.empty())
+        system = collections.front()->shortName().toLower();
+    QString name;
+    const auto& files = game.filesModel()->entries();
+    if (!files.empty() && !files.front()->path().isEmpty())
+        name = files.front()->fileinfo().completeBaseName();
+    return gameMediaDir(system, name.isEmpty() ? game.title() : name);
+}
+
+QString GameOverrides::fileStem(const QString& asset)
+{
+    static const QHash<QString, QString> stems {
+        { QStringLiteral("background"), QStringLiteral("hero") },
+        { QStringLiteral("poster"), QStringLiteral("capsule") },
+        { QStringLiteral("steam"), QStringLiteral("wide-capsule") },
+        { QStringLiteral("boxFront"), QStringLiteral("boxart") },
+        { QStringLiteral("boxBack"), QStringLiteral("boxart-back") },
+        { QStringLiteral("video"), QStringLiteral("trailer") },
+    };
+    return stems.value(asset, asset);
+}
+
+int GameOverrides::assetType(const QString& name)
+{
+    for (const AssetName& entry : ASSET_NAMES)
+        if (name == QLatin1String(entry.name))
+            return static_cast<int>(entry.type);
+    return static_cast<int>(AssetType::UNKNOWN);
 }
 
 QStringList GameOverrides::assetNames()
@@ -165,6 +244,24 @@ void GameOverrides::update(const QString& key, const QJsonObject& fields)
         return;
 
     const QMutexLocker lock(&m_lock);
+    merge_locked(key, fields);
+    save_locked();
+}
+
+void GameOverrides::updateAll(const QHash<QString, QJsonObject>& changes)
+{
+    if (changes.isEmpty())
+        return;
+
+    const QMutexLocker lock(&m_lock);
+    for (auto it = changes.begin(); it != changes.end(); ++it)
+        if (!it.key().isEmpty())
+            merge_locked(it.key(), it.value());
+    save_locked();
+}
+
+void GameOverrides::merge_locked(const QString& key, const QJsonObject& fields)
+{
     QJsonObject entry = m_data.value(key).toObject();
     for (auto it = fields.begin(); it != fields.end(); ++it) {
         if (it.key() == QLatin1String("assets") && it.value().isObject()) {
@@ -192,7 +289,6 @@ void GameOverrides::update(const QString& key, const QJsonObject& fields)
         m_data.remove(key);
     else
         m_data.insert(key, entry);
-    save_locked();
 }
 
 void GameOverrides::remove(const QString& key)
@@ -251,25 +347,30 @@ void GameOverrides::apply(model::Game& game, const QJsonObject& entry, bool live
     if (players > 0) { game.setPlayerCount(players); meta_changed = true; }
 
     const QJsonObject assets = entry.value(QStringLiteral("assets")).toObject();
+    const QJsonObject custom = entry.value(QStringLiteral("custom")).toObject(); // the user's own files
     for (const AssetName& asset : ASSET_NAMES) {
         const QJsonValue value = assets.value(QLatin1String(asset.name));
-        if (value.isArray()) {
-            // several files (screenshots): the scraped ones replace earlier scraped ones, after the
-            // game's own (metadata) files
-            const QString media_prefix = QUrl::fromLocalFile(mediaDir()).toString();
+        const QJsonValue mine = custom.value(QLatin1String(asset.name));
+        if (value.isArray() || mine.isArray()) {
+            // several files (screenshots): DeckOS's replace earlier ones of DeckOS's, after the game's
+            // own (metadata) files - the user's first, then the scraped ones
             const QStringList old = game.assets().urisOf(asset.type);
             for (const QString& uri : old)
-                if (uri.startsWith(media_prefix))
+                if (isOwnMedia(uri))
                     game.assetsMut().remove_uri(asset.type, uri);
-            for (const QJsonValue& v : value.toArray())
-                if (!v.toString().isEmpty())
-                    game.assetsMut().add_uri(asset.type, v.toString());
+            for (const QJsonArray& list : { mine.toArray(), value.toArray() })
+                for (const QJsonValue& v : list)
+                    if (!v.toString().isEmpty())
+                        game.assetsMut().add_uri(asset.type, v.toString());
             emit game.assetsMut().changed(); // add_uri is silent; pages showing the game update
             continue;
         }
         const QString uri = value.toString();
         if (!uri.isEmpty())
             game.assetsMut().set_first(asset.type, uri);
+        const QString own = mine.toString();
+        if (!own.isEmpty())
+            game.assetsMut().set_first(asset.type, own); // first: the user's file wins
     }
 
     if (live && meta_changed)
@@ -298,12 +399,11 @@ void GameOverrides::restore(model::Game& game)
     value = original("launch", found);
     if (found) game.setLaunchCmd(value);
 
-    // scraped artwork files are not shown any more (other sources' files stay)
-    const QString media_prefix = QUrl::fromLocalFile(mediaDir()).toString();
+    // DeckOS's artwork files (scraped or the user's) are not shown any more (other sources' files stay)
     for (const AssetName& asset : ASSET_NAMES) {
         const QStringList uris = game.assets().urisOf(asset.type); // copy: removing while iterating
         for (const QString& uri : uris) {
-            if (uri.startsWith(media_prefix))
+            if (isOwnMedia(uri))
                 game.assetsMut().remove_uri(asset.type, uri);
         }
     }

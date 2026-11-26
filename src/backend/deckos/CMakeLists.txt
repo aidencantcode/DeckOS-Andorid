@@ -9,6 +9,8 @@ target_sources(pegasus-backend PRIVATE
     GameOverrides.h
     InGame.cpp
     InGame.h
+    MediaLibrary.cpp
+    MediaLibrary.h
     RaMatcher.cpp
     RaMatcher.h
     RomLibrary.cpp

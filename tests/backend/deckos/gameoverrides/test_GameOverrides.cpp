@@ -24,6 +24,9 @@ private slots:
     void remove_forgets_game();
     void apply_and_restore();
     void apply_keeps_first_original();
+    void custom_beats_scraped();
+    void custom_screenshots_first();
+    void media_dir_and_names();
 };
 
 void test_GameOverrides::update_merges_and_saves()
@@ -129,6 +132,62 @@ void test_GameOverrides::apply_keeps_first_original()
     QCOMPARE(game.title(), QStringLiteral("Original"));
 }
 
+
+// DECKOS 0.1.1: the user's own files ("custom") are shown before scraped ones, whatever the order in the file
+void test_GameOverrides::custom_beats_scraped()
+{
+    model::Game game(QStringLiteral("Game"));
+    const QString media = deckos::GameOverrides::mediaDir() + QStringLiteral("/snes/x/");
+    const QString scraped = QUrl::fromLocalFile(media + QStringLiteral("hero.png")).toString() + QStringLiteral("?v=1");
+    const QString mine = QUrl::fromLocalFile(media + QStringLiteral("custom-hero.png")).toString() + QStringLiteral("?v=2");
+    deckos::GameOverrides::apply(game, {
+        { QStringLiteral("custom"), QJsonObject { { QStringLiteral("background"), mine } } },
+        { QStringLiteral("assets"), QJsonObject { { QStringLiteral("background"), scraped } } },
+    }, false);
+    QCOMPARE(game.assets().background(), mine);
+    QCOMPARE(game.assets().backgroundList().size(), 2);
+
+    deckos::GameOverrides::restore(game); // both are DeckOS's own files: neither stays
+    QVERIFY(game.assets().background().isEmpty());
+}
+
+void test_GameOverrides::custom_screenshots_first()
+{
+    model::Game game(QStringLiteral("Game"));
+    game.assetsMut().add_uri(AssetType::SCREENSHOT, QStringLiteral("file:///roms/snes/shot.png"));
+    const QString media = deckos::GameOverrides::mediaDir() + QStringLiteral("/snes/x/");
+    const QString scraped = QUrl::fromLocalFile(media + QStringLiteral("screenshot-01.png")).toString();
+    const QString mine = QUrl::fromLocalFile(media + QStringLiteral("custom-screenshot-01.png")).toString();
+    const QJsonObject entry {
+        { QStringLiteral("assets"), QJsonObject { { QStringLiteral("screenshot"), QJsonArray { scraped } } } },
+        { QStringLiteral("custom"), QJsonObject { { QStringLiteral("screenshot"), QJsonArray { mine } } } },
+    };
+    deckos::GameOverrides::apply(game, entry, false);
+    deckos::GameOverrides::apply(game, entry, false); // a second load doesn't add them twice
+    const QStringList shots = game.assets().screenshotList();
+    QCOMPARE(shots, (QStringList { QStringLiteral("file:///roms/snes/shot.png"), mine, scraped }));
+}
+
+void test_GameOverrides::media_dir_and_names()
+{
+    QCOMPARE(deckos::GameOverrides::fileStem(QStringLiteral("background")), QStringLiteral("hero"));
+    QCOMPARE(deckos::GameOverrides::fileStem(QStringLiteral("poster")), QStringLiteral("capsule"));
+    QCOMPARE(deckos::GameOverrides::fileStem(QStringLiteral("steam")), QStringLiteral("wide-capsule"));
+    QCOMPARE(deckos::GameOverrides::fileStem(QStringLiteral("video")), QStringLiteral("trailer"));
+    QCOMPARE(deckos::GameOverrides::fileStem(QStringLiteral("logo")), QStringLiteral("logo"));
+    QCOMPARE(deckos::GameOverrides::safeName(QStringLiteral("Zelda: Link's \"Awakening\"")), QStringLiteral("Zelda_ Link_s _Awakening_"));
+
+    QTemporaryDir dir;
+    const QString legacy_uri = QUrl::fromLocalFile(deckos::GameOverrides::legacyMediaDir() + QStringLiteral("/a/b.png")).toString();
+    deckos::GameOverrides::setMediaDir(dir.path() + QStringLiteral("/media"));
+    QCOMPARE(deckos::GameOverrides::gameMediaDir(QString(), QStringLiteral("Game")), dir.path() + QStringLiteral("/media/other/Game"));
+    QVERIFY(deckos::GameOverrides::isOwnMedia(QUrl::fromLocalFile(dir.path() + QStringLiteral("/media/snes/x/hero.png")).toString() + QStringLiteral("?v=3")));
+    QVERIFY(deckos::GameOverrides::isOwnMedia(legacy_uri)); // still known: what was saved before moves in
+    QVERIFY(!deckos::GameOverrides::isOwnMedia(QStringLiteral("file:///roms/snes/hero.png")));
+    QVERIFY(!deckos::GameOverrides::isOwnMedia(QUrl::fromLocalFile(dir.path() + QStringLiteral("/media-other/x.png")).toString()));
+    deckos::GameOverrides::setMediaDir(QString());
+    QCOMPARE(deckos::GameOverrides::mediaDir(), deckos::GameOverrides::legacyMediaDir());
+}
 
 QTEST_MAIN(test_GameOverrides)
 #include "test_GameOverrides.moc"

@@ -1,15 +1,123 @@
 import QtQuick 2.0
+import "../settings/parts" // DECKOS: FolderPicker (the artwork rows' own browser)
 
 Item {
     id: customizationPage
     anchors.fill: parent
 
-    // theme передаётся из родительского загрузчика (gamedata.qml)
-    property var theme
+    // DECKOS: `theme` is the Properties page's (gamedata.qml), as in details.qml. StMini declared its own
+    // here, which nothing ever set - the game was unknown (no artwork rows) and the key hints failed.
+
 
     property bool showBootAnimation: api.memory.has("showBootAnimation") ? api.memory.get("showBootAnimation") : true
     property int activeItemIndex: 0
-    property int maxItemIndex: 2
+    property int maxItemIndex: 2 + artRows.length // DECKOS: the three titles, then the artwork rows
+
+    // DECKOS: the game's artwork (MediaLibrary): what each kind shows now, and the user's own files - A picks
+    // one (Android's file manager; PC: DeckOS's browser), X browses in DeckOS, Y removes the user's own
+    readonly property var media: (typeof deckos !== "undefined" && deckos) ? deckos.media : null
+    readonly property var game: theme ? theme.currentGame : null
+    property var artRows: []
+    property string artMessage: ""
+    readonly property int firstArtRow: 3
+    readonly property var imageExts: [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".PNG", ".JPG", ".JPEG", ".WEBP", ".GIF", ".BMP"]
+    readonly property var videoExts: [".mp4", ".webm", ".mkv", ".mov", ".m4v", ".3gp", ".avi", ".MP4", ".WEBM", ".MKV", ".MOV", ".M4V", ".3GP", ".AVI"]
+    // SteamGridDB picks made on the artwork page are web addresses in memory (theme.getAssetSource)
+    readonly property var onlineKeys: ({ poster: "capsule", steam: "wideCapsule", logo: "logo", background: "hero" })
+
+    function refreshArt() {
+        artRows = media && game ? media.artwork(game) : []
+    }
+    // what Home, the Library and the game page show for this row (an online pick beats the game's files)
+    function shownUrl(row) {
+        if (!row) return ""
+        if (onlineKeys[row.asset] !== undefined && theme && game) {
+            var url = theme.getAssetSource(row.asset, game)
+            if (url) return url
+        }
+        return row.url
+    }
+    function isOnline(row) {
+        var url = shownUrl(row)
+        return url.indexOf("http") === 0 && url !== row.url
+    }
+    function clearOnlinePick(asset) {
+        var key = onlineKeys[asset]
+        if (!key || !game) return false
+        var name = "custom_assets_" + game.title
+        var data = api.memory.has(name) ? api.memory.get(name) : null
+        if (!data || !data.assets || !data.assets[key]) return false
+        data.assets[key] = ""
+        api.memory.set(name, data)
+        return true
+    }
+    function artRow() {
+        return activeItemIndex >= firstArtRow ? artRows[activeItemIndex - firstArtRow] : null
+    }
+    function chooseFile(row) {
+        if (!row || !media || !game) return
+        if (media.systemPicker) {
+            artMessage = "Pick a " + (row.video ? "video" : "picture") + " in Android's file manager…"
+            media.pickFile(game, row.asset)
+        } else {
+            browseFile(row)
+        }
+    }
+    function browseFile(row) {
+        if (!row) return
+        artPicker.asset = row.asset
+        artPicker.fileExtensions = row.video ? videoExts : imageExts
+        artPicker.title = row.asset === "screenshot" ? "Add a screenshot" : "Choose the " + row.label.toLowerCase()
+        artPicker.open()
+        artPicker.startFolder = "" // next time it opens where it was left
+    }
+    function assigned(asset, error) {
+        if (error === "cancelled") { artMessage = ""; return }
+        if (error !== "") { artMessage = error; return }
+        clearOnlinePick(asset) // the file shows, not an older online pick
+        artMessage = "Saved in " + (media.folderSet ? "your DeckOS folder" : "DeckOS's media folder")
+        refreshArt()
+    }
+    function handleX() {
+        var row = artRow()
+        if (row) browseFile(row)
+    }
+    function handleY() {
+        var row = artRow()
+        if (!row || !media || !game) return
+        if (row.customCount > 0) {
+            media.clearCustom(game, row.asset)
+            artMessage = row.label + ": back to the scraped one"
+        } else if (clearOnlinePick(row.asset)) {
+            artMessage = row.label + ": the online pick is gone"
+            refreshArt()
+        }
+    }
+    function restoreFocus() {
+        if (typeof settingsZoneFocusProxy !== "undefined") settingsZoneFocusProxy.forceActiveFocus()
+    }
+    // keep the selected row on screen (rows: 3 x 160 for the titles, the artwork header 100, then 170 each)
+    function rowY(i) { return i < firstArtRow ? i * 160 : firstArtRow * 160 + 100 + (i - firstArtRow) * 170 }
+    function rowH(i) { return i < firstArtRow ? 160 : 170 }
+    onActiveItemIndexChanged: {
+        var y = rowY(activeItemIndex), h = rowH(activeItemIndex)
+        if (activeItemIndex === 0) rowsFlick.contentY = 0
+        else if (y < rowsFlick.contentY) rowsFlick.contentY = Math.max(0, y - 20)
+        else if (y + h > rowsFlick.contentY + rowsFlick.height)
+            rowsFlick.contentY = Math.max(0, Math.min(rowsFlick.contentHeight - rowsFlick.height, y + h - rowsFlick.height + 20))
+    }
+    // (refreshArt also runs in Component.onCompleted below)
+    onGameChanged: refreshArt()
+    Connections {
+        target: customizationPage.media
+        function onArtworkChanged(g) { if (g === customizationPage.game) customizationPage.refreshArt() }
+        function onPicked(g, asset, error) { if (g === customizationPage.game) customizationPage.assigned(asset, error) }
+        function onBusyChanged() { if (customizationPage.media.busy) customizationPage.artMessage = "Copying…" }
+    }
+    Connections { // a scrape or another page changed the game's artwork
+        target: customizationPage.game ? customizationPage.game.assets : null
+        function onChanged() { customizationPage.refreshArt() }
+    }
 
     // Оригинальное название игры - ключ хранения.
     // Берём из theme.currentGame (если есть), иначе из targetGameName в памяти.
@@ -47,7 +155,7 @@ Item {
     }
 
     // 3. Триггеры: обновляем при загрузке И при каждом открытии страницы
-    Component.onCompleted: refreshFromMemory()
+    Component.onCompleted: { refreshFromMemory(); refreshArt() } // DECKOS: and the artwork rows
     
     onVisibleChanged: {
         if (visible) {
@@ -58,7 +166,7 @@ Item {
     // (Опционально) Если тема переключает игру, пока страница открыта
     Connections {
         target: theme ? theme : null
-        onCurrentGameChanged: refreshFromMemory()
+        function onCurrentGameChanged() { refreshFromMemory() } // DECKOS: Qt 5.15 Connections syntax
     }
 
 
@@ -102,6 +210,7 @@ Item {
         if      (activeItemIndex === 0) openKeyboard("customSearch")
         else if (activeItemIndex === 1) openKeyboard("customSteam")
         else if (activeItemIndex === 2) openKeyboard("retroAch")
+        else chooseFile(artRow()) // DECKOS: an artwork row
     }
     function handleLeft() {}
     function handleRight() {}
@@ -149,12 +258,26 @@ Item {
     }
     
 
-    Column {
+    // DECKOS: scrolls (the artwork rows don't fit), following the selected row (onActiveItemIndexChanged)
+    Flickable {
+        id: rowsFlick
         anchors.top: titleDivider.bottom
         anchors.topMargin: 30
-        width: parent.width
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 60 // the button bar covers the page's last ~48 px
+        contentHeight: rowsColumn.height + 40
+        clip: true
+        interactive: !customizationPage.keyboardOpen
+        boundsBehavior: Flickable.StopAtBounds
+        Behavior on contentY { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+
+    Column {
+        id: rowsColumn
+        width: rowsFlick.width
         spacing: 0
-        
+
         
         
         // 0. Custom Search Title (для поиска на странице Search)
@@ -408,6 +531,149 @@ Item {
 
             Rectangle { height: 1; width: parent.width - 100; color: "#333"; anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter }
         }
+
+        // DECKOS: 3+. The artwork: what each kind shows now, where it comes from, and the user's own files
+        Item {
+            width: parent.width
+            height: 100
+            Text {
+                id: artHeader
+                text: "Artwork"
+                color: "white"
+                font.pixelSize: 34
+                font.family: bold.name
+                font.bold: true
+                anchors.left: parent.left
+                anchors.leftMargin: 50
+                anchors.top: parent.top
+                anchors.topMargin: 18
+            }
+            Text {
+                text: customizationPage.artMessage !== "" ? customizationPage.artMessage
+                    : (customizationPage.media && customizationPage.media.systemPicker
+                       ? "Ⓐ Choose a file   Ⓧ Browse in DeckOS   Ⓨ Remove yours"
+                       : "Ⓐ / Ⓧ Choose a file   Ⓨ Remove yours")
+                color: customizationPage.artMessage !== "" ? "#66c0f4" : "lightgray"
+                font.pixelSize: 22
+                font.family: bold.name
+                elide: Text.ElideRight
+                anchors.left: parent.left
+                anchors.leftMargin: 50
+                anchors.right: parent.right
+                anchors.rightMargin: 50
+                anchors.top: artHeader.bottom
+                anchors.topMargin: 6
+            }
+        }
+
+        Repeater {
+            model: customizationPage.artRows
+
+            Rectangle {
+                readonly property int rowIndex: customizationPage.firstArtRow + index
+                readonly property bool active: activeZone === 1 && activeItemIndex === rowIndex
+                readonly property string shown: customizationPage.shownUrl(modelData)
+                readonly property bool online: customizationPage.isOnline(modelData)
+                width: parent.width
+                height: 170
+                color: active ? "#30343A" : "transparent"
+
+                Rectangle {
+                    id: thumb
+                    x: 50
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 240
+                    height: 135
+                    radius: 4
+                    color: "#1B1E23"
+                    clip: true
+                    Image {
+                        id: thumbImage
+                        anchors.fill: parent
+                        anchors.margins: 4
+                        fillMode: Image.PreserveAspectFit
+                        asynchronous: true
+                        sourceSize.width: 480
+                        source: modelData.video ? "" : shown
+                    }
+                    Text {
+                        anchors.centerIn: parent
+                        visible: modelData.video || shown === "" || thumbImage.status === Image.Error
+                        text: modelData.video ? (shown !== "" ? "▶  Video" : "No trailer")
+                            : thumbImage.status === Image.Error ? "Can't show it" : "None"
+                        color: "#8b929a"
+                        font.pixelSize: 24
+                        font.family: bold.name
+                    }
+                }
+
+                Column {
+                    anchors.left: thumb.right
+                    anchors.leftMargin: 30
+                    anchors.right: parent.right
+                    anchors.rightMargin: 50
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 6
+
+                    Row {
+                        spacing: 14
+                        Text { text: modelData.label; color: "white"; font.pixelSize: 30; font.family: bold.name }
+                        Rectangle {
+                            readonly property string what: modelData.source === "custom" ? "Yours"
+                                : online ? "Online pick"
+                                : modelData.source === "scraped" ? "Scraped"
+                                : modelData.source === "game" ? "Game files" : ""
+                            visible: what !== ""
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: badgeText.implicitWidth + 20
+                            height: 32
+                            radius: 4
+                            color: modelData.source === "custom" ? "#1a9fff" : "#3d4450"
+                            Text { id: badgeText; anchors.centerIn: parent; text: parent.what; color: "white"; font.pixelSize: 20; font.family: bold.name }
+                        }
+                    }
+                    Text { text: modelData.hint; color: "lightgray"; font.pixelSize: 24; font.family: bold.name }
+                    Text {
+                        width: parent.width
+                        text: modelData.asset === "screenshot"
+                              ? (modelData.count === 0 ? "None yet - A adds one" : modelData.count + (modelData.count === 1 ? " screenshot" : " screenshots")
+                                 + (modelData.customCount > 0 ? " (" + modelData.customCount + " yours)" : "") + " - A adds one")
+                              : (online ? shown : modelData.file)
+                        color: "#8b929a"
+                        font.pixelSize: 20
+                        font.family: bold.name
+                        elide: Text.ElideMiddle
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        activeZone = 1
+                        activeItemIndex = rowIndex
+                        customizationPage.chooseFile(modelData) // a tap picks a file at once
+                    }
+                }
+
+                Rectangle { height: 1; width: parent.width - 100; color: "#333"; anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter }
+            }
+        }
+    }
+    } // Flickable
+
+    // DECKOS: DeckOS's own file browser for the artwork rows (X; A on PC) - works with the controller
+    FolderPicker {
+        id: artPicker
+        property string asset: ""
+        filesMode: true
+        hint: "Open folders with A, go back with B, pick a file with A."
+        startFolder: customizationPage.media ? customizationPage.media.defaultParent : ""
+        onPicked: {
+            if (customizationPage.media && customizationPage.game)
+                customizationPage.assigned(asset, customizationPage.media.assignFile(customizationPage.game, asset, path))
+            customizationPage.restoreFocus()
+        }
+        onClosed: customizationPage.restoreFocus()
     }
 
     FocusScope {
@@ -574,7 +840,7 @@ Item {
             color: (kbScope.r === parent.parent.parent.rowIndex && kbScope.c === index) ? "black" : "white"
             visible: modelData.v === "backspace"
             font.pixelSize: 40
-            text: theme.nintendoLayout ? (theme.universalIcons ? "У" : "Y") : (theme.universalIcons ? "Х" : "X")
+            text: theme && theme.nintendoLayout ? (theme.universalIcons ? "У" : "Y") : (theme && theme.universalIcons ? "Х" : "X")
             anchors.bottom: parent.bottom; anchors.bottomMargin: 10; anchors.left: parent.left; anchors.leftMargin: 15
         }
 
@@ -616,7 +882,7 @@ Item {
             color: (kbScope.r === parent.parent.parent.rowIndex && kbScope.c === index) ? "black" : "white"
             visible: modelData.l === "Hide" && modelData.v === "Done"
             font.pixelSize: 40
-            text: theme.nintendoLayout ? (theme.universalIcons ? "А" : "A") : (theme.universalIcons ? "В" : "B")
+            text: theme && theme.nintendoLayout ? (theme.universalIcons ? "А" : "A") : (theme && theme.universalIcons ? "В" : "B")
             anchors.bottom: parent.bottom; anchors.bottomMargin: 10; anchors.left: parent.left; anchors.leftMargin: 15
         }
 

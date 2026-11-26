@@ -2424,7 +2424,7 @@ FocusScope {
                 anchors.fill: parent
                 onClicked: if (!root.closeMenuVisible) {
                     leftBar.toggle()
-                    leftBar.currentIndex = theme ? theme.currentPage : 0 // DECKOS: theme is assigned after creation
+                    leftBar.currentIndex = theme ? theme.menuIndex() : 0 // DECKOS: theme is assigned after creation
                     leftBar.updateFocus()
                 }
             }
