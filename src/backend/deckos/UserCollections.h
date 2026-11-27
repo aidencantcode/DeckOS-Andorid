@@ -29,6 +29,11 @@ namespace deckos {
 
 class UserCollections : public QObject {
     Q_OBJECT
+    /// DECKOS: collection icons (Library > Collections > X > Properties): a picture of the user's shown
+    /// instead of the dynamic collage of the games' covers. By collection name in lower case:
+    /// { source: file URL, fit: shown whole (an icon or logo) rather than filling the tile, custom: in use }.
+    /// Switching back to the dynamic icon keeps the picture, so it can be switched on again.
+    Q_PROPERTY(QVariantMap icons READ icons NOTIFY iconsChanged)
 
 public:
     explicit UserCollections(model::ApiObject* api, QObject* parent = nullptr);
@@ -61,6 +66,15 @@ public:
     /// the collection already called so (any case), "" if none - for "New collection" as it's typed
     Q_INVOKABLE QString existingName(const QString& name) const;
 
+    /// the collection's custom icon is this picture (a file path or file URL; copied into iconsDir() unless
+    /// it is there already) and is used. "" when done, else what's wrong
+    Q_INVOKABLE QString setIcon(const QString& name, const QString& path, bool fit);
+    /// custom picture (if it has one) or the dynamic collage
+    Q_INVOKABLE void setCustomIcon(const QString& name, bool custom);
+    QVariantMap icons() const;
+    /// <config>/deckos/collection-icons
+    static QString iconsDir();
+
     static constexpr int MAX_NAME = 60;
 
 signals:
@@ -68,12 +82,21 @@ signals:
     void changed(QObject* game);
     /// a collection was hidden, shown or renamed (Settings > Collections)
     void listChanged();
+    void iconsChanged();
 
 private:
     struct Entry {
         QString name;
         QStringList keys;
     };
+    struct Icon {
+        QString file;     // absolute path
+        bool fit = false;
+        bool custom = true;
+        Icon() = default;
+        Icon(QString f, bool fi, bool c) : file(std::move(f)), fit(fi), custom(c) {}
+    };
+    QMap<QString, Icon> m_icons; // by collection name, lower case
 
     model::ApiObject* const m_api;
     const QString m_path;

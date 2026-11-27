@@ -510,21 +510,18 @@ Rectangle {
         opacity: 0
         z: 2 
 
-                function prepareExit(source, direction) {
-            // 1. Жестко останавливаем анимацию, если она не успела закончиться
+        // DECKOS: the outgoing picture starts exactly where and as bright as it was
+        // (it may still have been fading in), so the hand-over has no jump.
+        property real startOpacity: 0.4
+
+        function prepareExit(source, direction, fromOpacity, fromX) {
             exitParallelAnimation.stop();
-            
-            // 2. Сбрасываем слой в начальное положение и прозрачность
-            exitTransform.x = 0;
+            exitTransform.x = fromX;
             exitTransform.y = 0;
-            
-            // 3. Подменяем картинку на ту, что сейчас уходит
             exitStatic.source = source;
-            
-            // Устанавливаем цель анимации по X в зависимости от направления скролла
-            exitAnimX.to = (backgroundContainer.width * 0.05) * direction;
-            
-            // 4. Запускаем анимацию заново
+            startOpacity = fromOpacity;
+            exitAnimationLayer.opacity = fromOpacity;
+            exitAnimX.to = fromX + (backgroundContainer.width * 0.05) * direction;
             exitParallelAnimation.restart();
         }
 
@@ -541,20 +538,24 @@ Rectangle {
             anchors.centerIn: parent
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
+            // DECKOS: same size as staticBackground so the decoded picture comes
+            // straight from the cache instead of popping in mid-fade
+            sourceSize.width: 1920
+            sourceSize.height: 1080
             visible: source != "" && !theme.highContrastHome
             z: 0
         }
 
         ParallelAnimation {
             id: exitParallelAnimation
-            
-                        PropertyAnimation {
+
+            PropertyAnimation {
                 target: exitAnimationLayer
                 property: "opacity"
-                from: 0.4 // <-- ДОБАВИТЬ ЭТУ СТРОКУ
+                from: exitAnimationLayer.startOpacity
                 to: 0
                 duration: 700
-                easing.type: Easing.OutCubic
+                easing.type: Easing.InOutQuad
             }
 
 
@@ -596,6 +597,11 @@ Rectangle {
         opacity: 0.4
         z: 0
         transform: Translate { x: backgroundTransform.x }
+        // DECKOS: fade the new picture in once it has loaded (it used to appear at
+        // full strength the moment the async load finished)
+        onSourceChanged: backgroundContainer.fadeIn(staticBackground, staticFadeIn)
+        onStatusChanged: if (status === Image.Ready && opacity === 0) staticFadeIn.restart()
+        NumberAnimation { id: staticFadeIn; target: staticBackground; property: "opacity"; to: 0.4; duration: 650; easing.type: Easing.InOutQuad }
     }
 
     AnimatedImage {
@@ -613,6 +619,15 @@ Rectangle {
         opacity: 0.4
         z: 0
         transform: Translate { id: backgroundTransform; x: 0 }
+        onSourceChanged: backgroundContainer.fadeIn(middleBackground, middleFadeIn)
+        onStatusChanged: if (status === AnimatedImage.Ready && opacity === 0) middleFadeIn.restart()
+        NumberAnimation { id: middleFadeIn; target: middleBackground; property: "opacity"; to: 0.4; duration: 650; easing.type: Easing.InOutQuad }
+    }
+
+    function fadeIn(img, anim) {
+        anim.stop();
+        img.opacity = 0;
+        if (img.source != "" && img.status === Image.Ready) anim.restart();
     }
 
     // --- НЕПРЕРЫВНАЯ АНИМАЦИЯ ДВИЖЕНИЯ ---
@@ -662,18 +677,25 @@ Rectangle {
                     var newBackground = theme.getAssetSource("background", game) || "";
                     
                     var currentSource = "";
+                    var currentOpacity = 0.4;
                     if (middleBackground.source != "") {
                         currentSource = middleBackground.source;
+                        currentOpacity = middleBackground.status === Image.Ready ? middleBackground.opacity : 0;
                     } else if (staticBackground.source != "") {
                         currentSource = staticBackground.source;
+                        currentOpacity = staticBackground.status === Image.Ready ? staticBackground.opacity : 0;
+                    }
+                    if (currentSource != "" && currentSource == newBackground) { // same picture: nothing to cross-fade
+                        lastIndex = gameList.currentIndex;
+                        return;
                     }
 
                     // Вычисляем направление: если листаем вправо (индекс растет), фон едет влево (-1)
                     var direction = (gameList.currentIndex > lastIndex) ? -1 : 1;
                     lastIndex = gameList.currentIndex; // Обновляем индекс
 
-                    if (currentSource != "") {
-                        exitAnimationLayer.prepareExit(currentSource, direction);
+                    if (currentSource != "" && currentOpacity > 0.01) {
+                        exitAnimationLayer.prepareExit(currentSource, direction, currentOpacity, backgroundTransform.x);
                     }
 
                     var isNewAnim = backgroundContainer.isAnimated(newBackground);

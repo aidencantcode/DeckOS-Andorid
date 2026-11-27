@@ -573,6 +573,7 @@ function toggleSortMenu() {
 
     function overlayOpen() {
         return leftBar.isOpen || optionsMenuVisible || sortMenuVisible || closeMenuVisible || collectionPicker.visible
+            || collectionMenu.visible || collectionIconPage.visible
     }
 
     // DECKOS: in the grid zone, the grid on screen gets the keys (after a tab switch, a grid that loaded
@@ -1183,13 +1184,28 @@ function toggleSortMenu() {
                                     }
                                     event.accepted = true;
                                 }
+                                else if (api.keys.isDetails(event)) { // DECKOS: the collection's options
+                                    if (model.get(currentIndex)) {
+                                        sAccept.stop(); sAccept.play();
+                                        collectionMenu.open(model.get(currentIndex));
+                                    }
+                                    event.accepted = true;
+                                }
                             }
                         }
 
                         delegate: Item {
                             width: gridCollections.cellWidth
-                            height: gridCollections.cellHeight 
+                            height: gridCollections.cellHeight
+                            // DECKOS: a picture of the user's instead of the covers collage (X > Properties)
+                            readonly property var customIcon: {
+                                var store = (typeof deckos !== "undefined" && deckos) ? deckos.collections : null
+                                var key = modelData && modelData.name ? modelData.name.toLowerCase() : ""
+                                var icon = store && key !== "" ? store.icons[key] : undefined
+                                return icon && icon.custom ? icon : null
+                            }
                             property bool hasImage: {
+    if (customIcon) return true;
     if (!modelData) return false;
 
     // 1. Проверка веб-ассетов (SteamGridDB) через api.memory
@@ -1314,13 +1330,47 @@ function toggleSortMenu() {
                                     anchors.centerIn: parent
                                     source: {
                                         if (modelData.assets) {
-                                            if (modelData.assets.boxFront) return modelData.assets.boxFront                                    
+                                            if (modelData.assets.boxFront) return modelData.assets.boxFront
                                             if (modelData.assets.poster) return modelData.assets.poster
                                         }
                                         return ""
                                     }
                                     fillMode: Image.PreserveAspectCrop
-                                    visible: hasImage
+                                    visible: hasImage && !customIcon
+                                }
+
+                                // DECKOS: the custom icon: filling the tile, or whole (an icon or logo) with the name under it
+                                Rectangle {
+                                    width: gridCollections.cellWidth * 0.9
+                                    height: gridCollections.cellHeight * 0.9
+                                    anchors.centerIn: parent
+                                    visible: !!customIcon
+                                    gradient: Gradient {
+                                        GradientStop { position: 0.0; color: "#2a3039" }
+                                        GradientStop { position: 1.0; color: "#16191e" }
+                                    }
+                                    Image {
+                                        anchors.fill: parent
+                                        anchors.margins: customIcon && customIcon.fit ? parent.width * 0.16 : 0
+                                        anchors.bottomMargin: customIcon && customIcon.fit ? parent.height * 0.28 : 0
+                                        source: customIcon ? customIcon.source : ""
+                                        fillMode: customIcon && customIcon.fit ? Image.PreserveAspectFit : Image.PreserveAspectCrop
+                                        asynchronous: true
+                                        smooth: true
+                                        mipmap: true
+                                    }
+                                    Text {
+                                        visible: !!customIcon && customIcon.fit
+                                        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: parent.height * 0.08 }
+                                        width: parent.width * 0.9
+                                        horizontalAlignment: Text.AlignHCenter
+                                        text: modelData.name || ""
+                                        color: "white"
+                                        font.pixelSize: 28
+                                        font.capitalization: Font.AllUppercase
+                                        font.family: bold.name
+                                        elide: Text.ElideRight
+                                    }
                                 }
                                 
                                 Rectangle {
@@ -3146,6 +3196,20 @@ FocusScope {
             var gv = root.getCurrentGridView()
             if (gv && root.focusZone === 2) gv.forceActiveFocus()
         }
+    }
+
+    // DECKOS: X on a collection (Collections tab): scrape, rename, properties (its icon), hide
+    CollectionMenu {
+        id: collectionMenu
+        z: 10000
+        blurSource: globalBlurSource
+        onClosed: if (!collectionIconPage.visible) root.refocusGrid()
+        onPropertiesRequested: collectionIconPage.open(collection)
+    }
+    CollectionIconPage {
+        id: collectionIconPage
+        z: 100000000001 // a full page with its own button hints: above the bottom bar too
+        onClosed: root.refocusGrid()
     }
 
 

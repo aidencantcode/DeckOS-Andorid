@@ -17,7 +17,9 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QDateTime>
 #include <QSaveFile>
+#include <QUrl>
 #include <QVariantMap>
 #include <algorithm>
 
@@ -56,6 +58,80 @@ QString UserCollections::defaultPath()
     return paths::writableConfigDir() + QStringLiteral("/deckos/collections.json");
 }
 
+QString UserCollections::iconsDir()
+{
+    return paths::writableConfigDir() + QStringLiteral("/deckos/collection-icons");
+}
+
+QVariantMap UserCollections::icons() const
+{
+    const QMutexLocker lock(&m_lock);
+    QVariantMap out;
+    for (auto it = m_icons.cbegin(); it != m_icons.cend(); ++it) {
+        if (!QFileInfo::exists(it.value().file))
+            continue;
+        out.insert(it.key(), QVariantMap {
+            { QStringLiteral("source"), QUrl::fromLocalFile(it.value().file).toString() },
+            { QStringLiteral("fit"), it.value().fit },
+            { QStringLiteral("custom"), it.value().custom },
+        });
+    }
+    return out;
+}
+
+QString UserCollections::setIcon(const QString& name, const QString& path_or_url, bool fit)
+{
+    const QString key = name.simplified().toLower();
+    if (key.isEmpty())
+        return tr("No collection");
+    QString path = path_or_url;
+    if (path.startsWith(QLatin1String("file:")))
+        path = QUrl(path).toLocalFile();
+    const QFileInfo info(path);
+    static const QStringList PICTURES { QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("jpeg"),
+                                        QStringLiteral("webp"), QStringLiteral("gif"), QStringLiteral("bmp") };
+    if (!info.isFile() || !PICTURES.contains(info.suffix().toLower()))
+        return tr("Pick a PNG, JPG or WebP picture");
+
+    // a copy of its own, so moving or deleting the original doesn't take the icon away; a new name every
+    // time, so the interface doesn't show the old picture from its image cache
+    const QString dir = iconsDir();
+    QString file = ::QDir::cleanPath(info.absoluteFilePath());
+    if (QFileInfo(file).absolutePath() != QDir::cleanPath(dir)) {
+        QDir().mkpath(dir);
+        const QString copy = dir + QStringLiteral("/icon-%1.%2")
+            .arg(QString::number(QDateTime::currentMSecsSinceEpoch()), info.suffix().toLower());
+        if (!QFile::copy(file, copy))
+            return tr("Couldn't copy the picture");
+        file = copy;
+    }
+    {
+        const QMutexLocker lock(&m_lock);
+        const auto old = m_icons.constFind(key);
+        if (old != m_icons.cend() && old.value().file != file && QFileInfo(old.value().file).absolutePath() == QDir::cleanPath(dir))
+            QFile::remove(old.value().file);
+        m_icons.insert(key, Icon { file, fit, true });
+        save();
+    }
+    Log::info(LOGTAG, LOGMSG("Collection `%1` has its own icon now").arg(name));
+    emit iconsChanged();
+    return {};
+}
+
+void UserCollections::setCustomIcon(const QString& name, bool custom)
+{
+    const QString key = name.simplified().toLower();
+    {
+        const QMutexLocker lock(&m_lock);
+        auto it = m_icons.find(key);
+        if (it == m_icons.end() || it.value().custom == custom)
+            return;
+        it.value().custom = custom;
+        save();
+    }
+    emit iconsChanged();
+}
+
 void UserCollections::load()
 {
     m_entries.clear();
@@ -75,6 +151,14 @@ void UserCollections::load()
     for (auto it = renames.begin(); it != renames.end(); ++it) {
         if (!it.key().isEmpty() && !it.value().toString().isEmpty())
             m_renames.insert(it.key(), it.value().toString());
+    }
+    const QJsonObject icons = root.value(QStringLiteral("icons")).toObject();
+    for (auto it = icons.begin(); it != icons.end(); ++it) {
+        const QJsonObject o = it.value().toObject();
+        const QString file = o.value(QStringLiteral("file")).toString();
+        if (!it.key().isEmpty() && !file.isEmpty())
+            m_icons.insert(it.key().toLower(), Icon { file, o.value(QStringLiteral("fit")).toBool(),
+                                                      o.value(QStringLiteral("custom")).toBool(true) });
     }
     const QJsonArray list = root.value(QStringLiteral("collections")).toArray();
     for (const QJsonValue& value : list) {
@@ -107,11 +191,20 @@ bool UserCollections::save() const
     QJsonObject renames;
     for (auto it = m_renames.cbegin(); it != m_renames.cend(); ++it)
         renames.insert(it.key(), it.value());
+    QJsonObject icons;
+    for (auto it = m_icons.cbegin(); it != m_icons.cend(); ++it) {
+        icons.insert(it.key(), QJsonObject {
+            { QStringLiteral("file"), it.value().file },
+            { QStringLiteral("fit"), it.value().fit },
+            { QStringLiteral("custom"), it.value().custom },
+        });
+    }
     const QJsonObject root {
         { QStringLiteral("version"), 1 },
         { QStringLiteral("collections"), list },
         { QStringLiteral("hidden"), QJsonArray::fromStringList(m_hidden_names) },
         { QStringLiteral("renames"), renames },
+        { QStringLiteral("icons"), icons },
     };
 
     QDir().mkpath(QFileInfo(m_path).absolutePath());
@@ -330,6 +423,7 @@ QString UserCollections::rename(const QString& name, const QString& new_name)
         return tr("There is a collection called %1 already").arg(clean);
 
     const QString old = coll->name();
+    bool icon_moved = false;
     {
         const QMutexLocker lock(&m_lock);
         const QString original = originalName(old);
@@ -347,12 +441,17 @@ QString UserCollections::rename(const QString& name, const QString& new_name)
             if (same_name(hidden, old))
                 hidden = clean;
         }
+        icon_moved = m_icons.contains(old.toLower()) && old.toLower() != clean.toLower();
+        if (icon_moved)
+            m_icons.insert(clean.toLower(), m_icons.take(old.toLower())); // the icon goes along
         save();
     }
     coll->setName(clean);
     m_api->sortCollections();
     Log::info(LOGTAG, LOGMSG("Collection `%1` renamed to `%2`").arg(old, clean));
     emit listChanged();
+    if (icon_moved)
+        emit iconsChanged();
     return {};
 }
 

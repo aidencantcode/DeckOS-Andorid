@@ -64,6 +64,8 @@ private slots:
     void scan_picked_system_folder();
     void scan_only_some_systems();
     void titles();
+    void catalog_merge();
+    void scan_game_folders();
 
 private:
     QTemporaryDir m_dir;
@@ -98,11 +100,72 @@ void test_RomLibrary::launch_command_expands_cores()
     const QString cmd = deckos::launch_command(*emu);
     QVERIFY(cmd.startsWith(QStringLiteral("am start -n com.retroarch.aarch64/")));
     QVERIFY(cmd.contains(QStringLiteral("--es LIBRETRO \"/data/data/com.retroarch.aarch64/cores/snes9x_libretro_android.so\"")));
+    // the user's own RetroArch config, not a blank default
+    QVERIFY(cmd.contains(QStringLiteral("--es CONFIGFILE \"/storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg\"")));
     QVERIFY(cmd.contains(QStringLiteral("--es ROM \"{file.path}\"")));
 
     deckos::CatalogEmulator standalone;
     standalone.args = QStringLiteral("-n org.ppsspp.ppsspp/.PpssppActivity -d \"{file.uri}\"");
     QCOMPARE(deckos::launch_command(standalone), QStringLiteral("am start -n org.ppsspp.ppsspp/.PpssppActivity -d \"{file.uri}\""));
+
+    // a RetroArch entry that has its CONFIGFILE already keeps it, once
+    deckos::CatalogEmulator with_config = *emu;
+    with_config.args += QStringLiteral(" -e CONFIGFILE /sdcard/my.cfg");
+    QCOMPARE(deckos::launch_command(with_config).count(QStringLiteral("CONFIGFILE")), 1);
+
+    // a placeholder that lost its opening brace in the catalog is repaired
+    deckos::CatalogEmulator broken;
+    broken.args = QStringLiteral("-n a.b/.C --es ROM \"file.path}\"");
+    QCOMPARE(deckos::launch_command(broken), QStringLiteral("am start -n a.b/.C --es ROM \"{file.path}\""));
+}
+
+void test_RomLibrary::catalog_merge()
+{
+    const QString extra = m_dir.filePath(QStringLiteral("extra.json"));
+    touch(extra,
+        "{\"systems\": ["
+        " {\"id\": \"snes\", \"folders\": [\"Super Famicom\"], \"gameFolders\": [\"GAME/x.bin\"],"
+        "  \"emulators\": [{\"id\": \"snes.new\", \"name\": \"New\", \"package\": \"a.b\", \"isDefault\": true, \"args\": \"-n a.b/.C\"}]},"
+        " {\"id\": \"ps4\", \"name\": \"Sony PlayStation 4\", \"shortName\": \"PS4\", \"folders\": [\"ps4\"],"
+        "  \"extensions\": [], \"gameFolders\": [\"eboot.bin\"], \"emulators\": []}"
+        "]}");
+    deckos::Catalog catalog(m_catalog_path);
+    catalog.merge(extra);
+    QCOMPARE(catalog.systems().size(), 4);
+    const deckos::CatalogSystem* snes = catalog.byId(QStringLiteral("snes"));
+    QCOMPARE(snes->name, QStringLiteral("Super Nintendo Entertainment System")); // name kept
+    QCOMPARE(catalog.byFolderName(QStringLiteral("super famicom"))->id, QStringLiteral("snes"));
+    QCOMPARE(snes->gameFolders, QStringList { QStringLiteral("GAME/x.bin") });
+    QCOMPARE(snes->emulators.size(), 2);
+    QCOMPARE(snes->emulators.first().id, QStringLiteral("snes.new")); // the new default comes first
+    QVERIFY(!snes->emulator(QStringLiteral("snes.ra64.snes9x"))->isDefault);
+    QCOMPARE(catalog.byFolderName(QStringLiteral("PS4"))->id, QStringLiteral("ps4"));
+}
+
+void test_RomLibrary::scan_game_folders()
+{
+    const QString extra = m_dir.filePath(QStringLiteral("folders.json"));
+    touch(extra,
+        "{\"systems\": [{\"id\": \"ps3\", \"name\": \"Sony PlayStation 3\", \"shortName\": \"PS3\", \"folders\": [\"ps3\"],"
+        "  \"extensions\": [\"iso\"], \"gameFolders\": [\"PS3_GAME/USRDIR/EBOOT.BIN\"], \"emulators\": []}]}");
+    deckos::Catalog catalog(m_catalog_path);
+    catalog.merge(extra);
+
+    QTemporaryDir roms;
+    touch(roms.filePath(QStringLiteral("ps3/Demon's Souls [BLUS30443]/PS3_GAME/USRDIR/EBOOT.BIN")));
+    touch(roms.filePath(QStringLiteral("ps3/Demon's Souls [BLUS30443]/PS3_GAME/USRDIR/data.iso"))); // inside a game: not a game
+    touch(roms.filePath(QStringLiteral("ps3/Region/Ratchet v1.02 (USA)/PS3_GAME/USRDIR/EBOOT.BIN")));
+    touch(roms.filePath(QStringLiteral("ps3/Loose Game.iso")));
+    touch(roms.filePath(QStringLiteral("ps3/Not A Game/readme.txt")));
+
+    const auto result = deckos::scan_rom_folders(catalog, { roms.path() }, {}, {});
+    const deckos::ScannedSystem* ps3 = find(result, QStringLiteral("ps3"));
+    QVERIFY(ps3);
+    QCOMPARE(names(ps3->files), (QStringList {
+        QStringLiteral("Demon's Souls [BLUS30443]"), QStringLiteral("Loose Game.iso"), QStringLiteral("Ratchet v1.02 (USA)") }));
+    QCOMPARE(ps3->folderGames.size(), 2);
+    QCOMPARE(deckos::game_titles(ps3->files, ps3->folderGames), (QStringList {
+        QStringLiteral("Demon's Souls"), QStringLiteral("Loose Game"), QStringLiteral("Ratchet v1.02") }));
 }
 
 void test_RomLibrary::scan_finds_systems_and_games()

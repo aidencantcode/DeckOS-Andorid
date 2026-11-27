@@ -55,3 +55,18 @@ These usually launch games via their own shortcuts, not a file path. Support:
 
 ## PC (dev only)
 Catalog `pc` blocks let you launch e.g. RetroArch/PPSSPP on the dev PC to test the launch path. Don't spend time beyond that.
+
+## Emulator overhaul — prepared 2026-11-27, waiting for the owner's repos
+The owner is sending GitHub repos (Winlator variants, GameNative, GameHub and others; emulators for Xbox, Xbox 360, PS3, PS4, PS5). What is ready:
+- **Catalog additions** live in `src/backend/deckos/catalog/deckos-systems.json` (hand-written, merged over the generated `systems.json` by `Catalog::merge`): new systems, extra folder names and extensions, and new or replacement emulators (same `id` replaces). Every emulator from the repos goes there, not into `systems.json`.
+- **Folder games:** a system's `gameFolders` markers make a folder one game (`file:` is the folder; `{file.path}` in the command is the folder path; append the inner path in the args if the emulator wants e.g. `EBOOT.BIN`). Set now: PS3 `PS3_GAME/USRDIR/EBOOT.BIN`, `USRDIR/EBOOT.BIN`; PS4 `eboot.bin`, `sce_sys/param.sfo`; PS5 `eboot.bin`, `sce_sys/param.json`; Xbox `default.xbe`; Xbox 360 `default.xex`.
+- **New systems:** `ps4`, `ps5` (no emulators yet). Already in the generated catalog: `xbox` (X1 BOX, Xenra, hakuX), `xbox360` (aX360e, Xendroid, Xendroid+, X360 Mobile, Xenra), `ps3` (aPS3e, ARMSX3, EMUCOREC), `windows` (Winlator CMod / CMod Proot / Ludashi, MiceWine, DroidDeck).
+
+For each repo, find in its source (manifest + launch code) and record in the catalog entry, with the date checked:
+1. Package name(s) (release and debug/forks) and the activity that accepts a game from outside (exported, with its intent filter).
+2. How it takes the game: intent action, `-d` URI or extras (names and types: `--es` path, `content://` URI, `file://`), whether it needs a SAF permission or the raw path.
+3. File types it reads (extensions, and folder layouts like extracted PS3/PS4 dumps or Xbox 360 GoD), and what it can't run directly (e.g. PKG installers).
+4. For PC launchers (Winlator, GameNative, GameHub): how a game is identified (shortcut `.desktop` file, container + exe path, Steam app id) and whether DeckOS can list their installed games (exported shortcut folder, content provider) or must import shortcuts.
+5. Whether it returns to the caller when the game exits, and any "quit on focus loss" behaviour (matters for the in-game overlay).
+
+Nice-to-have, later: read a PS3 `PARAM.SFO` / PS4 `param.sfo` / PS5 `param.json` title so serial-named folders ("BLUS30443") get the real game name.

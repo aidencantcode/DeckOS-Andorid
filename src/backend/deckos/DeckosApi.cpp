@@ -143,7 +143,7 @@ void DeckosApi::onLibraryReady()
         m_started = true;
         m_library->refreshEmulators();
         if (m_library->scanOnStart())
-            m_library->scan();
+            m_library->scanInBackground(); // quiet: no loading screen
     }
     m_scraper->onLibraryReady();
 }

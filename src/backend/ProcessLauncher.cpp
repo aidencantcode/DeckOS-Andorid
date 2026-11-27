@@ -197,6 +197,22 @@ void ProcessLauncher::onLaunchRequested(const model::GameFile* q_gamefile)
         emit processLaunchError(message);
         return;
     }
+    // DECKOS: RetroArch started without CONFIGFILE uses a blank default config (none of the user's shaders,
+    // hotkeys or controller binds). Commands saved before DeckOS added it (a game's "Launch with...", a
+    // system's own command, metadata files) get the config RetroArch's own launcher uses.
+    if (!args.contains(QStringLiteral("CONFIGFILE"))) {
+        for (int i = 0; i + 1 < args.size(); i++) {
+            if (args.at(i) != QLatin1String("-n") || !args.at(i + 1).contains(QLatin1String("RetroActivityFuture")))
+                continue;
+            const QString package = args.at(i + 1).section(QLatin1Char('/'), 0, 0);
+            if (!package.isEmpty()) {
+                args << QStringLiteral("--es") << QStringLiteral("CONFIGFILE")
+                     << QStringLiteral("/storage/emulated/0/Android/data/") + package + QStringLiteral("/files/retroarch.cfg");
+                Log::info(LOGMSG("RetroArch: using its own config from %1").arg(package));
+            }
+            break;
+        }
+    }
 #endif
 
 #ifdef Q_OS_WINDOWS

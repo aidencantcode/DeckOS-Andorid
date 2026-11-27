@@ -5,6 +5,7 @@
 
 #include "GameOverrides.h"
 #include "MediaLibrary.h"
+#include "UserCollections.h"
 #include "Log.h"
 #include "Paths.h"
 #include "model/Api.h"
@@ -1024,6 +1025,144 @@ void Scraper::stepDownload()
         }
         job->download_index++;
         stepDownload();
+    });
+}
+
+
+// --- browsing SteamGridDB by hand (collection icons) --------------------------------------------------
+
+QNetworkReply* Scraper::browseGet(const QString& url, bool sgdb_auth)
+{
+    QNetworkRequest request { QUrl(url) };
+    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("DeckOS (Pegasus Frontend fork)"));
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    request.setTransferTimeout(REQUEST_TIMEOUT_MS);
+    if (sgdb_auth)
+        request.setRawHeader("Authorization", "Bearer " + m_sgdb_key.toUtf8());
+    QNetworkReply* reply = m_net->get(request);
+    connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
+    return reply;
+}
+
+namespace {
+QString browse_error(QNetworkReply* reply)
+{
+    const int http = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if (http == 401 || http == 403)
+        return QObject::tr("SteamGridDB didn't accept the API key (Settings > Scraping)");
+    if (http == 404)
+        return QString(); // nothing there: an empty list
+    if (reply->error() != QNetworkReply::NoError)
+        return QObject::tr("Couldn't reach SteamGridDB: %1").arg(reply->errorString());
+    return QString();
+}
+} // namespace
+
+void Scraper::findArtworkGames(const QString& term)
+{
+    const QString clean = term.simplified();
+    if (m_sgdb_key.isEmpty()) {
+        emit artworkGames(term, {}, tr("Add a SteamGridDB API key in Settings > Scraping first"));
+        return;
+    }
+    if (clean.isEmpty()) {
+        emit artworkGames(term, {}, tr("Type something to search for"));
+        return;
+    }
+    const QString url = QStringLiteral("https://www.steamgriddb.com/api/v2/search/autocomplete/")
+                      + QString::fromUtf8(QUrl::toPercentEncoding(clean));
+    QNetworkReply* reply = browseGet(url, true);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, term]() {
+        const QString error = browse_error(reply);
+        QVariantList games;
+        if (error.isEmpty() && reply->error() == QNetworkReply::NoError) {
+            const QJsonArray data = QJsonDocument::fromJson(reply->readAll()).object().value(QStringLiteral("data")).toArray();
+            for (const QJsonValue& v : data) {
+                const QJsonObject o = v.toObject();
+                games << QVariantMap {
+                    { QStringLiteral("id"), o.value(QStringLiteral("id")).toInt() },
+                    { QStringLiteral("name"), o.value(QStringLiteral("name")).toString() },
+                };
+            }
+        }
+        emit artworkGames(term, games, error);
+    });
+}
+
+void Scraper::findArtwork(int game_id, const QString& kind)
+{
+    if (m_sgdb_key.isEmpty() || game_id <= 0) {
+        emit artworkList(game_id, kind, {}, tr("Add a SteamGridDB API key in Settings > Scraping first"));
+        return;
+    }
+    QString path;
+    QString extra;
+    if (kind == QLatin1String("icons")) {
+        path = QStringLiteral("icons");
+        extra = QStringLiteral("&mimes=image/png");
+    } else if (kind == QLatin1String("logos")) {
+        path = QStringLiteral("logos");
+        extra = QStringLiteral("&mimes=image/png");
+    } else {
+        path = QStringLiteral("grids");
+        extra = QStringLiteral("&dimensions=512x512,1024x1024&mimes=image/png,image/jpeg");
+    }
+    const QString url = QStringLiteral("https://www.steamgriddb.com/api/v2/%1/game/%2?types=static&nsfw=false&humor=false%3")
+        .arg(path).arg(game_id).arg(extra);
+    QNetworkReply* reply = browseGet(url, true);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, game_id, kind]() {
+        const QString error = browse_error(reply);
+        QVariantList items;
+        if (error.isEmpty() && reply->error() == QNetworkReply::NoError) {
+            const QJsonArray data = QJsonDocument::fromJson(reply->readAll()).object().value(QStringLiteral("data")).toArray();
+            for (const QJsonValue& v : data) {
+                const QJsonObject o = v.toObject();
+                const QString full = o.value(QStringLiteral("url")).toString();
+                if (full.isEmpty())
+                    continue;
+                items << QVariantMap {
+                    { QStringLiteral("url"), full },
+                    { QStringLiteral("thumb"), o.value(QStringLiteral("thumb")).toString(full) },
+                    { QStringLiteral("width"), o.value(QStringLiteral("width")).toInt() },
+                    { QStringLiteral("height"), o.value(QStringLiteral("height")).toInt() },
+                };
+                if (items.size() >= 60)
+                    break;
+            }
+        }
+        emit artworkList(game_id, kind, items, error);
+    });
+}
+
+void Scraper::saveArtwork(const QString& url_text)
+{
+    const QUrl url(url_text);
+    // only SteamGridDB's own files (the URLs come from its answers)
+    if (url.scheme() != QLatin1String("https") || !url.host().endsWith(QLatin1String("steamgriddb.com"))) {
+        emit artworkSaved(url_text, {}, tr("That picture isn't from SteamGridDB"));
+        return;
+    }
+    QNetworkReply* reply = browseGet(url_text, false);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, url_text, url]() {
+        if (reply->error() != QNetworkReply::NoError) {
+            emit artworkSaved(url_text, {}, tr("Download failed: %1").arg(reply->errorString()));
+            return;
+        }
+        const QByteArray data = reply->readAll();
+        QString suffix = QFileInfo(url.path()).suffix().toLower();
+        if (suffix != QLatin1String("png") && suffix != QLatin1String("jpg") && suffix != QLatin1String("jpeg")
+            && suffix != QLatin1String("webp"))
+            suffix = QStringLiteral("png");
+        const QString dir = UserCollections::iconsDir();
+        QDir().mkpath(dir);
+        const QString path = dir + QStringLiteral("/sgdb-%1.%2")
+            .arg(QString::number(QDateTime::currentMSecsSinceEpoch()), suffix);
+        QSaveFile file(path);
+        if (data.isEmpty() || !file.open(QIODevice::WriteOnly) || file.write(data) != data.size() || !file.commit()) {
+            emit artworkSaved(url_text, {}, tr("Couldn't save the picture"));
+            return;
+        }
+        emit artworkSaved(url_text, path, {});
     });
 }
 

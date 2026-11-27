@@ -18,7 +18,12 @@
 #include <QStringList>
 #include <QVariantList>
 
+#include <QMutex>
+#include <QTimer>
+
+#include <atomic>
 #include <map>
+#include <memory>
 #include <vector>
 
 
@@ -31,6 +36,18 @@ struct ScannedSystem {
     QString id;
     QStringList folders;   // where its games were found
     QStringList files;     // absolute paths, sorted
+    QSet<QString> folderGames; // DECKOS: those of `files` that are game folders (CatalogSystem::gameFolders)
+};
+
+/// DECKOS: how far a running scan got, written by the scan's thread and read by the UI thread
+/// (the loading screen); `cancel` stops it, and nothing it found is used then
+struct ScanProgress {
+    std::atomic<int> systemsTotal { 0 };
+    std::atomic<int> systemsDone { 0 };
+    std::atomic<int> files { 0 };
+    std::atomic<bool> cancel { false };
+    QMutex lock;
+    QString currentSystem; // a system's name, under `lock`
 };
 
 /// The scan itself (no Qt event loop needed): exposed for tests.
@@ -38,9 +55,10 @@ std::vector<ScannedSystem> scan_rom_folders(const QStringList& rom_roots, const 
 std::vector<ScannedSystem> scan_rom_folders(const Catalog&, const QStringList& rom_roots, const QSet<QString>& only_systems);
 /// DECKOS: `links` (system id -> folder) replace the folders found by name for those systems
 std::vector<ScannedSystem> scan_rom_folders(const Catalog&, const QStringList& rom_roots, const QSet<QString>& only_systems,
-                                            const std::map<QString, QString>& links);
-/// "Chrono Trigger (USA) [!].sfc" -> "Chrono Trigger"; keeps the tags when two games would get the same name
-QStringList game_titles(const QStringList& files);
+                                            const std::map<QString, QString>& links, ScanProgress* progress = nullptr);
+/// "Chrono Trigger (USA) [!].sfc" -> "Chrono Trigger"; keeps the tags when two games would get the same name.
+/// Game folders ("Demon's Souls [BLUS30443]") keep their whole folder name before the clean-up (no extension).
+QStringList game_titles(const QStringList& files, const QSet<QString>& folder_games = {});
 
 
 class RomLibrary : public QObject {
@@ -52,6 +70,13 @@ class RomLibrary : public QObject {
     ///  command, customCommand, link }]
     Q_PROPERTY(QVariantList systems READ systemsList NOTIFY systemsChanged)
     Q_PROPERTY(bool scanOnStart READ scanOnStart WRITE setScanOnStart NOTIFY settingsChanged)
+    /// DECKOS: the running scan was asked for by the user (a folder added, "Scan ROM folders"...), so the
+    /// interface shows the loading screen; the quick check after start-up runs unseen
+    Q_PROPERTY(bool scanForeground READ scanForeground NOTIFY scanStateChanged)
+    /// games found so far, how far along (0..1) and the system being read, while scanning
+    Q_PROPERTY(int scanFound READ scanFound NOTIFY scanProgressChanged)
+    Q_PROPERTY(qreal scanProgress READ scanProgress NOTIFY scanProgressChanged)
+    Q_PROPERTY(QString scanSystem READ scanSystem NOTIFY scanProgressChanged)
 
 public:
     explicit RomLibrary(QObject* parent = nullptr);
@@ -61,6 +86,10 @@ public:
     Q_INVOKABLE void removeRomFolder(const QString& path);
     /// Scans all systems (empty list) or only the given system ids.
     Q_INVOKABLE void scan(const QStringList& systemIds = {});
+    /// the quick look for new ROMs after start-up: no loading screen
+    void scanInBackground();
+    /// stops the running scan; nothing changes (no system file is written)
+    Q_INVOKABLE void cancelScan();
 
     /// [{ id, name, installed, isDefault, achievements }] for a system, installed emulators first
     Q_INVOKABLE QVariantList emulatorsFor(const QString& systemId) const;
@@ -80,6 +109,10 @@ public:
     QVariantList systemsList() const;
     bool scanOnStart() const { return m_scan_on_start; }
     void setScanOnStart(bool);
+    bool scanForeground() const { return m_scanning && m_foreground; }
+    int scanFound() const { return m_found; }
+    qreal scanProgress() const { return m_progress_value; }
+    const QString& scanSystem() const { return m_scan_system; }
 
     /// re-reads which emulator apps are installed (Android)
     void refreshEmulators() { refreshInstalled(); emit systemsChanged(); }
@@ -90,6 +123,7 @@ public:
 signals:
     void romFoldersChanged();
     void scanStateChanged();
+    void scanProgressChanged();
     void systemsChanged();
     void settingsChanged();
     /// emitted after a scan; `changed` = number of system files written or removed
@@ -114,7 +148,16 @@ private:
     bool m_pending = false;
     QFutureWatcher<std::vector<ScannedSystem>> m_watcher;
     QSet<QString> m_running_scope;
+    bool m_foreground = false;
+    bool m_pending_foreground = false;
+    std::shared_ptr<ScanProgress> m_scan_progress; // shared with the scan's thread
+    QTimer m_progress_timer;
+    int m_found = 0;
+    qreal m_progress_value = 0.0;
+    QString m_scan_system;
 
+    void startScan(const QStringList& systemIds, bool foreground);
+    void pollProgress();
     void load();
     void save() const;
     void refreshInstalled();

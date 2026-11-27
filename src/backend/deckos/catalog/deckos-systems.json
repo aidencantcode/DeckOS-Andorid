@@ -1,0 +1,41 @@
+{
+  "_about": "DeckOS's own catalog additions, written by hand and merged on top of the generated systems.json (Catalog::merge, see README.md). A new id adds a system; a known id extends it: folders, extensions and gameFolders are added, emulators with the same id replace the generated ones, others are added. Names of known systems are left alone (a system's name is its collection's name). gameFolders: a folder holding one of these paths is one game, listed by its folder. PS4 and PS5 have no emulators yet: they come with the emulator repos the owner is sending (2026-11-27); until then a command can be set in Settings > Emulators. Markers and folder names to verify against each emulator's source.",
+  "systems": [
+    {
+      "id": "xbox",
+      "folders": ["Microsoft Xbox", "Original Xbox", "Xbox Classic", "ogxbox"],
+      "gameFolders": ["default.xbe"]
+    },
+    {
+      "id": "xbox360",
+      "folders": ["x360"],
+      "gameFolders": ["default.xex"]
+    },
+    {
+      "id": "ps3",
+      "gameFolders": ["PS3_GAME/USRDIR/EBOOT.BIN", "USRDIR/EBOOT.BIN"]
+    },
+    {
+      "id": "ps4",
+      "name": "Sony PlayStation 4",
+      "shortName": "PS4",
+      "folders": ["ps4", "PlayStation 4", "Sony PlayStation 4"],
+      "extensions": [],
+      "gameFolders": ["eboot.bin", "sce_sys/param.sfo"],
+      "multidisc": false,
+      "raConsoleId": 0,
+      "emulators": []
+    },
+    {
+      "id": "ps5",
+      "name": "Sony PlayStation 5",
+      "shortName": "PS5",
+      "folders": ["ps5", "PlayStation 5", "Sony PlayStation 5"],
+      "extensions": [],
+      "gameFolders": ["eboot.bin", "sce_sys/param.json"],
+      "multidisc": false,
+      "raConsoleId": 0,
+      "emulators": []
+    }
+  ]
+}

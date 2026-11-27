@@ -6,6 +6,7 @@
 #pragma once
 
 #include <QHash>
+#include <QJsonObject>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -29,6 +30,9 @@ struct CatalogSystem {
     QString shortName;
     QStringList folders;
     QStringList extensions; // lower case, no dot
+    /// DECKOS: games that are folders (PS3/PS4/PS5 dumps, Xbox 360 "games on demand"): a folder holding
+    /// any of these paths (e.g. "PS3_GAME/USRDIR/EBOOT.BIN") is one game, listed by its folder path
+    QStringList gameFolders;
     bool multidisc = false;
     int raConsoleId = 0;
     QVector<CatalogEmulator> emulators;
@@ -50,7 +54,14 @@ public:
     /// lower case, letters and digits only - how folder names are compared
     static QString normalized(const QString&);
 
+    /// DECKOS: merges another catalog file on top (catalog/deckos-systems.json, written by hand): new
+    /// systems are added; for a known id, the fields it has replace (name, shortName, raConsoleId,
+    /// multidisc), lists are extended (folders, extensions, gameFolders) and emulators with the same id
+    /// replace the catalog's, others are added (an isDefault one becomes the only default)
+    void merge(const QString& json_path);
+
 private:
+    void addSystem(const QJsonObject&);
     QVector<CatalogSystem> m_systems;
     QHash<QString, int> m_by_id;
     QHash<QString, int> m_by_folder;

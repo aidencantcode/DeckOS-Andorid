@@ -3,6 +3,7 @@
         <file>main.qml</file>
         <file>MenuLayer.qml</file>
         <file>BootLayer.qml</file>
+        <file>LibraryLoading.qml</file>
         <file>assets/dir-icon.png</file>
         <file>assets/boot.mp4</file>
         <file>assets/qr-docs.png</file>

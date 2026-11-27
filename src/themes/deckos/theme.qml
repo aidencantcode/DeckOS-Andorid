@@ -949,7 +949,12 @@ Connections {
     target: (typeof deckos !== "undefined" && deckos) ? deckos.library : null
     function onScanStateChanged() {
         var lib = deckos.library
-        if (lib.scanning) {
+        // DECKOS: a scan the user started has the full-screen loading screen (frontend/LibraryLoading.qml)
+        // instead; only the quiet check after start-up gets a card
+        if (lib.scanning && lib.scanForeground) {
+            if (root.scanToastShown) toasts.dismiss("romscan")
+            root.scanToastShown = false
+        } else if (lib.scanning) {
             root.scanToastShown = true
             toasts.notify({ id: "romscan", icon: "L", title: "Scanning your ROM folders", text: lib.status, timeout: 0 })
         } else if (root.scanToastShown) {

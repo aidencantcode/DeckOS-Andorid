@@ -47,20 +47,47 @@ bool is_skipped_dir(const QString& name)
     return name.startsWith(QLatin1Char('.')) || names.contains(name.toLower());
 }
 
-void collect_files(const QString& dir, const QSet<QString>& extensions, int depth, QStringList& out)
+// DECKOS: a game folder holds one of the system's marker paths ("PS3_GAME/USRDIR/EBOOT.BIN"); SD cards
+// ignore case, Android's own storage doesn't, so the usual spellings are tried
+bool is_game_folder(const QString& dir, const QStringList& markers)
 {
+    for (const QString& marker : markers) {
+        if (QFileInfo::exists(dir + QLatin1Char('/') + marker)
+            || QFileInfo::exists(dir + QLatin1Char('/') + marker.toLower())
+            || QFileInfo::exists(dir + QLatin1Char('/') + marker.toUpper()))
+            return true;
+    }
+    return false;
+}
+
+void collect_files(const QString& dir, const QSet<QString>& extensions, int depth, QStringList& out,
+                   deckos::ScanProgress* progress, const QStringList& markers = {}, QSet<QString>* folder_games = nullptr)
+{
+    if (progress && progress->cancel.load())
+        return;
     const QFileInfoList entries = QDir(dir).entryInfoList(
         QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Readable, QDir::Name | QDir::IgnoreCase);
     for (const QFileInfo& entry : entries) {
         if (entry.isDir()) {
+            if (!markers.isEmpty() && folder_games && is_game_folder(entry.absoluteFilePath(), markers)) {
+                const QString path = ::clean_abs_path(entry);
+                out << path;
+                folder_games->insert(path);
+                if (progress)
+                    progress->files++;
+                continue; // its insides are the game's own files
+            }
             if (depth < MAX_DEPTH && !is_skipped_dir(entry.fileName()))
-                collect_files(entry.absoluteFilePath(), extensions, depth + 1, out);
+                collect_files(entry.absoluteFilePath(), extensions, depth + 1, out, progress, markers, folder_games);
             continue;
         }
         if (entry.fileName().startsWith(QLatin1Char('.')))
             continue;
-        if (extensions.contains(entry.suffix().toLower()))
+        if (extensions.contains(entry.suffix().toLower())) {
             out << ::clean_abs_path(entry);
+            if (progress)
+                progress->files++;
+        }
     }
 }
 
@@ -125,7 +152,7 @@ std::vector<ScannedSystem> scan_rom_folders(const Catalog& catalog, const QStrin
 }
 
 std::vector<ScannedSystem> scan_rom_folders(const Catalog& catalog, const QStringList& rom_roots, const QSet<QString>& only_systems,
-                                            const std::map<QString, QString>& links)
+                                            const std::map<QString, QString>& links, ScanProgress* progress)
 {
 
     // system id -> folders holding its games
@@ -162,17 +189,31 @@ std::vector<ScannedSystem> scan_rom_folders(const Catalog& catalog, const QStrin
         targets[sys->id] = QStringList { ::clean_abs_path(QFileInfo(link.second)) };
     }
 
+    if (progress)
+        progress->systemsTotal = static_cast<int>(targets.size());
+
     std::vector<ScannedSystem> out;
     for (const auto& target : targets) {
         const CatalogSystem* sys = catalog.byId(target.first);
         const QSet<QString> extensions(sys->extensions.cbegin(), sys->extensions.cend());
+        if (progress) {
+            if (progress->cancel.load())
+                return {};
+            QMutexLocker locker(&progress->lock);
+            progress->currentSystem = sys->name;
+        }
 
         ScannedSystem result;
         result.id = sys->id;
         result.folders = target.second;
         QStringList files;
         for (const QString& dir : target.second)
-            collect_files(dir, extensions, 1, files);
+            collect_files(dir, extensions, 1, files, progress, sys->gameFolders, &result.folderGames);
+        if (progress) {
+            if (progress->cancel.load())
+                return {};
+            progress->systemsDone++;
+        }
 
         const QSet<QString> hidden = referenced_files(files);
         for (const QString& file : files) {
@@ -186,15 +227,18 @@ std::vector<ScannedSystem> scan_rom_folders(const Catalog& catalog, const QStrin
     return out;
 }
 
-QStringList game_titles(const QStringList& files)
+QStringList game_titles(const QStringList& files, const QSet<QString>& folder_games)
 {
     static const QRegularExpression tags(QStringLiteral("\\s*[\\(\\[][^\\)\\]]*[\\)\\]]"));
     static const QRegularExpression article(QStringLiteral("^(.+?), (The|A|An)( - |: |$)"));
+    const auto base_name = [&folder_games](const QString& file) {
+        return folder_games.contains(file) ? QFileInfo(file).fileName() : QFileInfo(file).completeBaseName();
+    };
 
     QStringList titles;
     QHash<QString, int> counts;
     for (const QString& file : files) {
-        QString title = QFileInfo(file).completeBaseName();
+        QString title = base_name(file);
         title.remove(tags);
         title = title.trimmed();
         const QRegularExpressionMatch m = article.match(title);
@@ -202,14 +246,14 @@ QStringList game_titles(const QStringList& files)
             title = m.captured(2) + QLatin1Char(' ') + m.captured(1) + m.captured(3) + title.mid(m.capturedEnd());
         title = title.trimmed();
         if (title.isEmpty())
-            title = QFileInfo(file).completeBaseName();
+            title = base_name(file);
         titles << title;
         counts[title.toLower()]++;
     }
     // two files, same clean name (USA + Europe...): those keep their full names
     for (int i = 0; i < titles.size(); i++) {
         if (counts.value(titles.at(i).toLower()) > 1)
-            titles[i] = QFileInfo(files.at(i)).completeBaseName();
+            titles[i] = base_name(files.at(i));
     }
     return titles;
 }
@@ -219,7 +263,41 @@ RomLibrary::RomLibrary(QObject* parent)
     : QObject(parent)
 {
     connect(&m_watcher, &QFutureWatcher<std::vector<ScannedSystem>>::finished, this, &RomLibrary::onScanDone);
+    m_progress_timer.setInterval(120);
+    connect(&m_progress_timer, &QTimer::timeout, this, &RomLibrary::pollProgress);
     load();
+}
+
+void RomLibrary::pollProgress()
+{
+    if (!m_scan_progress)
+        return;
+    ScanProgress& p = *m_scan_progress;
+    const int total = p.systemsTotal.load();
+    const qreal value = total > 0 ? qreal(p.systemsDone.load()) / total : 0.0;
+    QString system;
+    {
+        QMutexLocker locker(&p.lock);
+        system = p.currentSystem;
+    }
+    const int found = p.files.load();
+    if (found == m_found && qFuzzyCompare(1.0 + value, 1.0 + m_progress_value) && system == m_scan_system)
+        return;
+    m_found = found;
+    m_progress_value = value;
+    m_scan_system = system;
+    emit scanProgressChanged();
+}
+
+void RomLibrary::cancelScan()
+{
+    if (!m_scanning || !m_scan_progress)
+        return;
+    Log::info(LOGTAG, LOGMSG("Scan cancelled"));
+    m_scan_progress->cancel = true;
+    m_pending = false;
+    m_pending_scope.clear();
+    setStatus(tr("Cancelling…"));
 }
 
 RomLibrary::~RomLibrary()
@@ -434,6 +512,16 @@ QVariantList RomLibrary::systemsList() const
 
 void RomLibrary::scan(const QStringList& system_ids)
 {
+    startScan(system_ids, true);
+}
+
+void RomLibrary::scanInBackground()
+{
+    startScan({}, false);
+}
+
+void RomLibrary::startScan(const QStringList& system_ids, bool foreground)
+{
     const QSet<QString> scope(system_ids.cbegin(), system_ids.cend());
     if (m_scanning) {
         // run again afterwards; an empty scope means everything
@@ -442,6 +530,11 @@ void RomLibrary::scan(const QStringList& system_ids)
         else
             m_pending_scope.unite(scope);
         m_pending = true;
+        m_pending_foreground = m_pending_foreground || foreground;
+        if (foreground && !m_foreground) { // the user is waiting for it now: show the loading screen
+            m_foreground = true;
+            emit scanStateChanged();
+        }
         return;
     }
     if (m_rom_folders.isEmpty() && m_systems.empty())
@@ -450,6 +543,13 @@ void RomLibrary::scan(const QStringList& system_ids)
     refreshInstalled();
     m_running_scope = scope;
     m_scanning = true;
+    m_foreground = foreground;
+    m_found = 0;
+    m_progress_value = 0.0;
+    m_scan_system.clear();
+    m_scan_progress = std::make_shared<ScanProgress>();
+    m_progress_timer.start();
+    emit scanProgressChanged();
     setStatus(scope.isEmpty() ? tr("Scanning your ROM folders…") : tr("Rescanning…"));
 
     const QStringList roots = m_rom_folders;
@@ -458,8 +558,9 @@ void RomLibrary::scan(const QStringList& system_ids)
         if (!entry.second.link.isEmpty())
             links.emplace(entry.first, entry.second.link);
     }
-    m_watcher.setFuture(QtConcurrent::run([roots, scope, links]() {
-        return scan_rom_folders(Catalog::instance(), roots, scope, links);
+    std::shared_ptr<ScanProgress> progress = m_scan_progress;
+    m_watcher.setFuture(QtConcurrent::run([roots, scope, links, progress]() {
+        return scan_rom_folders(Catalog::instance(), roots, scope, links, progress.get());
     }));
 }
 
@@ -535,7 +636,7 @@ bool RomLibrary::writeSystemFile(const CatalogSystem& sys, const ScannedSystem& 
     if (sys.raConsoleId > 0)
         out << "x-ra-console: " << sys.raConsoleId << '\n';
 
-    const QStringList titles = game_titles(scanned.files);
+    const QStringList titles = game_titles(scanned.files, scanned.folderGames);
     for (int i = 0; i < scanned.files.size(); i++) {
         out << '\n'
             << "game: " << metadata_escape(titles.at(i)) << '\n'
@@ -562,6 +663,20 @@ void RomLibrary::onScanDone()
     const Catalog& catalog = Catalog::instance();
     const std::vector<ScannedSystem> results = m_watcher.result();
 
+    m_progress_timer.stop();
+    pollProgress();
+    const bool cancelled = m_scan_progress && m_scan_progress->cancel.load();
+    m_scan_progress.reset();
+    if (cancelled) { // nothing it found is used: every system file stays as it was
+        m_scanning = false;
+        m_foreground = false;
+        m_pending = false;
+        m_pending_foreground = false;
+        m_pending_scope.clear();
+        setStatus(tr("Scan cancelled - nothing was changed"));
+        return;
+    }
+
     QSet<QString> seen;
     int games = 0;
     int changed = 0;
@@ -587,12 +702,14 @@ void RomLibrary::onScanDone()
         entry.second.games = 0;
         entry.second.folders.clear();
         const CatalogSystem* sys = catalog.byId(entry.first);
-        if (sys && writeSystemFile(*sys, ScannedSystem { entry.first, {}, {} }))
+        if (sys && writeSystemFile(*sys, ScannedSystem { entry.first, {}, {}, {} }))
             changed++;
     }
 
     save();
     m_scanning = false;
+    const bool foreground = m_foreground;
+    m_foreground = false;
     int total = 0;
     int system_count = 0;
     for (const auto& entry : m_systems) {
@@ -609,7 +726,9 @@ void RomLibrary::onScanDone()
         m_pending = false;
         const QStringList scope(m_pending_scope.cbegin(), m_pending_scope.cend());
         m_pending_scope.clear();
-        scan(scope);
+        const bool next_foreground = m_pending_foreground || foreground;
+        m_pending_foreground = false;
+        startScan(scope, next_foreground);
     }
 }
 

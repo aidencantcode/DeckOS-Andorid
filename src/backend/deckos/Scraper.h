@@ -66,6 +66,14 @@ public:
     Q_INVOKABLE QString keysFilePath() const;
     Q_INVOKABLE QVariantMap importKeys();
 
+    /// DECKOS: browsing SteamGridDB by hand (a collection's icon), apart from the scrape queue:
+    /// the entries matching a search (artworkGames), one entry's artwork of a kind - "icons", "grids"
+    /// (square ones) or "logos" (artworkList), and the picked file saved into the collection icon folder
+    /// (artworkSaved, with the local path). Each answer carries an error text instead when it failed.
+    Q_INVOKABLE void findArtworkGames(const QString& term);
+    Q_INVOKABLE void findArtwork(int gameId, const QString& kind);
+    Q_INVOKABLE void saveArtwork(const QString& url);
+
     /// called when a library load finishes: starts the auto-scrape if it is on
     void onLibraryReady();
 
@@ -91,6 +99,11 @@ signals:
     void progressChanged();
     void settingsChanged();
     void gameFinished(QObject* game, bool ok, const QString& message);
+    /// [{ id, name }]
+    void artworkGames(const QString& term, const QVariantList& games, const QString& error);
+    /// [{ url, thumb, width, height }]
+    void artworkList(int gameId, const QString& kind, const QVariantList& items, const QString& error);
+    void artworkSaved(const QString& url, const QString& path, const QString& error);
 
 private:
     struct Job;
@@ -129,6 +142,7 @@ private:
     void stepDownload();
 
     QNetworkReply* get(const QString& url, bool sgdb_auth = false);
+    QNetworkReply* browseGet(const QString& url, bool sgdb_auth); // not tied to the running scrape job
     void whenDone(QNetworkReply*, std::function<void(QNetworkReply*)>);
 
     void loadTheGamesDbNames();

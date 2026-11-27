@@ -74,7 +74,9 @@ Window {
     FocusScope {
         id: content
         anchors.fill: parent
-        enabled: focus && !splashScreen.shown // DECKOS: the hidden interface ignores buttons under the boot screen
+        // DECKOS: the hidden interface ignores buttons under the boot screen. Under the scan's loading screen
+        // it stays enabled (only unfocused), so each page keeps the item it had selected.
+        enabled: (focus || libraryLoading.activeFocus) && !splashScreen.shown
 
         Loader {
             id: theme
@@ -259,5 +261,13 @@ Window {
         onSkinLoadingChanged: hideMaybe()
         onDataLoadingChanged: hideMaybe()
         onVideoDoneChanged: hideMaybe()
+    }
+
+    // DECKOS: a ROM scan the user asked for, then the library reload: one loading screen with a progress
+    // bar and tips over everything (also over the boot screen, after the first start)
+    LibraryLoading {
+        id: libraryLoading
+        reloading: splashScreen.shown && !splashScreen.playVideo
+        onReleased: content.focus = true
     }
 }

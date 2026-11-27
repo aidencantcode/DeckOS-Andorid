@@ -3,6 +3,27 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**RetroArch uses your own setup again, a proper loading screen for ROM scans, and collection options and icons.**
+- **RetroArch starts with your own config:** shaders, hotkeys, controller binds, everything you set up in RetroArch. DeckOS's RetroArch commands didn't say which config to use, so RetroArch opened with a blank default one. Every RetroArch launch now passes RetroArch's own `retroarch.cfg`, including games whose command was saved earlier ("Launch with…", a system's own command, your metadata files).
+- **Loading screen for ROM scans and library reloads:** adding a ROM folder (or *Scan ROM folders*, *Rescan one system*, *Refresh library*, *Full rescan*) darkens the screen and shows a progress bar, how many games were found so far, the system being read, and tips (with the StMini, BigScreenFE and Pegasus credits). The same screen stays up while the library reloads and the interface is rebuilt, instead of a black screen. **B cancels a scan**; nothing changes then. The quick check after start-up still runs quietly with its top-left card.
+- **Collection options:** press **X on a collection** in the Library's Collections tab: *Scrape missing artwork*, *Re-scrape this collection* (follows the skip setting in Settings › Scraping), *Rename…*, *Properties…*, *Hide from Library*.
+- **Collection icons** (*Properties…*): **Dynamic** is StMini's collage of the games' covers; **Custom** is a picture of your own:
+  - **Find on SteamGridDB…** searches for the collection's name, or anything else with Y: console, launcher and game **icons**, **square grids** and **logos**. LB/RB switch the kind, and A picks.
+  - **Choose a picture from storage…** takes a PNG, JPG or WebP.
+  - *Show the whole picture* fits icons and logos with the name under them, or fills the tile.
+  - Switching back to Dynamic keeps your picture for later. Renaming a collection keeps its icon.
+- **Home:** the background crossfade is smooth both ways. The new picture used to pop in at full strength after the old one faded out; now it fades in. The old one also starts fading from exactly where it was.
+- **Getting ready for the emulator overhaul:**
+  - PS4 and PS5 are recognised systems: folders `ps4`, `PlayStation 4`, `ps5`…
+  - Folder games are found: PS3 (`PS3_GAME/USRDIR/EBOOT.BIN`), PS4/PS5 (`eboot.bin`), Xbox (`default.xbe`), Xbox 360 (`default.xex`). Each counts as one game named after its folder.
+  - Their emulators come next.
+
+### Test checklist
+1. **RetroArch:** start a game that runs in RetroArch. Your shaders, hotkeys (menu toggle, save states) and controller binds should all be there. `logs/lastrun.log` shows the command with `CONFIGFILE`.
+2. **Loading screen:** Settings › Library › *Add a ROM folder…* and pick your ROMs folder. A dark screen with a bar, a game count and tips should stay up until the Library is back. There should be no black screen and no freeze. Try B during a scan: it says *Cancelling…* and your library stays as it was.
+3. **Collection options:** Library › Collections, X on a collection. Try Rename… (the new name shows at once) and Scrape missing artwork (the progress card appears top-left).
+4. **Collection icon:** X › Properties… › Find on SteamGridDB… and pick an icon. The tile in the Library changes. Switch *Icon* back to Dynamic: the collage returns. Then try *Choose a picture from storage…*.
+5. **Home:** move left and right through the games. The background should fade from one picture to the next with no sudden cut.
 
 ## 0.1.3 — 2026-11-26
 **Notifications, a cleaner Settings, collections you can manage, and controller fixes.**
