@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.1.4 — 2026-11-27
 **RetroArch uses your own setup again, a proper loading screen for ROM scans, and collection options and icons.**
 - **RetroArch starts with your own config:** shaders, hotkeys, controller binds, everything you set up in RetroArch. DeckOS's RetroArch commands didn't say which config to use, so RetroArch opened with a blank default one. Every RetroArch launch now passes RetroArch's own `retroarch.cfg`, including games whose command was saved earlier ("Launch with…", a system's own command, your metadata files).
 - **Loading screen for ROM scans and library reloads:** adding a ROM folder (or *Scan ROM folders*, *Rescan one system*, *Refresh library*, *Full rescan*) darkens the screen and shows a progress bar, how many games were found so far, the system being read, and tips (with the StMini, BigScreenFE and Pegasus credits). The same screen stays up while the library reloads and the interface is rebuilt, instead of a black screen. **B cancels a scan**; nothing changes then. The quick check after start-up still runs quietly with its top-left card.
