@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.1.5 — 2026-11-27
 **Artwork that always loads, scraped data that doesn't go missing, and a game page that opens at once.**
 - **Game page opens instantly.** It used to be built from scratch every time (about half a second on PC, more on a handheld). Now it is built once in the background shortly after DeckOS starts and kept, like Home and Library. Opening another game starts at the top; coming back from Properties returns to where you were.
 - **A record for every game (`game.txt`)** next to its artwork in `<DeckOS folder>/media/<system>/<game>/`: its scraped and edited info and its artwork file names, in Pegasus-style text. It is rewritten whenever the game's artwork or info changes. When a game has no saved changes, DeckOS reads its record back on the next load and brings everything back. That covers a ROM folder reached by another path (`/sdcard/…` vs `/storage/emulated/0/…`), a folder added again, a renamed SD card, or DeckOS's own list (`game_overrides.json`) being lost. Existing scraped games get their records written once, on the first start of this version.
