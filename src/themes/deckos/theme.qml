@@ -300,6 +300,17 @@ Component.onCompleted: {
     updateProfileData();
     pageLoader.show(-1, currentPage) // DECKOS: first page (the page host has no source binding)
     Qt.callLater(importKeysIfChanged) // DECKOS: keys.txt
+    prebuildTimer.start()
+}
+
+// DECKOS: the game page is built ahead once the first page is up, so opening a game is instant
+Timer {
+    id: prebuildTimer
+    interval: 1500
+    onTriggered: {
+        if (root.isTransitioning) { restart(); return }
+        pageLoader.prebuild(8)
+    }
 }
 
 
@@ -374,12 +385,39 @@ FocusScope {
     property Item item: null
     signal loaded()
 
-    // Home and Library, once built, stay alive (hidden) until Settings is opened - a few of its
-    // options are only read when a page is built
-    readonly property var keepable: [0, 1]
+    // Home, Library and the game page, once built, stay alive (hidden) until Settings is opened - a few
+    // of its options are only read when a page is built. The game page is also built ahead (prebuild),
+    // in the background a moment after start, so even the first game opens at once.
+    readonly property var keepable: [0, 1, 8]
     readonly property var dropCacheOn: [6]
     property var cached: ({}) // page index -> Item
     property var components: ({})
+    property var pending: ({}) // page index -> incubator still building it ahead
+    property int generation: 0 // dropCache() makes pages still being built ahead stale
+
+    function prebuild(index) {
+        if (cached[index] || pending[index] || keepable.indexOf(index) === -1) return
+        var c = componentFor(index)
+        if (c.status !== Component.Ready) return
+        var started = Date.now()
+        var gen = generation
+        var inc = c.incubateObject(pageLoader, { theme: root, visible: false, enabled: false }, Qt.Asynchronous)
+        if (!inc) return
+        var done = function () {
+            if (pending[index] === inc) delete pending[index]
+            var obj = inc.object
+            if (!obj) return
+            if (gen !== generation || cached[index]) { obj.destroy(); return } // dropped or built meanwhile
+            cached[index] = obj
+            console.info("DeckOS: page " + index + " built ahead in " + (Date.now() - started) + " ms")
+        }
+        if (inc.status === Component.Ready) { done(); return }
+        pending[index] = inc
+        inc.onStatusChanged = function (status) {
+            if (status === Component.Ready) done()
+            else if (status === Component.Error) delete pending[index]
+        }
+    }
 
     function componentFor(index) {
         var url = getPageSource(index)
@@ -392,6 +430,8 @@ FocusScope {
     }
 
     function dropCache() {
+        generation++
+        pending = {}
         for (var k in cached) {
             if (cached[k] && cached[k] !== item) {
                 cached[k].visible = false
@@ -420,6 +460,14 @@ FocusScope {
         if (dropCacheOn.indexOf(index) !== -1)
             dropCache()
 
+        if (!cached[index] && pending[index]) { // still being built ahead: finish it now
+            var inc = pending[index]
+            inc.forceCompletion()
+            if (inc.object && !cached[index]) {
+                delete pending[index]
+                cached[index] = inc.object
+            }
+        }
         var again = cached[index]
         if (again) { // shown before: no rebuild, as it was left (focus, tab, scroll position)
             item = again

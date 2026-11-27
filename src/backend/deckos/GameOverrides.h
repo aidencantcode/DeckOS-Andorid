@@ -15,8 +15,11 @@
 #include <QHash>
 #include <QJsonObject>
 #include <QMutex>
+#include <QSet>
 #include <QString>
 #include <QStringList>
+
+#include <vector>
 
 namespace model { class Game; }
 
@@ -59,6 +62,24 @@ public:
     void remove(const QString& key);
     /// re-reads the file (done by the provider before every library load)
     void reload();
+    /// DECKOS: the keys changed since the last reload() - a scrape or pick that finished while the library
+    /// was loading reached the old game objects only; DeckosApi applies them to the new ones (and clears)
+    QStringList takeChangedSinceReload();
+
+    /// DECKOS: each game's record next to its artwork, <media>/<system>/<rom>/game.txt, Pegasus-style
+    /// "key: value" text: its scraped and edited info and its artwork's file names (relative to that
+    /// folder). Written whenever an entry with DeckOS artwork changes; read back (readRecord) when a game
+    /// has no entry - DeckOS's own list was lost, or the game's path changed (another form of the same
+    /// folder, a folder added again) - so its artwork and info are never lost with the list.
+    static QString recordName() { return QStringLiteral("game.txt"); }
+    /// an entry from a record (artwork as file URIs in the record's folder); `file` gets the game file
+    /// path it was written for. Empty if there is no readable record.
+    static QJsonObject readRecord(const QString& record_path, QString* file = nullptr);
+    /// writes the records of every entry that has artwork; once per media folder (marker file), so
+    /// libraries scraped before records existed get theirs
+    void writeAllRecords();
+    /// key -> game for a list of games (keyFor each)
+    static QHash<QString, model::Game*> gamesByKey(const std::vector<model::Game*>& games);
 
     /// Applies an entry to a game. With `live`, change signals are emitted so the UI updates.
     /// The values the game had before the first override are kept in game.extra (deckos_original_*),
@@ -79,10 +100,14 @@ private:
     void load_locked();
     void save_locked() const;
     void merge_locked(const QString& key, const QJsonObject& fields);
+    /// the folder holding the entry's own artwork, "" if it has none
+    static QString recordDir(const QJsonObject& entry);
+    void writeRecord_locked(const QString& key) const;
 
     mutable QMutex m_lock;
     QString m_path;
     QJsonObject m_data;
+    QSet<QString> m_changed;
 };
 
 } // namespace deckos

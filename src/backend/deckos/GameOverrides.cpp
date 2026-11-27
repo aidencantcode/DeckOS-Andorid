@@ -21,7 +21,11 @@
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QTextStream>
 #include <QUrl>
+#include <QDateTime>
+
+#include <algorithm>
 
 
 namespace {
@@ -224,6 +228,234 @@ void GameOverrides::reload()
 {
     const QMutexLocker lock(&m_lock);
     load_locked();
+    m_changed.clear();
+}
+
+QStringList GameOverrides::takeChangedSinceReload()
+{
+    const QMutexLocker lock(&m_lock);
+    const QStringList out(m_changed.cbegin(), m_changed.cend());
+    m_changed.clear();
+    return out;
+}
+
+QHash<QString, model::Game*> GameOverrides::gamesByKey(const std::vector<model::Game*>& games)
+{
+    QHash<QString, model::Game*> out;
+    out.reserve(static_cast<int>(games.size()));
+    for (model::Game* game : games) {
+        const QString key = keyFor(*game);
+        if (!key.isEmpty())
+            out.insert(key, game);
+    }
+    return out;
+}
+
+
+// --- game records (game.txt next to the artwork) ----------------------------------------------------
+
+namespace {
+const QStringList RECORD_NUMBERS { QStringLiteral("players") };
+const QStringList RECORD_BOOLS { QStringLiteral("shots") };
+const QStringList RECORD_LISTS { QStringLiteral("developer"), QStringLiteral("publisher"), QStringLiteral("genre") };
+
+// Pegasus metadata style: continuation lines start with two spaces, an empty line inside a value is " ."
+void write_value(QTextStream& out, const QString& name, const QString& value)
+{
+    const QStringList lines = value.split(QLatin1Char('\n'));
+    out << name << ": " << lines.first().trimmed() << '\n';
+    for (int i = 1; i < lines.size(); i++) {
+        const QString line = lines.at(i).trimmed();
+        out << "  " << (line.isEmpty() ? QStringLiteral(".") : line) << '\n';
+    }
+}
+
+QString relative_to(const QDir& dir, const QString& uri)
+{
+    const QString path = QUrl(uri).toLocalFile(); // without ?v=
+    if (path.isEmpty())
+        return uri;
+    const QString rel = dir.relativeFilePath(path);
+    return rel.startsWith(QLatin1String("..")) ? path : rel;
+}
+
+QString uri_in(const QDir& dir, const QString& file)
+{
+    const QFileInfo info(QDir::isAbsolutePath(file) ? file : dir.filePath(file));
+    const QString uri = QUrl::fromLocalFile(QDir::cleanPath(info.absoluteFilePath())).toString();
+    static const QStringList VIDEOS { QStringLiteral("mp4"), QStringLiteral("webm"), QStringLiteral("mkv"),
+                                      QStringLiteral("avi"), QStringLiteral("mov") };
+    if (VIDEOS.contains(info.suffix().toLower()))
+        return uri;
+    // the file's own time: image caches load it again whenever it was replaced
+    return uri + QStringLiteral("?v=") + QString::number(info.lastModified().toSecsSinceEpoch());
+}
+} // namespace
+
+QString GameOverrides::recordDir(const QJsonObject& entry)
+{
+    for (const QString& group : { QStringLiteral("assets"), QStringLiteral("custom") }) {
+        const QJsonObject assets = entry.value(group).toObject();
+        for (auto it = assets.begin(); it != assets.end(); ++it) {
+            QStringList uris;
+            if (it.value().isArray()) {
+                for (const QJsonValue& v : it.value().toArray())
+                    uris << v.toString();
+            } else {
+                uris << it.value().toString();
+            }
+            for (const QString& uri : uris) {
+                if (isOwnMedia(uri))
+                    return QFileInfo(QUrl(uri).toLocalFile()).absolutePath();
+            }
+        }
+    }
+    return {};
+}
+
+void GameOverrides::writeRecord_locked(const QString& key) const
+{
+    const QJsonObject entry = m_data.value(key).toObject();
+    const QString dir_path = recordDir(entry);
+    if (dir_path.isEmpty())
+        return; // no artwork of DeckOS's: nothing to keep track of next to it
+    const QDir dir(dir_path);
+
+    QString text;
+    QTextStream out(&text);
+    out << "# DeckOS: this game's scraped and edited info and its artwork, written by DeckOS whenever they\n"
+        << "# change. DeckOS reads it back if it loses its own list or the game's path changes, so keep it\n"
+        << "# with the pictures. Artwork paths are relative to this folder.\n";
+    write_value(out, QStringLiteral("file"), key.mid(key.indexOf(QLatin1Char(':')) + 1));
+    write_value(out, QStringLiteral("key"), key);
+    QStringList names = entry.keys();
+    std::sort(names.begin(), names.end());
+    for (const QString& name : names) {
+        const QJsonValue value = entry.value(name);
+        if (name == QLatin1String("assets") || name == QLatin1String("custom")) {
+            const QJsonObject assets = value.toObject();
+            for (auto it = assets.begin(); it != assets.end(); ++it) {
+                const QString field = name + QLatin1Char('.') + it.key();
+                if (it.value().isArray()) {
+                    for (const QJsonValue& v : it.value().toArray())
+                        write_value(out, field, relative_to(dir, v.toString()));
+                } else {
+                    write_value(out, field, relative_to(dir, it.value().toString()));
+                }
+            }
+        } else if (value.isArray()) {
+            for (const QJsonValue& v : value.toArray())
+                write_value(out, name, v.toString());
+        } else if (value.isBool()) {
+            write_value(out, name, value.toBool() ? QStringLiteral("true") : QStringLiteral("false"));
+        } else if (value.isDouble()) {
+            write_value(out, name, QString::number(value.toDouble()));
+        } else if (value.isString()) {
+            write_value(out, name, value.toString());
+        }
+    }
+    out.flush();
+
+    const QString path = dir.filePath(recordName());
+    QFile current(path);
+    if (current.open(QIODevice::ReadOnly) && QString::fromUtf8(current.readAll()) == text)
+        return;
+    current.close();
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly) || file.write(text.toUtf8()) < 0 || !file.commit())
+        Log::warning(LOGTAG, LOGMSG("Could not write `%1`").arg(path));
+}
+
+QJsonObject GameOverrides::readRecord(const QString& record_path, QString* file_path)
+{
+    QFile file(record_path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return {};
+    const QDir dir = QFileInfo(record_path).absoluteDir();
+
+    // name -> its values, in order (a name can repeat: screenshots, lists)
+    QList<QPair<QString, QString>> fields;
+    QTextStream in(&file);
+    in.setCodec("UTF-8");
+    QString line;
+    while (in.readLineInto(&line)) {
+        if (line.startsWith(QLatin1Char('#')) || line.trimmed().isEmpty())
+            continue;
+        if ((line.startsWith(QLatin1Char(' ')) || line.startsWith(QLatin1Char('\t'))) && !fields.isEmpty()) {
+            const QString more = line.trimmed();
+            fields.last().second += QLatin1Char('\n') + (more == QLatin1String(".") ? QString() : more);
+            continue;
+        }
+        const int colon = line.indexOf(QLatin1Char(':'));
+        if (colon <= 0)
+            continue;
+        fields.append({ line.left(colon).trimmed(), line.mid(colon + 1).trimmed() });
+    }
+
+    QJsonObject entry;
+    QJsonObject groups[2];
+    QHash<QString, QJsonArray> lists;
+    QString recorded_file;
+    for (const auto& field : fields) {
+        const QString& name = field.first;
+        const QString& value = field.second;
+        if (name == QLatin1String("file")) { recorded_file = value; continue; }
+        if (name == QLatin1String("key")) continue;
+        const int dot = name.indexOf(QLatin1Char('.'));
+        const QString group = dot > 0 ? name.left(dot) : QString();
+        if (group == QLatin1String("assets") || group == QLatin1String("custom")) {
+            QJsonObject& assets = groups[group == QLatin1String("custom") ? 1 : 0];
+            const QString asset = name.mid(dot + 1);
+            const QString uri = uri_in(dir, value);
+            if (asset == QLatin1String("screenshot")) {
+                QJsonArray list = assets.value(asset).toArray();
+                list.append(uri);
+                assets.insert(asset, list);
+            } else {
+                assets.insert(asset, uri);
+            }
+            continue;
+        }
+        if (RECORD_NUMBERS.contains(name))
+            entry.insert(name, value.toInt());
+        else if (RECORD_BOOLS.contains(name))
+            entry.insert(name, value == QLatin1String("true"));
+        else if (RECORD_LISTS.contains(name))
+            lists[name].append(value);
+        else
+            entry.insert(name, value);
+    }
+    for (auto it = lists.begin(); it != lists.end(); ++it)
+        entry.insert(it.key(), it.value().size() == 1 ? it.value().first() : QJsonValue(it.value()));
+    if (!groups[0].isEmpty())
+        entry.insert(QStringLiteral("assets"), groups[0]);
+    if (!groups[1].isEmpty())
+        entry.insert(QStringLiteral("custom"), groups[1]);
+    if (file_path)
+        *file_path = recorded_file;
+    return entry;
+}
+
+void GameOverrides::writeAllRecords()
+{
+    const QString marker = mediaDir() + QStringLiteral("/.deckos-records");
+    if (QFileInfo::exists(marker))
+        return;
+    int written = 0;
+    {
+        const QMutexLocker lock(&m_lock);
+        for (auto it = m_data.begin(); it != m_data.end(); ++it) {
+            if (recordDir(it.value().toObject()).isEmpty())
+                continue;
+            writeRecord_locked(it.key());
+            written++;
+        }
+    }
+    QDir().mkpath(mediaDir());
+    QFile flag(marker);
+    if (flag.open(QIODevice::WriteOnly))
+        flag.write("1\n");
+    Log::info(LOGTAG, LOGMSG("Wrote %1 game records (game.txt) next to their artwork").arg(written));
 }
 
 QJsonObject GameOverrides::entry(const QString& key) const
@@ -246,6 +478,8 @@ void GameOverrides::update(const QString& key, const QJsonObject& fields)
     const QMutexLocker lock(&m_lock);
     merge_locked(key, fields);
     save_locked();
+    m_changed.insert(key);
+    writeRecord_locked(key);
 }
 
 void GameOverrides::updateAll(const QHash<QString, QJsonObject>& changes)
@@ -258,6 +492,12 @@ void GameOverrides::updateAll(const QHash<QString, QJsonObject>& changes)
         if (!it.key().isEmpty())
             merge_locked(it.key(), it.value());
     save_locked();
+    for (auto it = changes.begin(); it != changes.end(); ++it) {
+        if (it.key().isEmpty())
+            continue;
+        m_changed.insert(it.key());
+        writeRecord_locked(it.key());
+    }
 }
 
 void GameOverrides::merge_locked(const QString& key, const QJsonObject& fields)
@@ -296,8 +536,13 @@ void GameOverrides::remove(const QString& key)
     const QMutexLocker lock(&m_lock);
     if (!m_data.contains(key))
         return;
+    // the record goes too, or the next load would bring the game's old artwork back from it
+    const QString dir = recordDir(m_data.value(key).toObject());
+    if (!dir.isEmpty())
+        QFile::remove(dir + QLatin1Char('/') + recordName());
     m_data.remove(key);
     save_locked();
+    m_changed.insert(key);
 }
 
 void GameOverrides::apply(model::Game& game, const QJsonObject& entry, bool live)

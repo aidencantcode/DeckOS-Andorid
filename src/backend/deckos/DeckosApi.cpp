@@ -22,6 +22,7 @@
 #include <QFileInfo>
 #include <QJsonObject>
 #include <QUrl>
+#include <QtConcurrent/QtConcurrent>
 #include <algorithm>
 
 
@@ -144,8 +145,11 @@ void DeckosApi::onLibraryReady()
         m_library->refreshEmulators();
         if (m_library->scanOnStart())
             m_library->scanInBackground(); // quiet: no loading screen
+        // libraries scraped before 0.1.5: each game's record (game.txt) next to its artwork, once
+        QtConcurrent::run([]() { GameOverrides::instance().writeAllRecords(); });
     }
     m_scraper->onLibraryReady();
+    m_media->localizeWebPicks(nullptr); // SteamGridDB picks still kept as web addresses -> files
 }
 
 void DeckosApi::setGameTitle(QObject* obj, const QString& title)

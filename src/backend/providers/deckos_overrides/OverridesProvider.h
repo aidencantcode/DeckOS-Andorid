@@ -6,6 +6,10 @@
 
 #include "providers/Provider.h"
 
+#include <QSet>
+
+namespace model { class Game; }
+
 
 namespace providers {
 namespace deckos_overrides {
@@ -16,6 +20,9 @@ class OverridesProvider : public Provider {
 public:
     explicit OverridesProvider(QObject* parent = nullptr);
     Provider& run(SearchContext&) final;
+
+private:
+    int recover_from_records(SearchContext&, const QSet<model::Game*>& done);
 };
 
 } // namespace deckos_overrides

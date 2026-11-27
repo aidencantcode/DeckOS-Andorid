@@ -569,6 +569,34 @@ void Scraper::cancel()
 
 void Scraper::onLibraryReady()
 {
+    // DECKOS: a library load replaces every game object. Scrapes, picks and edits saved while it was
+    // loading reached the old objects only (the new ones were made from the list as it was when the load
+    // began), and queued jobs still point at the old ones: their artwork showed only after a restart.
+    const QStringList changed = GameOverrides::instance().takeChangedSinceReload();
+    bool orphans = m_current && !m_current->game;
+    for (const Job* job : qAsConst(m_queue))
+        orphans = orphans || !job->game;
+    if (!changed.isEmpty() || orphans) {
+        const QHash<QString, model::Game*> by_key = GameOverrides::gamesByKey(m_api->allGames()->entries());
+        int reapplied = 0;
+        for (const QString& key : changed) {
+            model::Game* const game = by_key.value(key);
+            if (!game)
+                continue;
+            GameOverrides::apply(*game, GameOverrides::instance().entry(key), true);
+            reapplied++;
+        }
+        auto rebind = [&by_key](Job* job) {
+            if (job && !job->game)
+                job->game = by_key.value(job->key);
+        };
+        rebind(m_current);
+        for (Job* job : qAsConst(m_queue))
+            rebind(job);
+        if (reapplied > 0)
+            Log::info(LOGTAG, LOGMSG("%1 game changes saved during the library load applied").arg(reapplied));
+    }
+
     if (m_auto)
         scrapeAll(true);
 }

@@ -3,6 +3,17 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**Artwork that always loads, scraped data that doesn't go missing, and a game page that opens at once.**
+- **Game page opens instantly.** It used to be built from scratch every time (about half a second on PC, more on a handheld). Now it is built once in the background shortly after DeckOS starts and kept, like Home and Library. Opening another game starts at the top; coming back from Properties returns to where you were.
+- **A record for every game (`game.txt`)** next to its artwork in `<DeckOS folder>/media/<system>/<game>/`: its scraped and edited info and its artwork file names, in Pegasus-style text. It is rewritten whenever the game's artwork or info changes. When a game has no saved changes, DeckOS reads its record back on the next load and brings everything back. That covers a ROM folder reached by another path (`/sdcard/…` vs `/storage/emulated/0/…`), a folder added again, a renamed SD card, or DeckOS's own list (`game_overrides.json`) being lost. Existing scraped games get their records written once, on the first start of this version.
+- **Artwork from a scrape or edit that finished while the library was reloading** used to show only after a restart: it reached the old copies of the games. It is now applied to the reloaded library, and scrapes still in the queue continue on the new copies.
+- **SteamGridDB picks are saved as files.** Pictures picked on the SteamGridDB page were kept as web addresses and downloaded again on every page, so they were slow, missing offline, and only updated after a restart. Each pick is now downloaded once and becomes the game's own picture (Properties › Customization shows it as yours). Picks made before this version are converted after the next library load.
+
+### Test checklist
+1. **Game page:** open a few games from Home and the Library. Each should open at once, at the top, on its own artwork. Open Properties (X) and press B: you're back on the game page where you were.
+2. **SteamGridDB pick:** Properties › Customization › SteamGridDB, pick a new capsule or hero. It should show right away in Home and the Library, also with Wi-Fi off afterwards, and after restarting DeckOS.
+3. **Records:** in your DeckOS folder, `media/<system>/<game>/game.txt` exists for scraped games.
+4. **Scrape during a scan:** start "Scrape missing artwork", then *Scan ROM folders* while it runs. After the reload, the newly scraped games show their artwork without a restart.
 
 ## 0.1.4 — 2026-11-27
 **RetroArch uses your own setup again, a proper loading screen for ROM scans, and collection options and icons.**

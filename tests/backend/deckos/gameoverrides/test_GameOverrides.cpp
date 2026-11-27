@@ -27,6 +27,7 @@ private slots:
     void custom_beats_scraped();
     void custom_screenshots_first();
     void media_dir_and_names();
+    void record_round_trip();
 };
 
 void test_GameOverrides::update_merges_and_saves()
@@ -187,6 +188,62 @@ void test_GameOverrides::media_dir_and_names()
     QVERIFY(!deckos::GameOverrides::isOwnMedia(QUrl::fromLocalFile(dir.path() + QStringLiteral("/media-other/x.png")).toString()));
     deckos::GameOverrides::setMediaDir(QString());
     QCOMPARE(deckos::GameOverrides::mediaDir(), deckos::GameOverrides::legacyMediaDir());
+}
+
+void test_GameOverrides::record_round_trip()
+{
+    QTemporaryDir dir;
+    deckos::GameOverrides::setMediaDir(dir.path() + QStringLiteral("/media"));
+    const QString game_dir = dir.path() + QStringLiteral("/media/snes/Chrono Trigger (USA)");
+    QDir().mkpath(game_dir);
+    for (const char* name : { "capsule.png", "custom-hero.png", "screenshot-01.png", "screenshot-02.png" }) {
+        QFile f(game_dir + QLatin1Char('/') + QLatin1String(name));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+    }
+    auto uri = [&game_dir](const char* name) {
+        return QUrl::fromLocalFile(game_dir + QLatin1Char('/') + QLatin1String(name)).toString() + QStringLiteral("?v=1");
+    };
+    const QString key = QStringLiteral("file:/roms/snes/Chrono Trigger (USA).sfc");
+    {
+        deckos::GameOverrides store(dir.filePath(QStringLiteral("o.json")));
+        store.update(key, QJsonObject {
+            { QStringLiteral("description"), QStringLiteral("Line one\n\nLine three") },
+            { QStringLiteral("developer"), QJsonArray { QStringLiteral("Square"), QStringLiteral("Akira") } },
+            { QStringLiteral("publisher"), QStringLiteral("Square") },
+            { QStringLiteral("players"), 1 },
+            { QStringLiteral("shots"), true },
+            { QStringLiteral("assets"), QJsonObject {
+                { QStringLiteral("poster"), uri("capsule.png") },
+                { QStringLiteral("screenshot"), QJsonArray { uri("screenshot-01.png"), uri("screenshot-02.png") } } } },
+            { QStringLiteral("custom"), QJsonObject { { QStringLiteral("background"), uri("custom-hero.png") } } },
+        });
+        QCOMPARE(store.takeChangedSinceReload(), QStringList { key });
+        QVERIFY(store.takeChangedSinceReload().isEmpty());
+    }
+
+    const QString record = game_dir + QStringLiteral("/game.txt");
+    QVERIFY(QFileInfo::exists(record));
+    QString file;
+    const QJsonObject back = deckos::GameOverrides::readRecord(record, &file);
+    QCOMPARE(file, QStringLiteral("/roms/snes/Chrono Trigger (USA).sfc"));
+    QCOMPARE(back.value(QStringLiteral("description")).toString(), QStringLiteral("Line one\n\nLine three"));
+    QCOMPARE(back.value(QStringLiteral("developer")).toArray().size(), 2);
+    QCOMPARE(back.value(QStringLiteral("publisher")).toString(), QStringLiteral("Square"));
+    QCOMPARE(back.value(QStringLiteral("players")).toInt(), 1);
+    QCOMPARE(back.value(QStringLiteral("shots")).toBool(), true);
+    const QJsonObject assets = back.value(QStringLiteral("assets")).toObject();
+    QCOMPARE(QUrl(assets.value(QStringLiteral("poster")).toString()).toLocalFile(), game_dir + QStringLiteral("/capsule.png"));
+    QCOMPARE(assets.value(QStringLiteral("screenshot")).toArray().size(), 2);
+    QCOMPARE(QUrl(back.value(QStringLiteral("custom")).toObject().value(QStringLiteral("background")).toString()).toLocalFile(),
+             game_dir + QStringLiteral("/custom-hero.png"));
+
+    // forgetting the game takes its record too
+    {
+        deckos::GameOverrides store(dir.filePath(QStringLiteral("o.json")));
+        store.remove(key);
+    }
+    QVERIFY(!QFileInfo::exists(record));
+    deckos::GameOverrides::setMediaDir(QString());
 }
 
 QTEST_MAIN(test_GameOverrides)

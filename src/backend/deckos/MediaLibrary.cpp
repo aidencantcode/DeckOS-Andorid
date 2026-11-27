@@ -10,6 +10,7 @@
 #include "model/gaming/Assets.h"
 #include "model/gaming/Game.h"
 #include "model/gaming/GameListModel.h"
+#include "model/memory/Memory.h"
 #include "types/AssetType.h"
 
 #include <QDateTime>
@@ -22,6 +23,9 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMutex>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QStandardPaths>
@@ -506,6 +510,100 @@ QString MediaLibrary::assign(model::Game& game, const QString& asset, const QStr
     Log::info(LOGTAG, LOGMSG("Own %1 for `%2`: `%3`").arg(asset, game.title(), dest));
     emit artworkChanged(&game);
     return {};
+}
+
+// --- SteamGridDB picks kept as web addresses -> the game's own files ---------------------------------
+
+void MediaLibrary::localizeWebPicks(QObject* obj)
+{
+    if (obj) {
+        if (auto game = qobject_cast<model::Game*>(obj))
+            queueWebPicks(*game);
+    } else {
+        for (model::Game* game : m_api->allGames()->entries())
+            queueWebPicks(*game);
+    }
+    if (!m_web_picks.isEmpty())
+        Log::info(LOGTAG, LOGMSG("%1 SteamGridDB pictures to save as files").arg(m_web_picks.size()));
+    nextWebPick();
+}
+
+void MediaLibrary::queueWebPicks(model::Game& game)
+{
+    const QString key = QStringLiteral("custom_assets_") + game.title();
+    model::Memory& memory = m_api->memory();
+    if (!memory.has(key))
+        return;
+    const QVariantMap assets = memory.get(key).toMap().value(QStringLiteral("assets")).toMap();
+    static const QPair<const char*, const char*> SLOTS[] = {
+        { "capsule", "poster" }, { "wideCapsule", "steam" }, { "logo", "logo" }, { "hero", "background" },
+    };
+    for (const auto& slot : SLOTS) {
+        const QString url = assets.value(QLatin1String(slot.first)).toString();
+        if (!url.startsWith(QLatin1String("http")))
+            continue;
+        bool queued = false;
+        for (const WebPick& pick : qAsConst(m_web_picks))
+            queued = queued || (pick.memoryKey == key && pick.slot == QLatin1String(slot.first) && pick.url == url);
+        if (!queued)
+            m_web_picks.append({ &game, key, QLatin1String(slot.first), QLatin1String(slot.second), url });
+    }
+}
+
+void MediaLibrary::nextWebPick()
+{
+    if (m_web_busy || m_web_picks.isEmpty())
+        return;
+    const WebPick pick = m_web_picks.takeFirst();
+    if (!pick.game) { // the library was reloaded meanwhile: the next load queues it again
+        QTimer::singleShot(0, this, [this]() { nextWebPick(); });
+        return;
+    }
+    m_web_busy = true;
+    if (!m_net)
+        m_net = new QNetworkAccessManager(this);
+    QNetworkRequest request { QUrl(pick.url) };
+    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("DeckOS (Pegasus Frontend fork)"));
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    request.setTransferTimeout(30000);
+    QNetworkReply* reply = m_net->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, pick]() {
+        reply->deleteLater();
+        m_web_busy = false;
+        const QByteArray data = reply->error() == QNetworkReply::NoError ? reply->readAll() : QByteArray();
+        if (data.isEmpty() || !pick.game) {
+            if (!data.isEmpty() || reply->error() != QNetworkReply::NoError)
+                Log::warning(LOGTAG, LOGMSG("SteamGridDB picture not saved (%1): %2").arg(pick.url, reply->errorString()));
+            nextWebPick(); // tried again after the next library load
+            return;
+        }
+        QString ext = QFileInfo(QUrl(pick.url).path()).suffix().toLower();
+        if (!image_exts().contains(ext == QLatin1String("jpeg") ? QStringLiteral("jpg") : ext))
+            ext = QStringLiteral("png");
+        const QString tmp = QDir::tempPath() + QStringLiteral("/deckos-pick-%1.%2")
+            .arg(QString::number(QDateTime::currentMSecsSinceEpoch()), ext);
+        QSaveFile file(tmp);
+        QString error;
+        if (!file.open(QIODevice::WriteOnly) || file.write(data) != data.size() || !file.commit())
+            error = tr("Couldn't write %1").arg(tmp);
+        else
+            error = assign(*pick.game, pick.asset, tmp, true);
+        QFile::remove(tmp);
+        if (!error.isEmpty()) {
+            Log::warning(LOGTAG, LOGMSG("SteamGridDB picture for `%1` not saved: %2").arg(pick.game->title(), error));
+        } else {
+            // the address leaves the memory (only if it is still the one picked): every page shows the file
+            model::Memory& memory = m_api->memory();
+            QVariantMap entry = memory.get(pick.memoryKey).toMap();
+            QVariantMap assets = entry.value(QStringLiteral("assets")).toMap();
+            if (assets.value(pick.slot).toString() == pick.url) {
+                assets.insert(pick.slot, QString());
+                entry.insert(QStringLiteral("assets"), assets);
+                memory.set(pick.memoryKey, entry);
+            }
+        }
+        nextWebPick();
+    });
 }
 
 void MediaLibrary::clearCustom(QObject* obj, const QString& asset)

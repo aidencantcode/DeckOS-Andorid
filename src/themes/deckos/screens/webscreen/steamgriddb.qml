@@ -210,6 +210,11 @@ FocusScope {
         if (typeof api !== "undefined" && api.memory) {
             api.memory.set("custom_assets_" + root.gameName, data);
         }
+        // DECKOS: the pick is downloaded at once and becomes the game's own picture (MediaLibrary
+        // localizeWebPicks), instead of being loaded from the internet on every page
+        var g = (typeof theme !== "undefined" && theme) ? theme.currentGame : null
+        if (g && g.title === root.gameName && typeof deckos !== "undefined" && deckos && deckos.media)
+            deckos.media.localizeWebPicks(g)
     }
     
         function loadSavedAssets() {

@@ -16,8 +16,11 @@
 
 #include <QObject>
 #include <QPointer>
+#include <QList>
+#include <QString>
 #include <QVariantList>
 
+class QNetworkAccessManager;
 class QTimer;
 namespace model { class ApiObject; class Game; }
 
@@ -69,6 +72,12 @@ public:
     Q_INVOKABLE void pickFile(QObject* game, const QString& asset);
     /// forgets the user's own `asset` (and deletes its files): the scraped one shows again
     Q_INVOKABLE void clearCustom(QObject* game, const QString& asset);
+    /// DECKOS: pictures picked on the SteamGridDB page were kept as web addresses in the theme's memory
+    /// (custom_assets_<title>) and loaded from the internet every time they showed - slow, gone offline,
+    /// lost on a rename. Each is downloaded once and becomes the game's own picture (as if picked from
+    /// storage); its address then leaves the memory, so every page shows the file. One game, or every
+    /// game (after each library load).
+    Q_INVOKABLE void localizeWebPicks(QObject* game = nullptr);
 
     /// keys.txt changed since it was last read (or was never read)
     Q_INVOKABLE bool keysChanged() const;
@@ -91,6 +100,19 @@ private:
 
     QString assign(model::Game& game, const QString& asset, const QString& path, bool move);
     void onPicked(QPointer<QObject> game, const QString& asset, const QString& uri);
+
+    struct WebPick {
+        QPointer<model::Game> game;
+        QString memoryKey; // custom_assets_<title>
+        QString slot;      // capsule, wideCapsule, logo, hero
+        QString asset;     // poster, steam, logo, background
+        QString url;
+    };
+    QList<WebPick> m_web_picks;
+    bool m_web_busy = false;
+    QNetworkAccessManager* m_net = nullptr;
+    void queueWebPicks(model::Game&);
+    void nextWebPick();
     void moveMedia(const QString& from, const QString& to);
 };
 

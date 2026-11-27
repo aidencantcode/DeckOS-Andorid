@@ -3312,7 +3312,38 @@ FocusScope {
         exitAnim.start()
     }
 
+    // DECKOS: the game page stays alive between visits (theme.qml pageLoader, like Home and Library) and is
+    // built ahead in the background, so opening a game is instant. Built hidden, it waits; resumePage()
+    // runs each time it is shown: the same game as last time comes back as it was (back from Properties),
+    // another game starts at the top.
+    property var shownGame: null
+    function resetForGame() {
+        if (isLaunching) { isLaunching = false; masterLaunchAnim.stop(); flick.interactive = true }
+        optionsMenuVisible = false
+        closeMenuVisible = false
+        stopMenuVisible = false
+        if (fullscreenView) { fullscreenView = false; currentScreenshotGame = null; fullscreenScreenshots = [] }
+        uiVisible = true
+        if (leftBar.isOpen) { leftBar.isOpen = false; leftBar.visible = false }
+        if (collectionPicker.visible) collectionPicker.close()
+        zone3Tabs.currentIndex = 0
+        flick.contentY = 0
+    }
+    function resumePage() {
+        if (theme.currentGame !== shownGame)
+            resetForGame()
+        else if (leftBar.isOpen) { leftBar.isOpen = false; leftBar.visible = false }
+        shownGame = theme.currentGame
+        enterAnim.start()
+        goToZone(1)
+        zone2.currentButtonIndex = 0
+        zone2.forceActiveFocus()
+        focusTimer.start()
+    }
+
     Component.onCompleted: {
+        if (!visible) return // built ahead, hidden: resumePage() when it is opened
+        shownGame = theme.currentGame
         enterAnim.start()
         goToZone(1)
         zone2.currentButtonIndex = 0
