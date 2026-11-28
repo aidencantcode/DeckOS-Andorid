@@ -18,6 +18,7 @@ class InGame;
 class Underclock;
 class MediaLibrary;
 class UserCollections;
+class ImageCache;
 
 class DeckosApi : public QObject {
     Q_OBJECT
@@ -33,6 +34,8 @@ class DeckosApi : public QObject {
     Q_PROPERTY(QObject* media READ mediaObj CONSTANT)
     /// the user's collections: Add to collection... on the game page (UserCollections.h)
     Q_PROPERTY(QObject* collections READ collectionsObj CONSTANT)
+    /// artwork thumbnails for grids and rows: image://deckthumb/ (ImageCache.h)
+    Q_PROPERTY(QObject* images READ imagesObj CONSTANT)
 
 public:
     explicit DeckosApi(model::ApiObject* api, QObject* parent = nullptr);
@@ -72,6 +75,7 @@ public:
     QObject* underclockObj() const;
     QObject* mediaObj() const;
     QObject* collectionsObj() const;
+    QObject* imagesObj() const;
     InGame* ingame() const { return m_ingame; }
     UserCollections* collections() const { return m_collections; }
 
@@ -90,6 +94,7 @@ private:
     Underclock* const m_underclock;
     MediaLibrary* const m_media;
     UserCollections* const m_collections;
+    ImageCache* const m_images;
     bool m_started = false;
 };
 

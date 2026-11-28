@@ -176,6 +176,8 @@
         <file>deckos/screens/settings/parts/SteamKeyboard.qml</file>
         <file>deckos/screens/settings/parts/SteamSpinner.qml</file>
         <file>deckos/screens/settings/parts/SteamToasts.qml</file>
+        <file>deckos/screens/settings/parts/LaunchGuard.qml</file>
+        <file>deckos/screens/settings/parts/ArtworkLoadingBar.qml</file>
         <file>deckos/screens/settings/parts/TextEntry.qml</file>
         <file>deckos/screens/settings/scraping.qml</file>
         <file>deckos/screens/settings/profile.qml</file>

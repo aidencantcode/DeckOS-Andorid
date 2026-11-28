@@ -18,6 +18,7 @@
 #include "FrontendLayer.h"
 
 #include "Paths.h"
+#include "deckos/ImageCache.h" // DECKOS: artwork thumbnails
 #include "imggen/BlurhashProvider.h"
 #include "utils/DiskCachedNAM.h"
 
@@ -65,6 +66,7 @@ void FrontendLayer::rebuild()
     m_engine->setNetworkAccessManagerFactory(new DiskCachedNAMFactory);
 
     m_engine->addImageProvider(QStringLiteral("blurhash"), new BlurhashProvider);
+    m_engine->addImageProvider(QStringLiteral("deckthumb"), deckos::ImageCache::createProvider()); // DECKOS
 #ifdef Q_OS_ANDROID
     m_engine->addImageProvider(QStringLiteral("androidicons"), new AndroidAppIconProvider);
 #endif

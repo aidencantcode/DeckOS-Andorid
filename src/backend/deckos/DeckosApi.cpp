@@ -4,6 +4,7 @@
 #include "DeckosApi.h"
 
 #include "GameOverrides.h"
+#include "ImageCache.h"
 #include "InGame.h"
 #include "MediaLibrary.h"
 #include "Underclock.h"
@@ -37,6 +38,7 @@ DeckosApi::DeckosApi(model::ApiObject* api, QObject* parent)
     , m_underclock(new Underclock(this))
     , m_media(new MediaLibrary(api, this))
     , m_collections(new UserCollections(api, this))
+    , m_images(new ImageCache(api, this))
 {
     // a scan that changed system files reloads the library (from the cache for everything else)
     connect(m_library, &RomLibrary::scanFinished, this, [this](int, int changed) {
@@ -48,6 +50,11 @@ DeckosApi::DeckosApi(model::ApiObject* api, QObject* parent)
 QObject* DeckosApi::mediaObj() const
 {
     return m_media;
+}
+
+QObject* DeckosApi::imagesObj() const
+{
+    return m_images;
 }
 
 QObject* DeckosApi::collectionsObj() const

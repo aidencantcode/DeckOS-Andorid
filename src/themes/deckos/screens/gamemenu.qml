@@ -13,6 +13,9 @@ FocusScope {
 
     ShaderEffectSource {
         id: globalBlurSource
+        // DECKOS: only ever seen blurred (the top and bottom bars): a third of the resolution looks the same
+        // and costs a ninth of the work - it was the whole page drawn a second time, every frame
+        textureSize: Qt.size(Math.max(1, Math.ceil(width / 3)), Math.max(1, Math.ceil(height / 3)))
         anchors.fill: parent
         sourceItem: animatedContent
         live: true
@@ -107,11 +110,12 @@ FocusScope {
 
     // DECKOS: A on the main button - Resume when the game still runs behind DeckOS (its app comes back as
     // it was; launching it again would restart it in most emulators), else Play
+    // Any game running (this one or another): theme.playGame checks it / asks to close it first - one game
+    // at a time (LaunchGuard.qml)
     function playOrResume() {
-        if (gameRunningHere) {
-            try { sAccept.play() } catch(e) {}
-            if (!deckos.ingame.resumeGame())
-                startLaunchAnimation() // no launcher entry to bring back: launched again
+        if (!!deckos.ingame && (deckos.ingame.running || deckos.ingame.busy)) {
+            if (gameRunningHere) { try { sAccept.play() } catch(e) {} }
+            theme.playGame(theme.currentGame, function () { root.startLaunchAnimation() })
             return
         }
         startLaunchAnimation()

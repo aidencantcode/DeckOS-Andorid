@@ -261,10 +261,12 @@ Backend::Backend(const CliArgs& args)
         m_hide_timer->stop();
         startGamepad();
     });
-    // DECKOS: another game while one still runs behind DeckOS: that session ends (its play time is
-    // saved) and the new launch goes on - Pegasus allowed one launch at a time
-    QObject::connect(m_api_public, &model::ApiObject::launchWhileRunning, [this](){
-        m_deckos->ingame()->finishSession();
+    // DECKOS: a launch while the last session is open. A game still running behind DeckOS is never
+    // left running under another: the launch is dropped and the theme asks to close it first
+    // (InGame::launchBlocked). Otherwise the old session ends (its play time is saved) and the launch
+    // goes on - Pegasus allowed one launch at a time.
+    QObject::connect(m_api_public, &model::ApiObject::launchWhileRunning, [this](model::GameFile* file){
+        m_deckos->ingame()->onLaunchWhileRunning(file);
     });
     QObject::connect(m_launcher, &ProcessLauncher::processLaunchError, [this](){ runPendingScan(); });
 

@@ -3,6 +3,31 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**One game at a time, no more stuck performance overlay, a much faster Library, and navigation fixes.**
+- **Stuck performance overlay fixed.** When a game crashed or was closed in the emulator, DeckOS could draw one last overlay just as its overlay service stopped. That copy froze on screen, and every new game drew another on top. Now only one overlay can exist, and it goes as soon as the game's app ends or DeckOS is back.
+- **One game at a time.** Pressing Play while another game still runs behind DeckOS asks first: *Close game and play*, *Resume <game>* or *Cancel*. Closing shows a loading bar until Android confirms the game has really ended, then starts the new one. The game page's **Stop** uses the same bar. Every Play (Home, Library, Search, the game page, games with several files) goes through this.
+- **Faster "stopped" detection.** A game now counts as running only while its app still has a screen open, not just a leftover process. Emulators closed from their own menu used to look "running" for minutes. While DeckOS is in front, the check runs every 0.7 s, and immediately when you come back or press Play / Resume. **Resume checks first:** if the game was closed meanwhile, Play just starts it again instead of opening the emulator's own menu.
+- **Library scrolls smoothly.**
+  - Covers are now small thumbnails, made once in the background and kept on disk and in memory. Every tile used to decode the full-size picture on the interface thread.
+  - The whole library's thumbnails are made ahead the first time, with a thin progress bar at the bottom: *Preparing artwork 120 / 4000*. While tiles load, the bar shows *Loading artwork…*.
+  - Same for Home's row and Search.
+- **Lighter frosted bars.** The blurred top and bottom bars re-rendered the whole page at full resolution every frame. They now use a third of the resolution, which looks the same.
+- **Home tabs:** LB / RB now switch What's New / Friends / Recommended from the tab row too (they only worked inside a tab before), and quick presses no longer get lost mid-animation.
+- **Change artwork / Choose artwork by hand: B works.** B goes back where you came from (the game page, Properties, Home, Library, Search). After one use it used to lead nowhere, and you had to leave through the Steam menu.
+- **Quick Access (in-game menu):**
+  - It always opens on **Performance**.
+  - RIGHT from the tab icons goes to the tab's first option, not whichever was level with the icon.
+  - UP / DOWN stay in their column instead of slipping to the icons or the Exit button.
+  - After changing the performance mode, the focus stays on that slider instead of jumping to the icons.
+
+### Test checklist
+1. **Overlay:** turn the performance overlay on (level 1 or more), start a game, then close it **from the emulator's own menu** (not Quick Access). The overlay must be gone on DeckOS. Start another game: exactly one overlay. Try again by swiping the emulator away in Android's recent apps.
+2. **One game at a time:** start a game, press Home to go back to DeckOS, open **another** game and press Play. The *A game is still running* card appears. Pick *Close game and play*: a blue bar, then the new game starts. Try *Resume* and *Cancel* too.
+3. **Closed in the emulator:** start a game, close it from the emulator's menu, then quickly press Play on its page in DeckOS. It should start fresh, not show the emulator's own menu. Its page should switch from Resume/Stop to Play within about a second.
+4. **Library:** open the Library and scroll down fast with the D-pad. The first time, the bottom bar shows *Preparing artwork…*. After that, scrolling should stay smooth.
+5. **Change artwork:** from Home (X › Change artwork…) and from Properties › *Choose artwork by hand…*, press B. You're back where you came from. Do it twice.
+6. **Quick Access:** open it in a game. It's on Performance; RIGHT goes to the first slider; change the performance mode, and the focus stays on it.
+7. **Home tabs:** go down to the WHAT'S NEW / FRIENDS / RECOMMENDED row and press LB / RB.
 
 ## 0.1.5 — 2026-11-27
 **Artwork that always loads, scraped data that doesn't go missing, and a game page that opens at once.**

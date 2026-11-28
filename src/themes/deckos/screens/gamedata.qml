@@ -11,6 +11,9 @@ FocusScope {
 
     ShaderEffectSource {
         id: globalBlurSource
+        // DECKOS: only ever seen blurred (the top and bottom bars): a third of the resolution looks the same
+        // and costs a ninth of the work - it was the whole page drawn a second time, every frame
+        textureSize: Qt.size(Math.max(1, Math.ceil(width / 3)), Math.max(1, Math.ceil(height / 3)))
         anchors.fill: parent
         sourceItem: animatedContent
         live: true
@@ -810,7 +813,7 @@ FocusScope {
             goToZone(1)
             event.accepted = true
         } else if (focusZone === 1) {
-            var src = api.memory.has("steamGridSource") ? api.memory.get("steamGridSource") : 0
+            var src = theme.propertiesReturnPage // DECKOS: where Properties was opened from (theme.openPage)
             api.memory.set("steamGridSource", null)
             root.startExitAnimation(src)
             event.accepted = true

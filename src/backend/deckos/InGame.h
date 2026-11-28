@@ -74,6 +74,13 @@ class InGame : public QObject {
     /// DECKOS_COVER_DUMP=<file.png> set, which saves the snapshot instead - for testing)
     Q_PROPERTY(bool launchCoverPossible READ launchCoverPossible NOTIFY changed)
 
+    /// the running game is being looked at (checkRunning) or closed (closeRunning / stopGame)
+    Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
+    /// ...closing it (the theme shows "Closing <title>..." with a loading bar)
+    Q_PROPERTY(bool closing READ closing NOTIFY busyChanged)
+    /// 0-1, how far closing has got (time-based: Android doesn't say)
+    Q_PROPERTY(qreal busyProgress READ busyProgress NOTIFY busyProgressChanged)
+
 public:
     InGame(model::ApiObject* api, RaMatcher* ra, QObject* parent = nullptr);
 
@@ -143,11 +150,26 @@ public:
     /// re-reads the values (the permission is granted outside DeckOS)
     Q_INVOKABLE void recheck() { emit changed(); }
 
-    /// the running game's page: Steam's STOP - closes the game's app at once (PServer / root) and ends
-    /// the session. false if it can't.
+    /// the running game's page: Steam's STOP - closes the game's app (PServer / root) and ends the session
+    /// once it has really ended (closeRunning without a game to start). false if it can't.
     Q_INVOKABLE bool stopGame();
     /// ...and Resume: the game's app back in front as it was left (not launched again)
     Q_INVOKABLE bool resumeGame();
+
+    /// Before Resume: does the game still run? (It may have been closed in the emulator a moment ago and
+    /// DeckOS not have noticed yet.) runningChecked(alive) follows; if it has ended, the session ends
+    /// first, so the game can simply be launched again.
+    Q_INVOKABLE void checkRunning();
+    /// Closes the running game and waits until Android confirms it has ended (sending the close again if
+    /// needed), ends its session, then runningClosed(launchAfter): the theme starts that game. Only one
+    /// game runs at a time. closeFailed() if it still runs after 10 s.
+    Q_INVOKABLE void closeRunning(QObject* launchAfter = nullptr);
+
+    bool busy() const { return m_verify != Verify::None; }
+    bool closing() const { return m_verify == Verify::Close; }
+    qreal busyProgress() const;
+    /// Pegasus is asked to launch a game while a session is open (Backend, from ApiObject)
+    void onLaunchWhileRunning(model::GameFile* file);
 
     /// Close menu (Android): the device restarts / shuts down through PServer or root (`svc power`).
     /// False if neither is there; on PC the theme uses Pegasus's own power commands instead.
@@ -173,6 +195,14 @@ signals:
     void returnedToFront();
     /// after sessionEnded: the game was closed with Quick Access's "Exit game", so Home is shown
     void exitedToHome();
+    void busyChanged();
+    void busyProgressChanged();
+    void runningChecked(bool alive);
+    void runningClosed(QObject* launchAfter);
+    void closeFailed();
+    /// a game was launched (not through the theme's guard) while another runs behind DeckOS: the launch
+    /// was dropped, the theme asks whether to close the running one
+    void launchBlocked(QObject* game);
 
 private:
     model::ApiObject* const m_api;
@@ -197,8 +227,18 @@ private:
     bool m_pc_cover = true;
     int m_pc_cover_seconds = 5;
 
+    enum class Verify { None, Check, Close };
+    Verify m_verify = Verify::None;
+    QTimer* const m_verify_timer;   // 100 ms: Java's answer (Session.verifyState)
+    qint64 m_verify_started = 0;    // ms since epoch
+    qint64 m_next_force = 0;        // when to send the close again
+    QPointer<QObject> m_launch_after;
+
     void onAppState(Qt::ApplicationState state);
     void endSession();
+    void onVerifyTick();
+    void startVerify(Verify mode);
+    void stopVerify();
 };
 
 } // namespace deckos

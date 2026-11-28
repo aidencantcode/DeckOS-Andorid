@@ -14,6 +14,9 @@ FocusScope {
     
     ShaderEffectSource {
         id: globalBlurSource
+        // DECKOS: only ever seen blurred (the top and bottom bars): a third of the resolution looks the same
+        // and costs a ninth of the work - it was the whole page drawn a second time, every frame
+        textureSize: Qt.size(Math.max(1, Math.ceil(width / 3)), Math.max(1, Math.ceil(height / 3)))
         anchors.fill: parent
         sourceItem: animatedContent
         live: true

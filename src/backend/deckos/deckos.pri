@@ -7,6 +7,7 @@ HEADERS += \
     $$PWD/Catalog.h \
     $$PWD/DeckosApi.h \
     $$PWD/GameOverrides.h \
+    $$PWD/ImageCache.h \
     $$PWD/InGame.h \
     $$PWD/MediaLibrary.h \
     $$PWD/RaMatcher.h \
@@ -21,6 +22,7 @@ SOURCES += \
     $$PWD/Catalog.cpp \
     $$PWD/DeckosApi.cpp \
     $$PWD/GameOverrides.cpp \
+    $$PWD/ImageCache.cpp \
     $$PWD/InGame.cpp \
     $$PWD/MediaLibrary.cpp \
     $$PWD/RaMatcher.cpp \

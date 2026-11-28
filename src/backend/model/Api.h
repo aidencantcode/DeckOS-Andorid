@@ -70,8 +70,8 @@ signals:
     // user actions
     void launchGameFile(const model::GameFile*);
     /// DECKOS: a launch while the last game hasn't finished (on Android it can run behind DeckOS):
-    /// a handler may finish it, then the launch goes on
-    void launchWhileRunning();
+    /// a handler may finish it, then the launch goes on (else the launch is dropped)
+    void launchWhileRunning(model::GameFile*);
     void launchFailed(QString);
     void gameFileFinished(model::GameFile* const);
     void gameFileLaunched(model::GameFile* const);

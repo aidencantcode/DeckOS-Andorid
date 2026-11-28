@@ -119,7 +119,7 @@ void ApiObject::onGameFileLaunchRequested()
 {
     auto* const file = static_cast<model::GameFile*>(QObject::sender());
     if (m_launch_game_file) {
-        emit launchWhileRunning(); // DECKOS: may finish the last game's session
+        emit launchWhileRunning(file); // DECKOS: may finish the last game's session (or drop this launch)
         if (m_launch_game_file)
             return;
     }

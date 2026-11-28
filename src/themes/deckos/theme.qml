@@ -501,6 +501,7 @@ FocusScope {
 }
 
     function finalizeNavigation(index) {
+    if (typeof index !== "number" || isNaN(index) || index < 0) index = 0 // DECKOS: a lost return page goes Home, never nowhere
     var from = root.currentPage
     root.currentPage = index;
     pageLoader.show(from, index)
@@ -532,6 +533,20 @@ function launchGameWithScreen(game) {
     isTransitioning = false;
 }
 
+
+// DECKOS: artwork shown small (grid tiles, rows) goes through the thumbnail cache (ImageCache.h): decoded
+// off the interface thread at the size shown, kept on disk and in memory. The Image needs a sourceSize.
+// Web images and, with animated covers on, GIFs load as they are.
+function thumb(url) {
+    if (!url) return ""
+    var s = url.toString()
+    if (s === "" || s.indexOf("image://") === 0 || s.indexOf("http") === 0 || s.indexOf("data:") === 0) return s
+    if (animatedCovers && /\.gif(\?|$)/i.test(s)) return s
+    return "image://deckthumb/" + encodeURIComponent(s)
+}
+function isAnimated(url) {
+    return animatedCovers && !!url && /\.gif(\?|$)/i.test(url.toString())
+}
 
 // Получение источника ассета: веб (SteamGridDB) > локальный (metadata) > пусто
 function getAssetSource(assetType, game) {
@@ -589,6 +604,10 @@ function getAssetSource(assetType, game) {
     }
 }else if (index === 14 && [10, 12, 13, 14].indexOf(currentPage) === -1) {
         propertiesReturnPage = currentPage; // DECKOS: B in Properties goes back there
+    }else if (index === 12) {
+        // DECKOS: B in Change artwork goes back where it was opened from (the game page, Properties, Home,
+        // Library, Search). It read a value pages left as null after one use: B led nowhere.
+        artworkReturnPage = typeof currentPage === "number" && currentPage !== 12 ? currentPage : 8;
     }else if (index === 9) {
         sLeftOpen.play();
     }else if (index === 11) {
@@ -643,6 +662,7 @@ function isInside(item, ancestor) {
 }
 
 property int propertiesReturnPage: 8 // DECKOS: the page Properties (14) was opened from: Home, Library, Search, the game page
+property int artworkReturnPage: 8 // DECKOS: ...and Change artwork (12)
 property int pendingPage: -1          // the page openPage is changing to
 property double transitionStarted: 0
 property var hiddenFocus: null        // focusWatch: an invisible item seen holding the focus
@@ -969,6 +989,18 @@ SteamToasts {
     id: toasts
     anchors.fill: parent
     z: 5000
+}
+
+// DECKOS: every Play goes through here - one game at a time (LaunchGuard.qml). `launch` defaults to
+// game.launch(); the game page passes its launch animation instead.
+function playGame(game, launch) {
+    if (!game) return
+    if (game.modelData && game.modelData !== game && typeof game.launch !== "function") game = game.modelData // a sorted model's row
+    launchGuard.play(game, launch || function () { game.launch() })
+}
+
+LaunchGuard {
+    id: launchGuard
 }
 
 property bool scrapeToastShown: false

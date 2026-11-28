@@ -117,7 +117,7 @@ final class QuickAccessPanel extends FrameLayout {
         localStats = new Stats(ctx);
         setOnClickListener(v -> close()); // a tap beside the panel closes it, like on the Deck
         noFocus(this);
-        build(Session.prefs().getInt(Session.KEY_TAB, Session.raGameId > 0 ? TAB_ACHIEVEMENTS : TAB_PERFORMANCE));
+        build(TAB_PERFORMANCE); // always opens on Performance, like the Deck's "..." button
     }
 
     /// (re)creates the whole panel at the current scale, on the given tab
@@ -281,6 +281,43 @@ final class QuickAccessPanel extends FrameLayout {
                             return true;
                         }
                     }
+                }
+                break;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                // from the rail, RIGHT goes to the tab's first option - not whichever is level with the icon
+                // (from the Performance icon that was halfway down the tab)
+                if (down) {
+                    View f = findFocus();
+                    if (f != null && isRailItem(f)) {
+                        View first = firstFocusable(content);
+                        if (first != null) first.requestFocus();
+                        return true;
+                    }
+                }
+                break;
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                // up / down stay in their column: the rail's icons, or the tab's options (they used to slip
+                // over to the rail or to the Exit button at the ends)
+                if (down) {
+                    View f = findFocus();
+                    if (f != null) {
+                        boolean rail = isRailItem(f), inContent = inside(f, content);
+                        if (rail || inContent) {
+                            View next = FocusFinder.getInstance().findNextFocus(panel, f,
+                                k == KeyEvent.KEYCODE_DPAD_UP ? View.FOCUS_UP : View.FOCUS_DOWN);
+                            boolean sameColumn = next != null && (rail ? isRailItem(next) : inside(next, content));
+                            if (!sameColumn)
+                                return true; // the end of the column: stay
+                            next.requestFocus();
+                            return true;
+                        }
+                    }
+                }
+                else if (k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN) {
+                    View f = findFocus();
+                    if (f != null && (isRailItem(f) || inside(f, content)))
+                        return true; // its press was handled above
                 }
                 break;
             default:
@@ -525,11 +562,27 @@ final class QuickAccessPanel extends FrameLayout {
     /// rebuilds the tab and puts the focus back on the row with this label (or the first slider)
     private void rebuildKeeping(String label) {
         int y = scroll.getScrollY();
+        // where the focus was among the tab's options: without a label it goes back there (it used to be
+        // lost - e.g. 0.7 s after changing the performance mode - and the next press landed on the rail)
+        View had = findFocus();
+        int index = had != null && inside(had, content) ? content.getFocusables(View.FOCUS_DOWN).indexOf(had) : -1;
+        boolean onRail = had != null && !inside(had, content);
         buildContent();
         scroll.post(() -> scroll.scrollTo(0, y));
         View again = label != null ? findRow(content, label) : null;
-        if (again == null) again = findButton(content, label == null ? "" : label);
+        if (again == null && label != null) again = findButton(content, label);
+        if (again == null && index >= 0) {
+            java.util.ArrayList<View> all = content.getFocusables(View.FOCUS_DOWN);
+            if (!all.isEmpty()) again = all.get(Math.min(index, all.size() - 1));
+        }
+        if (again == null && (onRail || had == null || !had.isAttachedToWindow()) && tab >= 0) again = railItems[tab];
         if (again != null) again.requestFocus();
+    }
+
+    private boolean isRailItem(View v) {
+        for (FrameLayout r : railItems)
+            if (r == v) return true;
+        return false;
     }
 
     private void title(String s) {

@@ -36,6 +36,12 @@ public class SessionService extends Service {
     private volatile Stats.Snapshot last = new Stats.Snapshot();
     private HudView hud;
     private WindowManager wm;
+    private volatile boolean destroyed = false;
+    // The HUD window, whichever service instance added it. A refresh posted just before the service was
+    // stopped used to run after onDestroy and add a new HUD nobody removed: it froze over the next games
+    // (and each new session drew another one on top). Now only one HUD can ever be on screen.
+    private static HudView sHud;
+    private static WindowManager sHudWm;
     private int shownTitleHash = 0;
     private int hudScale = 0, hudPos = -1;      // what the HUD window was made with
     static final String ACTION_OPEN = "com.deckos.ingame.OPEN_QUICK_ACCESS";
@@ -61,8 +67,17 @@ public class SessionService extends Service {
     /// settings or the game changed: update the notification and the overlay
     static void refresh() {
         SessionService s = sInstance;
-        if (s != null)
+        if (s != null && !s.destroyed)
             s.main.post(s::apply);
+    }
+
+    /// the game's app ended (or DeckOS is back): its HUD goes at once, even before the service stops
+    static void hideHud() {
+        SessionService s = sInstance;
+        if (s != null)
+            s.main.post(s::removeHud);
+        else
+            new Handler(Looper.getMainLooper()).post(SessionService::removeAnyHud);
     }
 
     static Stats.Snapshot lastStats() {
@@ -106,7 +121,10 @@ public class SessionService extends Service {
 
     @Override
     public void onDestroy() {
-        sInstance = null;
+        destroyed = true;
+        if (sInstance == this)
+            sInstance = null;
+        main.removeCallbacksAndMessages(null); // refreshes posted before the stop must not add a HUD again
         statsHandler.removeCallbacksAndMessages(null);
         statsHandler.post(() -> DeviceControl.fpsTick(this, false)); // stops the frame counter loop
         statsThread.quitSafely();
@@ -141,7 +159,7 @@ public class SessionService extends Service {
             final String p = profile;
             final float f = fps;
             main.post(() -> {
-                if (hud != null)
+                if (hud != null && !destroyed)
                     hud.update(last, Session.hasGame() ? Session.playStart() : 0, f, p);
             });
             statsHandler.postDelayed(this, 1000);
@@ -193,7 +211,11 @@ public class SessionService extends Service {
     }
 
     private void apply() {
-        int hash = (Session.title + Session.startedAt + Session.gameFocused() + Session.gameClosed).hashCode();
+        if (destroyed || sInstance != this) {
+            removeHud();
+            return;
+        }
+        int hash =(Session.title + Session.startedAt + Session.gameFocused() + Session.gameClosed).hashCode();
         if (hash != shownTitleHash) {
             shownTitleHash = hash;
             startForeground(NOTIFICATION_ID, buildNotification());
@@ -201,7 +223,8 @@ public class SessionService extends Service {
         int level = Session.hudLevel();
         if (hud != null && (hudScale != Session.overlayScale() || hudPos != Session.hudPosition()))
             removeHud(); // size or corner changed: made again below
-        if (level > 0 && Session.overlayAllowed())
+        // no HUD once the game's app has ended (crashed, or closed in the emulator) - it would only freeze
+        if (level > 0 && Session.overlayAllowed() && !(Session.hasGame() && Session.gameClosed))
             showHud(level);
         else
             removeHud();
@@ -258,7 +281,12 @@ public class SessionService extends Service {
     // --- performance overlay window ---------------------------------------------------------------
 
     private void showHud(int level) {
+        if (destroyed)
+            return;
+        if (hud != null && hud != sHud)
+            hud = null; // replaced or removed elsewhere
         if (hud == null) {
+            removeAnyHud(); // never two
             hudScale = Session.overlayScale();
             hudPos = Session.hudPosition();
             // Steam Deck pixels, times the overlay size setting
@@ -280,6 +308,8 @@ public class SessionService extends Service {
             lp.setTitle("DeckOS performance overlay");
             try {
                 wm.addView(hud, lp);
+                sHud = hud;
+                sHudWm = wm;
             }
             catch (Exception e) {
                 Log.w(Session.TAG, "can't show the performance overlay: " + e);
@@ -292,12 +322,23 @@ public class SessionService extends Service {
     }
 
     private void removeHud() {
-        if (hud == null)
+        hud = null;
+        removeAnyHud();
+    }
+
+    /// UI thread
+    private static void removeAnyHud() {
+        HudView v = sHud;
+        WindowManager w = sHudWm;
+        sHud = null;
+        sHudWm = null;
+        if (v == null || w == null)
             return;
         try {
-            wm.removeView(hud);
+            w.removeViewImmediate(v);
         }
-        catch (Exception ignored) {}
-        hud = null;
+        catch (Exception e) {
+            try { w.removeView(v); } catch (Exception ignored) {}
+        }
     }
 }

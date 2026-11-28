@@ -13,6 +13,9 @@ FocusScope {
     
     ShaderEffectSource {
     id: globalBlurSource
+    // DECKOS: only ever seen blurred (the top and bottom bars): a third of the resolution looks the same
+    // and costs a ninth of the work - it was the whole page drawn a second time, every frame
+    textureSize: Qt.size(Math.max(1, Math.ceil(width / 3)), Math.max(1, Math.ceil(height / 3)))
     anchors.fill: parent
     sourceItem: animatedContent
     live: true
@@ -114,6 +117,19 @@ SortFilterProxyModel {
                     cacheBuffer: cellHeight * 3
 
                     onContentYChanged: root.isScrolled = (contentY > 30)
+
+                    // DECKOS: every cover's thumbnail at this tile size, made ahead in the background
+                    // (ImageCache.warmLibrary): scrolling down a big library then reads only small files
+                    onCellWidthChanged: warmTimer.restart()
+                    Component.onCompleted: warmTimer.restart()
+                    Timer {
+                        id: warmTimer
+                        interval: 1500
+                        onTriggered: {
+                            if (gridView.cellWidth > 0 && typeof deckos !== "undefined" && deckos && deckos.images)
+                                deckos.images.warmLibrary("poster", Math.round(gridView.cellWidth * 0.9), Math.round(gridView.cellHeight * 0.9))
+                        }
+                    }
 
                     Keys.onPressed: {
                         if (root.focusZone === 2) {
@@ -256,57 +272,76 @@ SortFilterProxyModel {
         visible: false
     }
 
-    AnimatedImage {
+    // DECKOS: a thumbnail at the tile's size from the cache (theme.thumb), decoded off the interface
+    // thread; it fades in. Every tile used to decode the full cover on the interface thread (AnimatedImage
+    // has no shared cache), which made fast scrolling stutter. GIFs animate only with animated covers on.
+    Image {
         id: gamePoster
         width: gridView.cellWidth * 0.9
         height: gridView.cellHeight * 0.9
         anchors.centerIn: parent
-        
-        readonly property var assetData: modelData.assets || {}
-        source: theme.getAssetSource("poster", modelData)
 
-        fillMode: AnimatedImage.PreserveAspectCrop
-        visible: hasImage && status === AnimatedImage.Ready
-        
-        playing: visible && status === AnimatedImage.Ready && theme.animatedCovers && (!theme.animationInFocus || isFocused)
-        
+        readonly property string rawSource: theme.getAssetSource("poster", modelData)
+        readonly property bool animated: theme.isAnimated(rawSource)
+        source: hasImage && !animated ? theme.thumb(rawSource) : ""
+        sourceSize: Qt.size(Math.round(width), Math.round(height))
+
+        fillMode: Image.PreserveAspectCrop
+        visible: hasImage && !animated
+        opacity: status === Image.Ready ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 160 } }
+
         cache: true
         asynchronous: true
-        
-        layer.enabled: theme.roundedCovers
+
+        layer.enabled: theme.roundedCovers && status === Image.Ready
         layer.effect: OpacityMask {
             maskSource: posterMask
+        }
+    }
+    Loader {
+        anchors.fill: gamePoster
+        active: hasImage && gamePoster.animated
+        sourceComponent: AnimatedImage {
+            source: gamePoster.rawSource
+            fillMode: AnimatedImage.PreserveAspectCrop
+            playing: status === AnimatedImage.Ready && (!theme.animationInFocus || isFocused)
+            cache: true
+            asynchronous: true
+            layer.enabled: theme.roundedCovers
+            layer.effect: OpacityMask { maskSource: posterMask }
         }
     }
 
 
                             
-                            Item {
+                            // DECKOS: the glow behind the selected tile only exists on that tile, from a tiny
+                            // thumbnail (it's blurred anyway) - every tile used to load the full cover a second
+                            // time, synchronously, for it
+                            Loader {
                                 width: gridView.cellWidth * 1.1
                                 height: gridView.cellHeight * 1.1
                                 anchors.centerIn: parent
-                                clip: false
-                                opacity: isFocused ? 0.2 : 0.0
                                 z: parent.z - 1
-                                
-                                Image {
-                                    id: blurSource
-                                    anchors.fill: parent
-                                    source: theme.getAssetSource("poster", modelData)
-                                    fillMode: Image.PreserveAspectCrop
-                                    visible: false
-                                    anchors.left: parent.left
-                                    anchors.bottom: parent.bottom
-                                    z: parent.z - 1
-                                }
-                                
-                                FastBlur {
-                                    anchors.fill: parent
-                                    anchors.margins: -20
-                                    source: blurSource
-                                    radius: 144
-                                    transparentBorder: true
-                                    z: parent.z - 1
+                                active: isFocused && hasImage
+                                opacity: 0.2
+                                sourceComponent: Item {
+                                    Image {
+                                        id: blurSource
+                                        anchors.fill: parent
+                                        source: theme.thumb(gamePoster.rawSource)
+                                        sourceSize: Qt.size(64, 96)
+                                        fillMode: Image.PreserveAspectCrop
+                                        asynchronous: true
+                                        visible: false
+                                    }
+                                    FastBlur {
+                                        anchors.fill: parent
+                                        anchors.margins: -20
+                                        source: blurSource
+                                        radius: 144
+                                        transparentBorder: true
+                                    }
                                 }
                             }
                             
@@ -1297,11 +1332,12 @@ function toggleSortMenu() {
                                                     Image {
                                                         anchors.fill: parent
                                                         anchors.leftMargin: parent.leftPadding
-                                                        asynchronous: api.memory.has("asyncLoading") ? api.memory.get("asyncLoading") : false
+                                                        asynchronous: true // DECKOS: thumbnails, off the interface thread
                                                         source: {
                                                             var game = parent.parent.gameList.get(index)
-                                                            return (game && game.assets) ? (theme.getAssetSource("poster", game)) : ""
+                                                            return (game && game.assets) ? theme.thumb(theme.getAssetSource("poster", game)) : ""
                                                         }
+                                                        sourceSize: Qt.size(Math.round(width), Math.round(height))
                                                         fillMode: Image.PreserveAspectCrop
                                                         visible: source.toString() !== ""
                                                         cache: true // Обязательно для списков
@@ -1330,11 +1366,13 @@ function toggleSortMenu() {
                                     anchors.centerIn: parent
                                     source: {
                                         if (modelData.assets) {
-                                            if (modelData.assets.boxFront) return modelData.assets.boxFront
-                                            if (modelData.assets.poster) return modelData.assets.poster
+                                            if (modelData.assets.boxFront) return theme.thumb(modelData.assets.boxFront)
+                                            if (modelData.assets.poster) return theme.thumb(modelData.assets.poster)
                                         }
                                         return ""
                                     }
+                                    sourceSize: Qt.size(Math.round(width), Math.round(height))
+                                    asynchronous: true
                                     fillMode: Image.PreserveAspectCrop
                                     visible: hasImage && !customIcon
                                 }
@@ -1392,12 +1430,14 @@ function toggleSortMenu() {
                                         source: {
     if (modelData && modelData.games && modelData.games.count > 0) {
         var firstGame = modelData.games.get(0);
-        return theme.getAssetSource("poster", firstGame);
+        return theme.thumb(theme.getAssetSource("poster", firstGame));
     }
     return "";
 }
+                                        sourceSize: Qt.size(32, 48) // DECKOS: blurred to a colour anyway
+                                        asynchronous: true
                                         fillMode: Image.PreserveAspectCrop
-                                        visible: false 
+                                        visible: false
                                     }
 
                                     FastBlur {
@@ -1710,57 +1750,76 @@ function toggleSortMenu() {
         visible: false
     }
 
-    AnimatedImage {
+    // DECKOS: a thumbnail at the tile's size from the cache (theme.thumb), decoded off the interface
+    // thread; it fades in. Every tile used to decode the full cover on the interface thread (AnimatedImage
+    // has no shared cache), which made fast scrolling stutter. GIFs animate only with animated covers on.
+    Image {
         id: gamePoster
         width: gridView.cellWidth * 0.9
         height: gridView.cellHeight * 0.9
         anchors.centerIn: parent
-        
-        readonly property var assetData: modelData.assets || {}
-        source: theme.getAssetSource("poster", modelData)
 
-        fillMode: AnimatedImage.PreserveAspectCrop
-        visible: hasImage && status === AnimatedImage.Ready
-        
-        playing: visible && status === AnimatedImage.Ready && theme.animatedCovers && (!theme.animationInFocus || isFocused)
-        
+        readonly property string rawSource: theme.getAssetSource("poster", modelData)
+        readonly property bool animated: theme.isAnimated(rawSource)
+        source: hasImage && !animated ? theme.thumb(rawSource) : ""
+        sourceSize: Qt.size(Math.round(width), Math.round(height))
+
+        fillMode: Image.PreserveAspectCrop
+        visible: hasImage && !animated
+        opacity: status === Image.Ready ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 160 } }
+
         cache: true
         asynchronous: true
-        
-        layer.enabled: theme.roundedCovers
+
+        layer.enabled: theme.roundedCovers && status === Image.Ready
         layer.effect: OpacityMask {
             maskSource: posterMask
+        }
+    }
+    Loader {
+        anchors.fill: gamePoster
+        active: hasImage && gamePoster.animated
+        sourceComponent: AnimatedImage {
+            source: gamePoster.rawSource
+            fillMode: AnimatedImage.PreserveAspectCrop
+            playing: status === AnimatedImage.Ready && (!theme.animationInFocus || isFocused)
+            cache: true
+            asynchronous: true
+            layer.enabled: theme.roundedCovers
+            layer.effect: OpacityMask { maskSource: posterMask }
         }
     }
 
 
                             
-                            Item {
+                            // DECKOS: the glow behind the selected tile only exists on that tile, from a tiny
+                            // thumbnail (it's blurred anyway) - every tile used to load the full cover a second
+                            // time, synchronously, for it
+                            Loader {
                                 width: gridView.cellWidth * 1.1
                                 height: gridView.cellHeight * 1.1
                                 anchors.centerIn: parent
-                                clip: false
-                                opacity: isFocused ? 0.2 : 0.0
                                 z: parent.z - 1
-                                
-                                Image {
-                                    id: blurSource
-                                    anchors.fill: parent
-                                    source: theme.getAssetSource("poster", modelData)
-                                    fillMode: Image.PreserveAspectCrop
-                                    visible: false
-                                    anchors.left: parent.left
-                                    anchors.bottom: parent.bottom
-                                    z: parent.z - 1
-                                }
-                                
-                                FastBlur {
-                                    anchors.fill: parent
-                                    anchors.margins: -20
-                                    source: blurSource
-                                    radius: 144
-                                    transparentBorder: true
-                                    z: parent.z - 1
+                                active: isFocused && hasImage
+                                opacity: 0.2
+                                sourceComponent: Item {
+                                    Image {
+                                        id: blurSource
+                                        anchors.fill: parent
+                                        source: theme.thumb(gamePoster.rawSource)
+                                        sourceSize: Qt.size(64, 96)
+                                        fillMode: Image.PreserveAspectCrop
+                                        asynchronous: true
+                                        visible: false
+                                    }
+                                    FastBlur {
+                                        anchors.fill: parent
+                                        anchors.margins: -20
+                                        source: blurSource
+                                        radius: 144
+                                        transparentBorder: true
+                                    }
                                 }
                             }
                             
@@ -2236,6 +2295,12 @@ function toggleSortMenu() {
                 }
             }
         }
+    }
+
+    // DECKOS: artwork loading - tiles being read, or the library's thumbnails made ahead (ImageCache.h)
+    ArtworkLoadingBar {
+        anchors { left: parent.left; right: parent.right; bottom: bottomBar.top }
+        z: 99999999999
     }
 
     /* ================= BOTTOM BAR ================= */
@@ -2969,7 +3034,7 @@ FocusScope {
                             sNav.stop(); sNav.play();
                         } else if (currentFocusedGame) {
                             if (typeof sGame !== "undefined") sGame.play();
-                            currentFocusedGame.launch()
+                            theme.playGame(currentFocusedGame)
                             root.toggleOptionsMenu()
                         }
                     }
@@ -3146,7 +3211,7 @@ FocusScope {
                 if (currentButtonIndex === 0) {
                     if (currentFocusedGame) {
                         if (typeof sGame !== "undefined") sGame.play();
-                        currentFocusedGame.launch();
+                        theme.playGame(currentFocusedGame);
                         root.toggleOptionsMenu();
                     }
                 } else if (currentButtonIndex === 1) {

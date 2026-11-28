@@ -386,14 +386,17 @@ public final class Session {
         QuickAccessOverlay.hide();
         LaunchCover.hide();
         GameExit.onFrontendResumed();
+        SessionService.hideHud(); // at once: never left over DeckOS (or frozen over the next game)
         SessionService.stop(activity);
         if (sGameLaunched && !gameClosed && GameProcess.alive()) {
-            // the game still runs behind DeckOS: its session goes on until its process ends or it's
-            // stopped (C++ asks gameRunning(), then calls sessionFinished)
+            // the game still runs behind DeckOS: its session goes on until it ends or it's stopped (C++
+            // asks gameRunning(), then calls sessionFinished). Looked at again right away: back here
+            // often means the game was just closed in the emulator, and its process lingers a moment.
             sBackground = true;
             if (!sRunningMode)
                 setGameFocused(false);
             Log.i(TAG, "back in DeckOS, the game still runs: " + gamePackage);
+            GameProcess.checkNow();
             return;
         }
         setGameFocused(false);
@@ -418,6 +421,31 @@ public final class Session {
     /// From C++ (every second while the game runs behind DeckOS): false once its process has ended
     public static boolean gameRunning() {
         return sGameLaunched && !gameClosed;
+    }
+
+    /// From C++ before Resume, or while waiting for a closed game to end: look at the game again now.
+    /// verifyState() tells when the answer is in.
+    public static void verifyGame() {
+        GameProcess.checkNow();
+    }
+
+    /// 0: still looking (since verifyGame), 1: the game still runs, 2: it has ended (or no session)
+    public static int verifyState() {
+        if (!sGameLaunched)
+            return 2;
+        if (!Privileged.available() || !GameProcess.tracked())
+            return gameClosed ? 2 : 1; // nothing to look with: as known
+        if (!GameProcess.fresh())
+            return 0;
+        return GameProcess.alive() ? 1 : 2;
+    }
+
+    /// From C++: closing the game didn't seem to work yet - `am force-stop` once more
+    public static boolean stopGameAgain() {
+        final String pkg = gamePackage;
+        if (sApp == null || pkg.isEmpty() || !Privileged.available())
+            return false;
+        return Privileged.run("am force-stop " + Privileged.quote(pkg));
     }
 
     /// From C++ once it has read the play time: the session is over

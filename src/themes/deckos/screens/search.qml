@@ -3,7 +3,8 @@ import QtMultimedia 5.9
 import QtQuick.Layouts 1.15
 import QtGraphicalEffects 1.15
 import QtQuick.Window 2.15
-import SortFilterProxyModel 0.2 
+import SortFilterProxyModel 0.2
+import "settings/parts" // DECKOS: ArtworkLoadingBar
 
 FocusScope {
     id: root
@@ -12,6 +13,9 @@ FocusScope {
     
     ShaderEffectSource {
     id: globalBlurSource
+    // DECKOS: only ever seen blurred (the top and bottom bars): a third of the resolution looks the same
+    // and costs a ninth of the work - it was the whole page drawn a second time, every frame
+    textureSize: Qt.size(Math.max(1, Math.ceil(width / 3)), Math.max(1, Math.ceil(height / 3)))
     anchors.fill: parent
     sourceItem: animatedContent
     live: true
@@ -221,18 +225,37 @@ property bool sortMenuVisible: false
             }
 
             // Анимированное изображение (видимо только при наличии)
-            AnimatedImage {
+            // DECKOS: a cached thumbnail at the tile's size (theme.thumb); GIFs animate with animated covers on
+            Image {
+                id: searchPoster
                 anchors.fill: parent
-                source: theme.getAssetSource("steam", modelData)
-                fillMode: AnimatedImage.PreserveAspectCrop
-                visible: hasImage && status === AnimatedImage.Ready
-                playing: visible && status === AnimatedImage.Ready && theme.animatedCovers && (!theme.animationInFocus || isFocused)              
+                readonly property string rawSource: theme.getAssetSource("steam", modelData)
+                readonly property bool animated: theme.isAnimated(rawSource)
+                source: hasImage && !animated ? theme.thumb(rawSource) : ""
+                sourceSize: Qt.size(Math.round(width), Math.round(height))
+                fillMode: Image.PreserveAspectCrop
+                visible: hasImage && !animated
+                opacity: status === Image.Ready ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 160 } }
                 cache: true
                 asynchronous: true
 
-                layer.enabled: theme.roundedCovers
+                layer.enabled: theme.roundedCovers && status === Image.Ready
                 layer.effect: OpacityMask {
                     maskSource: steamMask
+                }
+            }
+            Loader {
+                anchors.fill: parent
+                active: hasImage && searchPoster.animated
+                sourceComponent: AnimatedImage {
+                    source: searchPoster.rawSource
+                    fillMode: AnimatedImage.PreserveAspectCrop
+                    playing: status === AnimatedImage.Ready && (!theme.animationInFocus || isFocused)
+                    cache: true
+                    asynchronous: true
+                    layer.enabled: theme.roundedCovers
+                    layer.effect: OpacityMask { maskSource: steamMask }
                 }
             }
 
@@ -300,28 +323,30 @@ property bool sortMenuVisible: false
         }
 
         // Эффект размытия для фокуса (без изменений)
-        Item {
+        Loader { // DECKOS: only on the selected tile, from a tiny thumbnail
             width: gridView.cellWidth * 1.1
             height: width * 0.467
             anchors.centerIn: parent
-            clip: false
-            opacity: isFocused ? 0.2 : 0.0
+            opacity: 0.2
             z: parent.z - 1
-
-            Image {
-                id: blurSource
-                anchors.fill: parent
-                source: theme.getAssetSource("steam", modelData)
-                fillMode: Image.PreserveAspectCrop
-                visible: false
-            }
-
-            FastBlur {
-                anchors.fill: parent
-                anchors.margins: -20
-                source: blurSource
-                radius: 144
-                transparentBorder: true
+            active: isFocused && hasImage
+            sourceComponent: Item {
+                Image {
+                    id: blurSource
+                    anchors.fill: parent
+                    source: theme.thumb(searchPoster.rawSource)
+                    sourceSize: Qt.size(96, 45)
+                    asynchronous: true
+                    fillMode: Image.PreserveAspectCrop
+                    visible: false
+                }
+                FastBlur {
+                    anchors.fill: parent
+                    anchors.margins: -20
+                    source: blurSource
+                    radius: 144
+                    transparentBorder: true
+                }
             }
         }
 
@@ -1206,11 +1231,12 @@ function toggleSortMenu() {
                                                     anchors.leftMargin: parent.leftPadding
                                                     source: {
                                                         var game = parent.parent.gameList.get(index)
-                                                        return (game && game.assets) ? (theme.getAssetSource("poster", game)) : ""
+                                                        return (game && game.assets) ? theme.thumb(theme.getAssetSource("poster", game)) : ""
                                                     }
+                                                    sourceSize: Qt.size(Math.round(width), Math.round(height))
                                                     fillMode: Image.PreserveAspectCrop
                                                     visible: source.toString() !== ""
-                                                    asynchronous: api.memory.has("asyncLoading") ? api.memory.get("asyncLoading") : false
+                                                    asynchronous: true // DECKOS
                                                     
                                                     layer.enabled: true
                                                     layer.effect: DropShadow {
@@ -1234,11 +1260,13 @@ function toggleSortMenu() {
                                 anchors.centerIn: parent
                                 source: {
                                     if (modelData.assets) {
-                                        if (modelData.assets.boxFront) return modelData.assets.boxFront                                    
-                                        if (modelData.assets.poster) return modelData.assets.poster
+                                        if (modelData.assets.boxFront) return theme.thumb(modelData.assets.boxFront)
+                                        if (modelData.assets.poster) return theme.thumb(modelData.assets.poster)
                                     }
                                     return ""
                                 }
+                                sourceSize: Qt.size(Math.round(width), Math.round(height))
+                                asynchronous: true
                                 fillMode: Image.PreserveAspectCrop
                                 visible: hasImage
                             }
@@ -1262,12 +1290,14 @@ function toggleSortMenu() {
                                     source: {
     if (modelData && modelData.games && modelData.games.count > 0) {
         var firstGame = modelData.games.get(0);
-        return theme.getAssetSource("poster", firstGame);
+        return theme.thumb(theme.getAssetSource("poster", firstGame));
     }
     return "";
 }
+                                    sourceSize: Qt.size(32, 48)
+                                    asynchronous: true
                                     fillMode: Image.PreserveAspectCrop
-                                    visible: false 
+                                    visible: false
                                 }
 
                                 FastBlur {
@@ -1842,6 +1872,12 @@ function toggleSortMenu() {
                 }
             }
         }
+    }
+
+    // DECKOS: artwork loading - tiles being read, or the library's thumbnails made ahead (ImageCache.h)
+    ArtworkLoadingBar {
+        anchors { left: parent.left; right: parent.right; bottom: bottomBar.top }
+        z: 99999999999
     }
 
     /* ================= BOTTOM BAR ================= */
@@ -2540,7 +2576,7 @@ FocusScope {
                             sNav.stop(); sNav.play();
                         } else if (currentFocusedGame) {
                             if (typeof sGame !== "undefined") sGame.play();
-                            currentFocusedGame.launch()
+                            theme.playGame(currentFocusedGame)
                             root.toggleOptionsMenu()
                         }
                     }
@@ -2693,7 +2729,7 @@ FocusScope {
                 if (currentButtonIndex === 0) {
                     if (currentFocusedGame) {
                         if (typeof sGame !== "undefined") sGame.play();
-                        currentFocusedGame.launch();
+                        theme.playGame(currentFocusedGame);
                         root.toggleOptionsMenu();
                     }
                 } else if (currentButtonIndex === 1) {

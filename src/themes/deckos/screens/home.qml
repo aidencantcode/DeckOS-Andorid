@@ -3,7 +3,8 @@ import QtMultimedia 5.9
 import QtQuick.Layouts 1.15
 import QtGraphicalEffects 1.15
 import QtQuick.Window 2.15
-import SortFilterProxyModel 0.2 
+import SortFilterProxyModel 0.2
+import "settings/parts" // DECKOS: ArtworkLoadingBar
 import "../javascript/news.js" as NewsJS
 
 FocusScope {
@@ -13,6 +14,9 @@ FocusScope {
     
     ShaderEffectSource {
     id: globalBlurSource
+    // DECKOS: only ever seen blurred (the top and bottom bars): a third of the resolution looks the same
+    // and costs a ninth of the work - it was the whole page drawn a second time, every frame
+    textureSize: Qt.size(Math.max(1, Math.ceil(width / 3)), Math.max(1, Math.ceil(height / 3)))
     anchors.fill: parent
     sourceItem: animatedContent
     live: true
@@ -136,15 +140,35 @@ SequentialAnimation {
     }
 }
 
+// DECKOS: LB / RB switch What's New / Friends / Recommended from anywhere in the bottom zone. The tab row
+// (outside the Flickable whose handler did it) had no handler for them, so they did nothing there.
+// Quick presses follow the animation's target, so two RBs in a row go two tabs.
+function switchBottomTab(delta) {
+    var cur = bottomTabAnim.running ? bottomTabAnim.targetIdx : bottomTabsRow.currentIndex
+    var next = Math.max(0, Math.min(2, cur + delta))
+    if (next === cur) return
+    sTab.stop(); sTab.play()
+    if (focusZone !== 2) goToZone(2)
+    safeBottomNav(next)
+    bottomTabsRow.inContent = false
+    bottomTabsRow.forceActiveFocus()
+    flick.contentY = topH + (middleH * 0.78)
+    newsList.currentIndex = 0
+    friendsList.currentIndex = 0
+    recommendedList.currentIndex = 0
+}
+
 // Функция для безопасного переключения табов
 function safeBottomNav(newIdx) {
-    if (newIdx === bottomCurrentTab) return;
-    
+    // DECKOS: against the tab it's going to while the animation runs (bottomCurrentTab only changes halfway)
+    var cur = bottomTabAnim.running ? bottomTabAnim.targetIdx : bottomCurrentTab
+    if (newIdx === cur) return;
+
     if (bottomTabAnim.running) {
         bottomTabAnim.stop();
     }
-    
-    bottomTabAnim.direction = (newIdx > bottomCurrentTab) ? 1 : -1;
+
+    bottomTabAnim.direction = (newIdx > cur) ? 1 : -1;
     bottomTabAnim.targetIdx = newIdx;
     bottomTabAnim.start();
 }
@@ -429,24 +453,17 @@ Text {
         }
 
         // Навигация клавишами
-        Keys.onLeftPressed: {
-            if (bottomTabsRow.currentIndex > 0) {
-                root.safeBottomNav(bottomTabsRow.currentIndex - 1)
-                bottomTabsRow.forceActiveFocus()
-                sTab.stop();
-                sTab.play();
+        Keys.onLeftPressed: root.switchBottomTab(-1) // DECKOS: follows the animation (quick presses)
+
+        Keys.onRightPressed: root.switchBottomTab(1)
+        
+        Keys.onPressed: {
+            if (api.keys.isPrevPage(event) || api.keys.isNextPage(event)) {
+                root.switchBottomTab(api.keys.isPrevPage(event) ? -1 : 1)
+                event.accepted = true
             }
         }
 
-        Keys.onRightPressed: {
-            if (bottomTabsRow.currentIndex < 2) {
-                root.safeBottomNav(bottomTabsRow.currentIndex + 1)
-                bottomTabsRow.forceActiveFocus()
-                sTab.stop();
-                sTab.play();
-            }
-        }
-        
         Keys.onDownPressed: {
             bottomTabsRow.inContent = true
             if (bottomTabsRow.currentIndex === 0) newsList.forceActiveFocus()
@@ -965,17 +982,31 @@ Rectangle {
     Behavior on scale { NumberAnimation { duration: 150 } }
 
     // Изображение
+    // DECKOS: a cached thumbnail at the tile's size (theme.thumb); GIFs animate with animated covers on
     AnimatedImage {
         id: gamePoster
         anchors.fill: parent
-        source: posterSource
+        readonly property bool animated: theme.isAnimated(posterSource)
+        source: animated ? posterSource : ""
         fillMode: AnimatedImage.PreserveAspectCrop
-        playing: visible && status === AnimatedImage.Ready && theme.animatedCovers && (!theme.animationInFocus || (index === gameList.currentIndex && root.focusZone === 1))
+        playing: animated && visible && status === AnimatedImage.Ready && (!theme.animationInFocus || (index === gameList.currentIndex && root.focusZone === 1))
         cache: true
         asynchronous: true
         // Видно только если это игра и путь к картинке найден
         visible: !isGrayPlaceholder && hasImg
         z: 10
+
+        Image {
+            anchors.fill: parent
+            visible: !gamePoster.animated
+            source: gamePoster.animated ? "" : theme.thumb(posterSource)
+            sourceSize: Qt.size(Math.round(width), Math.round(height))
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+            cache: true
+            opacity: status === Image.Ready ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 160 } }
+        }
         
         // Скругление через графический слой и маску
         layer.enabled: theme.roundedCovers
@@ -1235,7 +1266,9 @@ Rectangle {
         height: parent.height * 200
         x: -parent.width * 1
         y: -parent.height * 1
-        source: theme.getAssetSource("steam", modelData)
+        source: visible ? theme.thumb(theme.getAssetSource("steam", modelData)) : "" // DECKOS: only for the selected game
+        sourceSize: Qt.size(96, 45) // a soft glow: a tiny thumbnail is plenty
+        asynchronous: true
         fillMode: Image.PreserveAspectCrop
     }
     
@@ -2047,34 +2080,7 @@ Keys.onDownPressed: {
     // Обработка PrevPage/NextPage для BottomZone
 else if (api.keys.isPrevPage(event) || api.keys.isNextPage(event)) {
     if (root.focusZone === 2) {
-        sTab.stop();
-        sTab.play();
-        
-        let oldIndex = bottomTabsRow.currentIndex;
-        let newIndex = oldIndex;
-        
-        if (api.keys.isPrevPage(event)) {
-            newIndex = Math.max(0, oldIndex - 1);
-        } else if (api.keys.isNextPage(event)) {
-            newIndex = Math.min(2, oldIndex + 1);
-        }
-        
-        if (oldIndex !== newIndex) {
-            // Используем новую анимацию
-            root.safeBottomNav(newIndex);
-            
-            // Возвращаем управление на кнопки табов
-            bottomTabsRow.inContent = false
-            bottomTabsRow.forceActiveFocus()
-            
-            // Сбрасываем камеру на заголовки
-            flick.contentY = topH + (middleH * 0.78)
-            
-            // Сброс индексов списков
-            if (newsList) newsList.currentIndex = 0
-            if (friendsList) friendsList.currentIndex = 0
-            if (recommendedList) recommendedList.currentIndex = 0
-        }
+        root.switchBottomTab(api.keys.isPrevPage(event) ? -1 : 1) // DECKOS: one place for LB / RB
         event.accepted = true
     }
 }
@@ -2565,6 +2571,12 @@ sNav.stop();
         }
     }
     
+    // DECKOS: artwork loading - tiles being read, or the library's thumbnails made ahead (ImageCache.h)
+    ArtworkLoadingBar {
+        anchors { left: parent.left; right: parent.right; bottom: bottomBar.top }
+        z: 99999999999
+    }
+
     /* ================= BOTTOM BAR ================= */
 Item {
     id: bottomBar
@@ -3135,7 +3147,7 @@ optionsMenu.currentButtonIndex = 0
 sNav.stop(); sNav.play();
 } else {
 if (currentFocusedGame) {
-currentFocusedGame.launch()
+theme.playGame(currentFocusedGame)
 root.toggleOptionsMenu()
 }
 }
@@ -3281,7 +3293,7 @@ event.accepted = true
 }
 else if (api.keys.isAccept(event) || event.key === Qt.Key_Return) {
 if (currentButtonIndex === 0) {
-if (currentFocusedGame) { currentFocusedGame.launch(); root.toggleOptionsMenu(); }
+if (currentFocusedGame) { theme.playGame(currentFocusedGame); root.toggleOptionsMenu(); }
 } else if (currentButtonIndex === 1) {
 if (currentFocusedGame) { currentFocusedGame.favorite = !currentFocusedGame.favorite; root.toggleOptionsMenu(); }
 } else if (currentButtonIndex === 2) {

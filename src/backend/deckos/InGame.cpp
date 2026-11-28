@@ -18,6 +18,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QImage>
@@ -54,7 +55,10 @@ InGame::InGame(model::ApiObject* api, RaMatcher* ra, QObject* parent)
     , m_ra(ra)
     , m_no_show_timer(new QTimer(this))
     , m_running_timer(new QTimer(this))
+    , m_verify_timer(new QTimer(this))
 {
+    m_verify_timer->setInterval(100);
+    connect(m_verify_timer, &QTimer::timeout, this, &InGame::onVerifyTick);
     m_no_show_timer->setSingleShot(true);
     m_no_show_timer->setInterval(15000);
     connect(m_no_show_timer, &QTimer::timeout, this, [this]() {
@@ -69,10 +73,11 @@ InGame::InGame(model::ApiObject* api, RaMatcher* ra, QObject* parent)
         m_session_title = qEnvironmentVariable("DECKOS_FAKE_RUNNING");
     }
 #endif
-    m_running_timer->setInterval(1000);
+    // a cheap JNI read; Java looks at the game every 0.7 s while DeckOS is in front (GameProcess)
+    m_running_timer->setInterval(250);
     connect(m_running_timer, &QTimer::timeout, this, [this]() {
 #ifdef Q_OS_ANDROID
-        if (m_playing && m_background
+        if (m_playing && m_background && m_verify == Verify::None // (closeRunning ends it itself)
             && !QAndroidJniObject::callStaticMethod<jboolean>(JNI_SESSION, "gameRunning", "()Z")) {
             Log::info(LOGMSG("The game that ran behind DeckOS has ended"));
             endSession();
@@ -387,15 +392,154 @@ void InGame::finishSession()
 
 bool InGame::stopGame()
 {
-#ifdef Q_OS_ANDROID
-    if (!m_playing || !QAndroidJniObject::callStaticMethod<jboolean>(JNI_SESSION, "stopGame", "()Z"))
+    if (!m_playing || m_verify == Verify::Close)
         return false;
-    Log::info(LOGMSG("Game stopped from DeckOS"));
-    endSession();
-    return true;
-#else
-    return false;
+#ifdef Q_OS_ANDROID
+    if (!m_background) {
+        if (!QAndroidJniObject::callStaticMethod<jboolean>(JNI_SESSION, "stopGame", "()Z"))
+            return false;
+        Log::info(LOGMSG("Game stopped from DeckOS"));
+        endSession();
+        return true;
+    }
 #endif
+    closeRunning(nullptr);
+    return m_verify == Verify::Close;
+}
+
+
+// --- one game at a time: checking and closing the game that runs behind DeckOS -------------------------
+
+void InGame::checkRunning()
+{
+    if (m_verify == Verify::Close)
+        return; // closing it already
+    if (!m_playing || !m_background) {
+        QTimer::singleShot(0, this, [this]() { emit runningChecked(false); });
+        return;
+    }
+    startVerify(Verify::Check);
+}
+
+void InGame::closeRunning(QObject* launchAfter)
+{
+    if (m_verify == Verify::Close) {
+        m_launch_after = launchAfter; // the newest wish wins
+        return;
+    }
+    if (!m_playing || !m_background) {
+        // nothing runs behind DeckOS (or nothing can tell): the session just ends
+        if (m_playing)
+            endSession();
+        QPointer<QObject> game(launchAfter);
+        QTimer::singleShot(0, this, [this, game]() { emit runningClosed(game.data()); });
+        return;
+    }
+    m_launch_after = launchAfter;
+#ifdef Q_OS_ANDROID
+    if (!QAndroidJniObject::callStaticMethod<jboolean>(JNI_SESSION, "stopGame", "()Z")) {
+        Log::warning(LOGMSG("Can't close the running game"));
+        QTimer::singleShot(0, this, &InGame::closeFailed);
+        return;
+    }
+#endif
+    Log::info(LOGMSG("Closing the running game: %1").arg(m_session_title));
+    startVerify(Verify::Close);
+}
+
+void InGame::startVerify(Verify mode)
+{
+    m_verify = mode;
+    m_verify_started = QDateTime::currentMSecsSinceEpoch();
+    m_next_force = 2000;
+#ifdef Q_OS_ANDROID
+    QAndroidJniObject::callStaticMethod<void>(JNI_SESSION, "verifyGame", "()V");
+#endif
+    m_verify_timer->start();
+    emit busyChanged();
+    emit busyProgressChanged();
+}
+
+void InGame::stopVerify()
+{
+    m_verify_timer->stop();
+    m_verify = Verify::None;
+    emit busyChanged();
+    emit busyProgressChanged();
+}
+
+qreal InGame::busyProgress() const
+{
+    if (m_verify == Verify::None)
+        return 0.0;
+    // eases towards the end without reaching it: about 60 % after a second, 90 % after three
+    const qreal s = (QDateTime::currentMSecsSinceEpoch() - m_verify_started) / 1000.0;
+    return 1.0 - 1.0 / (1.0 + s * 1.2 + s * s * 0.5);
+}
+
+void InGame::onVerifyTick()
+{
+    const qint64 ms = QDateTime::currentMSecsSinceEpoch() - m_verify_started;
+#ifdef Q_OS_ANDROID
+    const int state = QAndroidJniObject::callStaticMethod<jint>(JNI_SESSION, "verifyState", "()I");
+#else
+    // PC (DECKOS_FAKE_RUNNING): a check answers "still runs", closing takes a moment
+    const int state = m_verify == Verify::Check ? (ms > 300 ? 1 : 0) : (ms > 1200 ? 2 : 0);
+#endif
+    emit busyProgressChanged();
+    if (m_verify == Verify::Check) {
+        if (state == 0 && ms < 2500)
+            return; // still looking
+        stopVerify();
+        const bool alive = state != 2; // no answer in time: as it was
+        if (!alive) {
+            Log::info(LOGMSG("The game had already been closed"));
+            endSession();
+        }
+        emit runningChecked(alive);
+        return;
+    }
+    if (m_verify != Verify::Close)
+        return;
+    if (state == 2) {
+        Log::info(LOGMSG("The game has closed (%1 ms)").arg(ms));
+        QPointer<QObject> next = m_launch_after;
+        m_launch_after.clear();
+        stopVerify();
+        endSession();
+        emit runningClosed(next.data());
+        return;
+    }
+    if (ms > 10000) {
+        Log::warning(LOGMSG("The game didn't close within 10 s"));
+        m_launch_after.clear();
+        stopVerify();
+        emit closeFailed();
+        return;
+    }
+#ifdef Q_OS_ANDROID
+    if (state == 1) { // looked, and it still runs: again (and the close once more every 2 s)
+        if (ms >= m_next_force) {
+            QAndroidJniObject::callStaticMethod<jboolean>(JNI_SESSION, "stopGameAgain", "()Z");
+            m_next_force += 2000;
+        }
+        QAndroidJniObject::callStaticMethod<void>(JNI_SESSION, "verifyGame", "()V");
+    }
+#endif
+}
+
+void InGame::onLaunchWhileRunning(model::GameFile* file)
+{
+    if (!m_playing)
+        return;
+    if (m_background || m_verify != Verify::None) {
+        // a game runs behind DeckOS: never two at once - the launch is dropped, the theme asks first
+        QObject* game = file ? static_cast<QObject*>(file->parentGame()) : nullptr;
+        Log::info(LOGMSG("Launch while a game runs behind DeckOS: asking to close it first"));
+        emit launchBlocked(game);
+        return;
+    }
+    finishSession(); // the last session had no running game (DeckOS never left): it ends, the launch goes on
 }
 
 bool InGame::rebootDevice()
