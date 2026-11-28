@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.1.6 — 2026-11-28
 **One game at a time, no more stuck performance overlay, a much faster Library, and navigation fixes.**
 - **Stuck performance overlay fixed.** When a game crashed or was closed in the emulator, DeckOS could draw one last overlay just as its overlay service stopped. That copy froze on screen, and every new game drew another on top. Now only one overlay can exist, and it goes as soon as the game's app ends or DeckOS is back.
 - **One game at a time.** Pressing Play while another game still runs behind DeckOS asks first: *Close game and play*, *Resume <game>* or *Cancel*. Closing shows a loading bar until Android confirms the game has really ended, then starts the new one. The game page's **Stop** uses the same bar. Every Play (Home, Library, Search, the game page, games with several files) goes through this.
