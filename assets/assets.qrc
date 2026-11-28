@@ -21,5 +21,6 @@
         <!-- DECKOS: system/emulator catalog (tools/import-neostation-catalog.ps1) -->
         <file alias="deckos/catalog/systems.json">../src/backend/deckos/catalog/systems.json</file>
         <file alias="deckos/catalog/deckos-systems.json">../src/backend/deckos/catalog/deckos-systems.json</file>
+        <file alias="deckos/catalog/emulator-sources.json">../src/backend/deckos/catalog/emulator-sources.json</file>
     </qresource>
 </RCC>

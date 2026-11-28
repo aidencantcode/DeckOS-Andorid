@@ -6,6 +6,7 @@ import QtQuick.Window 2.15
 import SortFilterProxyModel 0.2
 import "settings/parts" // DECKOS: ArtworkLoadingBar
 import "../javascript/news.js" as NewsJS
+import "../javascript/shelves.js" as Shelves
 
 FocusScope {
     id: root
@@ -77,6 +78,71 @@ property bool closeMenuVisible: false
 property var newsData: []
 
 property bool isBottomZoneMerged: false
+
+// ======== DECKOS: Home's shelves (What's New / Friends / Recommended) ========
+// Built by javascript/shelves.js from the library's own lists (deckos.stats), the web's (deckos.feeds:
+// news, YouTube channels, RetroAchievements, Discord via Lanyard) and the emulator updates
+// (deckos.updates), again a moment after any of them changes. A card does its thing in theme.openShelfItem.
+readonly property var feeds: (typeof deckos !== "undefined" && deckos) ? deckos.feeds : null
+readonly property var stats: (typeof deckos !== "undefined" && deckos) ? deckos.stats : null
+readonly property var updates: (typeof deckos !== "undefined" && deckos) ? deckos.updates : null
+property var whatsNewShelves: []
+property var friendsShelves: []
+property var recommendedShelves: []
+// the Friends tab is on screen: friends are kept fresh (every 2 min), else not polled
+readonly property bool friendsShown: bottomTabsRow.currentIndex === 1 && root.visible && Qt.application.state === Qt.ApplicationActive
+onFriendsShownChanged: if (feeds) feeds.watchFriends(friendsShown)
+
+Timer { id: shelvesTimer; interval: 150; onTriggered: root.buildShelves() }
+Connections {
+    target: root.feeds
+    function onNewsChanged() { shelvesTimer.restart() }
+    function onVideosChanged() { shelvesTimer.restart() }
+    function onRaChanged() { shelvesTimer.restart() }
+    function onFriendsChanged() { shelvesTimer.restart() }
+    function onSourcesChanged() { shelvesTimer.restart() }
+}
+Connections {
+    target: root.stats
+    function onChanged() { shelvesTimer.restart() }
+}
+Connections {
+    target: root.updates
+    function onEmulatorUpdatesChanged() { shelvesTimer.restart() }
+}
+
+function buildShelves() {
+    whatsNewShelves = Shelves.whatsNew(stats, feeds)
+    friendsShelves = Shelves.friends(feeds)
+    recommendedShelves = Shelves.recommended(stats, feeds, updates)
+}
+
+function shelvesExitTop() {
+    bottomTabsRow.inContent = false
+    bottomTabsRow.forceActiveFocus()
+    try { sNav.stop(); sNav.play() } catch (e) {}
+}
+
+function openShelfItem(shelf, item, index) {
+    theme.openShelfItem(shelf, item, index, root)
+}
+
+// a news card: the reader (newspage.qml), with LB / RB through the shelf's other articles
+function openNews(shelf, index) {
+    var list = []
+    for (var i = 0; i < shelf.items.length; i++) {
+        var n = shelf.items[i]
+        list.push({ title: n.title, image: n.image, link: n.link, desc: n.summary, fullContent: n.html || n.summary,
+                    pubDate: n.source + (n.date ? "  ·  " + new Date(n.date).toLocaleDateString(Qt.locale(), "d MMM yyyy") : "") })
+    }
+    root.newsData = list
+    root.openNewsDetail(list[index], index)
+}
+
+// X: a card's second action - a video or article in its own app / the browser, a Discord friend removed
+function shelfSecondary(shelf, item, index) {
+    theme.shelfSecondary(shelf, item, index)
+}
 
 
 
@@ -1386,644 +1452,54 @@ Rectangle {
         // spacing: 30 (DECKOS: Item has no spacing)
 
         // Контейнер для списков
+        // DECKOS: the three tabs as Steam-style shelves (ShelfView.qml), built in buildShelves(): the
+        // library's own (recently / most played, the week's best, unplayed, systems) and the web's (news,
+        // videos, RetroAchievements, friends). Under the tab row and down to the bottom bar while the tabs
+        // are at the top of the screen (zone 2); the shelves scroll inside.
         Item {
-    id: listsContainer
-    anchors.top: parent.top 
-    anchors.topMargin: bottomTabsRow.currentIndex === 0 ? 150:210
-    width: parent.width
-    height: bottomZone.height * 0.6
-    
-    // ДОБАВЬ ЭТИ СТРОКИ:
-    x: root.bottomAnimX
-    opacity: root.bottomAnimOpacity
-    Behavior on x { enabled: false } // Отключаем стандартное поведение
-    Behavior on opacity { enabled: false }
+            id: listsContainer
+            anchors.top: parent.top
+            anchors.topMargin: Math.max(40, 2 * root.topH + 64 - 0.22 * root.middleH)
+            width: parent.width
+            height: root.height - root.topH - 90 - 95 - 30
+            x: root.bottomAnimX
+            opacity: root.bottomAnimOpacity
+            Behavior on x { enabled: false }
+            Behavior on opacity { enabled: false }
 
- // ======== WHAT'S NEW (Динамический список) ========
-ListView {
-    id: newsList
-    anchors {
-        left: parent.left
-        right: parent.right
-        top: parent.top
-        bottom: parent.bottom
-        leftMargin: 60
-        rightMargin: 45
-    }
-    orientation: ListView.Horizontal
-    spacing: 30
-    clip: false
-    visible: bottomTabsRow.currentIndex === 0
-    model: root.newsData
-
-    highlightMoveDuration: 0
-    highlightRangeMode: ListView.NoHighlightRange
-    interactive: false 
-    onWidthChanged: updateScrollPosition()
-
-    property real itemWidth: (width - (spacing * 2.3)) / 3.3
-
-    onCurrentIndexChanged: {
-        animateNewsToIndex(currentIndex)
-    }
-
-    NumberAnimation {
-        id: newsScrollAnim
-        target: newsList
-        property: "contentX"
-        duration: 300
-        easing.type: Easing.OutCubic
-    }
-
-    function animateNewsToIndex(idx) {
-        if (idx < 0 || idx >= count) return;
-
-        var itemW = newsList.itemWidth;
-        var sp = newsList.spacing;
-
-        var itemX = idx * (itemW + sp);
-        var totalContentWidth = count * (itemW + sp);
-        var maxTargetX = Math.max(0, totalContentWidth - width);
-        var targetX = itemX - (width / 2) + (itemW / 2);
-
-        if (targetX < 0) targetX = 0;
-        if (targetX > maxTargetX) targetX = maxTargetX;
-
-        newsScrollAnim.stop();
-        newsScrollAnim.to = targetX;
-        newsScrollAnim.start();
-    }
-
-    function updateScrollPosition() {
-        animateNewsToIndex(currentIndex)
-    }
-
-    onFocusChanged: {
-        if (focus) {
-            flick.contentY = topH + (middleH * 0.78)
-        }
-    }
-
-    Keys.onLeftPressed: {
-        if (currentIndex > 0) {
-            currentIndex--
-            flick.contentY = topH + (middleH * 0.78)
-            sNav.stop(); sNav.play();
-        }
-    }
-    Keys.onRightPressed: {
-        if (currentIndex < count - 1) {
-            currentIndex++
-            flick.contentY = topH + (middleH * 0.78)
-            sNav.stop(); sNav.play();
-        }
-    }
-    Keys.onUpPressed: {
-        bottomTabsRow.inContent = false
-        bottomTabsRow.forceActiveFocus()
-        sNav.stop(); sNav.play();
-    }
-    Keys.onPressed: {
-    if (api.keys.isAccept(event)) {
-        if (currentIndex >= 0 && currentIndex < count) {
-            root.openNewsDetail(root.newsData[currentIndex], currentIndex)
-        }
-        event.accepted = true
-    }
-}
-
-    delegate: Item {
-        width: newsList.itemWidth
-        height: width 
-        
-        Text {
-            text: "news"
-            color: "#B0B398"
-            font.pixelSize: 25
-            font.family: bold.name
-            font.capitalization: Font.AllUppercase
-            anchors.bottom: parent.top
-            anchors.bottomMargin: 20
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            color: "#32353C"
-            scale: newsList.currentIndex === index && newsList.focus ? 1.02 : 1.0
-            Behavior on scale { NumberAnimation { duration: 150 } }
-
-            Rectangle {
-                id: imgPart
-                anchors.top: parent.top
-                width: parent.width
-                height: parent.height * 0.56 
-                color: "#1A1E25"
-                clip: true
-
-                Image {
-                    anchors.fill: parent
-                    source: modelData.image || "../assets/news/new.jpg"
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
-                }
-                
-                Rectangle {
-                id: blueOverlay
+            ShelfView {
+                id: newsList
                 anchors.fill: parent
-                color: "#0A1C59"
-                opacity: newsList.currentIndex === index && newsList.focus ? 0.8 : 0
-                Behavior on opacity { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                visible: bottomTabsRow.currentIndex === 0
+                shelves: root.whatsNewShelves
+                emptyText: "Play a game, or connect to the internet, and What's New fills up."
+                onExitTop: root.shelvesExitTop()
+                onActivated: root.openShelfItem(shelf, item, index)
+                onSecondary: root.shelfSecondary(shelf, item, index)
+                onActiveFocusChanged: if (activeFocus) flick.contentY = topH + (middleH * 0.78)
             }
-
-            Text {
-                id: newsText
-                anchors {
-                    left: parent.left
-                    right: parent.right
-                    top: parent.top
-                    margins: 12
-                    topMargin: newsList.currentIndex === index && newsList.focus ? 12 : 50
-                }
-                text: modelData.desc || ""
-                color: "white"
-                font.pixelSize: 26
-                wrapMode: Text.WordWrap
-                maximumLineCount: 12
-                elide: Text.ElideRight
-                opacity: newsList.currentIndex === index && newsList.focus ? 0.95 : 0
-                Behavior on opacity { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
-                Behavior on anchors.topMargin { NumberAnimation { duration: 340; easing.type: Easing.OutQuad } }
-            }
-            }
-
-            Column {
-                anchors {
-                    top: imgPart.bottom
-                    left: parent.left
-                    right: parent.right
-                    bottom: parent.bottom
-                    margins: 15
-                }
-                spacing: 5
-
-                Row {
-                    width: parent.width
-                    spacing: 6
-                    
-                    Text {
-                        id: pubLabel
-                        text: "PUBLISHED"
-                        color: "lightgrey"
-                        font.pixelSize: 23
-                    }
-                    
-                    Text {
-                        text: modelData.pubDate || ""
-                        color: "grey"
-                        font.pixelSize: 23
-                        elide: Text.ElideRight
-                        width: parent.width - pubLabel.width - parent.spacing
-                    }
-                }
-
-                Text {
-                    text: modelData.title || ""
-                    color: "white"
-                    font.pixelSize: 26
-                    wrapMode: Text.WordWrap
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
-                    width: parent.width
-                }
-            }
-
-            Rectangle {
-                id: newsBorder
+            ShelfView {
+                id: friendsList
                 anchors.fill: parent
-                color: "transparent"
-                border.width: 4
-                border.color: "grey"
-                radius: 0
-                anchors.margins: -7
-                opacity: (newsList.currentIndex === index && newsList.focus) ? 0.5 : 0.0
-                visible: opacity > 0
-
-                SequentialAnimation {
-                    id: appearAnim
-                    running: (newsList.currentIndex === index && newsList.focus)
-                    loops: 1
-
-                    ParallelAnimation {
-                        NumberAnimation { target: newsBorder; property: "border.width"; to: 10; duration: 200; easing.type: Easing.OutBack }
-                        NumberAnimation { target: newsBorder; property: "radius"; to: 0; duration: 200; easing.type: Easing.OutBack }
-                        NumberAnimation { target: newsBorder; property: "anchors.margins"; to: -17; duration: 200; easing.type: Easing.OutBack }
-                        ColorAnimation  { target: newsBorder; property: "border.color"; to: "white"; duration: 200 }
-                        NumberAnimation { target: newsBorder; property: "opacity"; to: 0.5; duration: 200 }
-                    }
-
-                    ParallelAnimation {
-                        NumberAnimation { target: newsBorder; property: "radius"; to: 0; duration: 200; easing.type: Easing.InOutQuad }
-                        NumberAnimation { target: newsBorder; property: "anchors.margins"; to: -7; duration: 200; easing.type: Easing.InOutQuad }
-                        NumberAnimation { target: newsBorder; property: "border.width"; to: 4; duration: 200; easing.type: Easing.OutBack }
-                    }
-
-                    SequentialAnimation {
-                        loops: Animation.Infinite
-                        NumberAnimation { target: newsBorder; property: "opacity"; to: 0.2; duration: 500 }
-                        NumberAnimation { target: newsBorder; property: "opacity"; to: 0.5; duration: 500 }
-                    }
-                }
+                visible: bottomTabsRow.currentIndex === 1
+                shelves: root.friendsShelves
+                onExitTop: root.shelvesExitTop()
+                onActivated: root.openShelfItem(shelf, item, index)
+                onSecondary: root.shelfSecondary(shelf, item, index)
+                onActiveFocusChanged: if (activeFocus) flick.contentY = topH + (middleH * 0.78)
+            }
+            ShelfView {
+                id: recommendedList
+                anchors.fill: parent
+                visible: bottomTabsRow.currentIndex === 2
+                shelves: root.recommendedShelves
+                emptyText: "Add some games and DeckOS recommends what to play next."
+                onExitTop: root.shelvesExitTop()
+                onActivated: root.openShelfItem(shelf, item, index)
+                onSecondary: root.shelfSecondary(shelf, item, index)
+                onActiveFocusChanged: if (activeFocus) flick.contentY = topH + (middleH * 0.78)
             }
         }
-
-                MouseArea {
-            anchors.fill: parent
-            onClicked: {
-                if (root.focusZone !== 2 || !newsList.activeFocus) {
-                    root.goToZone(2)
-                    sNav.stop(); sNav.play();
-                    newsList.currentIndex = index
-                    newsList.forceActiveFocus()
-                    flick.contentY = topH + (middleH * 0.78)
-                } else if (newsList.currentIndex !== index) {
-                    newsList.currentIndex = index
-                    sNav.stop(); sNav.play();
-                    flick.contentY = topH + (middleH * 0.78)
-                } else {
-                    // Открываем детальную новость
-                    root.openNewsDetail(modelData, index)
-                }                 
-            }
-        }
-    }
-}
-
-
-
-            // ======== FRIENDS ========
-ListView {
-    id: friendsList
-    anchors.fill: parent
-    orientation: ListView.Horizontal
-    spacing: 28
-    clip: false
-    model: 4
-    visible: bottomTabsRow.currentIndex === 1
-    highlightRangeMode: ListView.ApplyRange
-    preferredHighlightBegin: width * 0.2
-    preferredHighlightEnd: width * 0.8
-    highlightMoveDuration: 120
-
-Text {
-    text: "Work In Progress"
-    anchors.centerIn: parent
-    color: "white" // Замени на цвет своего интерфейса
-    font.pixelSize: 28 // Настрой размер под себя
-    font.bold: true
-}
-
-}
-
-// ======== RECOMMENDED ========
-
-Item {
-    id: recommendedContainer
-    anchors.fill: parent
-    visible: bottomTabsRow.currentIndex === 2
-    
-    // Размеры как у игр в средней зоне
-    property real gameWidth: middleZone.innerH * 6 / 9
-    property real gameHeight: middleZone.innerH
-    property real sideMargin: 60
-    
-    // Динамические свойства
-    property var unfilteredGames: []
-    property int totalSlots: 0
-    
-    Text {
-    text: "Work In Progress"
-    anchors.centerIn: parent
-    color: "white" // Замени на цвет своего интерфейса
-    font.pixelSize: 28 // Настрой размер под себя
-    font.bold: true
-}
-
-
-    // Функция фильтрации
-    function updateUnfilteredGames() {
-    var games = []
-    var now = Date.now()
-    
-    // Жесткий фильтр - только игры, которые не запускались неделю или более
-    var daysThreshold = 1
-    var timeThreshold = daysThreshold * 24 * 60 * 60 * 1000
-    
-    for (var i = 0; i < middleSorted.count && games.length < 13; i++) {
-        var game = middleSorted.get(i)
-        
-        if (game) {
-            // DECKOS: never played = an invalid date (NaN); StMini's check dropped exactly those games
-            var lastPlayed = game.lastPlayed ? new Date(game.lastPlayed).getTime() : NaN
-            if (isNaN(lastPlayed) || now - lastPlayed > timeThreshold)
-                games.push(game)
-        }
-    }
-    
-    // ТОЛЬКО отфильтрованные игры, без заполнения остатка
-    unfilteredGames = games
-    totalSlots = Math.max(1, Math.min(games.length + 1, 14))
-}
-    
-    // Контейнер для сетки
-    Item {
-        id: recommendedGrid
-        anchors {
-            left: parent.left
-            right: parent.right
-            top: parent.top
-            leftMargin: recommendedContainer.sideMargin // DECKOS: defined there (out of scope here)
-            rightMargin: 45
-        }
-        height: parent.height
-        
-        // СЕТКА
-        Grid {
-            id: recommendedList
-            anchors.fill: parent
-            columns: theme.homeRows
-            rows: 2
-            columnSpacing: 28
-            rowSpacing: 28
-            visible: false            
-            property int currentIndex: 0
-            property int displayCount: recommendedContainer.totalSlots
-            
-            Repeater {
-                model: recommendedList.displayCount
-                
-              delegate: Item {
-    width: (recommendedGrid.width - (recommendedList.columns - 1) * recommendedList.columnSpacing) / recommendedList.columns
-    height: width * 9 / 6 
-    
-    property bool isLibraryButton: index === recommendedContainer.totalSlots - 1
-    property bool isGame: !isLibraryButton && index < recommendedContainer.unfilteredGames.length
-    property var gameData: isGame ? recommendedContainer.unfilteredGames[index] : null
-    
-    // Получаем реальный путь к ассету (локальный или веб)
-    property string posterSource: isGame ? theme.getAssetSource("poster", gameData) : ""
-    // Проверяем, удалось ли что-то найти
-    property bool hasImg: posterSource !== ""
-
-    Rectangle {
-        anchors.fill: parent
-        // Серый фон виден ТОЛЬКО если это игра без найденного изображения
-        color: (isGame && !hasImg) ? "#555" : (isLibraryButton ? "#AA2A2E35" : "transparent")
-        scale: recommendedList.currentIndex === index ? 1.04 : 1.0
-        Behavior on scale { NumberAnimation { duration: 150 } }
-        
-        // Постер (поддерживает и локальные пути, и URL из Steam/Web)
-        AnimatedImage {
-            anchors.fill: parent
-            source: posterSource
-            fillMode: AnimatedImage.PreserveAspectCrop
-            playing: visible && status === AnimatedImage.Ready && theme.animatedCovers && (!theme.animationInFocus || (recommendedList.currentIndex === index && recommendedList.focus))
-            cache: true
-            asynchronous: true
-            visible: isGame && hasImg
-        }
-
-        // Текст названия игры (появляется только если постер пуст)
-        Text {
-            anchors.centerIn: parent
-            width: parent.width * 0.8
-            text: isGame ? gameData.title : ""
-            color: "white"
-            font.pixelSize: 24
-            font.family: bold.name
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            wrapMode: Text.WordWrap
-            visible: isGame && !hasImg
-        }
-        
-                        // Blur эффект за игрой
-Item {
-    width: parent.width * 1.02
-    height: parent.height * 1.02
-    anchors.centerIn: parent
-    clip: false
-    opacity: recommendedList.currentIndex === index && recommendedList.focus ? 0.5 : 0.0
-    z: -1
-    
-    Image {
-        id: blurSource
-        anchors.fill: parent
-        source: theme.getAssetSource("poster", gameData)
-        fillMode: Image.PreserveAspectCrop
-        visible: false
-        
-        // Показываем левый нижний угол
-        anchors.left: parent.left
-        anchors.bottom: parent.bottom
-    }
-    
-    FastBlur {
-        anchors.fill: parent
-        anchors.margins: -20
-        source: blurSource
-        radius: 144
-        transparentBorder: true
-    }
-    
-    Behavior on opacity {
-        NumberAnimation { duration: 200 }
-    }
-}
-                        
-                        Text {
-    anchors.centerIn: parent
-    text: "View more 
-in your 
-Library"
-    color: "white"
-    font.pixelSize: 40
-    font.family: bold.name
-    horizontalAlignment: Text.AlignHCenter
-    verticalAlignment: Text.AlignVCenter
-                            visible: isLibraryButton
-                        }
-
-                        // ОБВОДКА (ОДНА, КАК БЫЛО)
-                        Rectangle {
-                            id: recommendedBorder
-                            anchors.fill: parent
-                            color: "transparent"
-                            border.width: 4
-                            border.color: "grey"
-                            radius: 0
-                            anchors.margins: -7
-                            opacity: recommendedList.currentIndex === index && recommendedList.focus ? 0.5 : 0.0
-                            visible: opacity > 0
-
-                            SequentialAnimation {
-                                id: appearAnim
-                                running: (recommendedList.currentIndex === index && recommendedList.focus)
-                                loops: 1
-
-                                ParallelAnimation {
-                                    NumberAnimation { target: recommendedBorder; property: "border.width"; to: 10; duration: 200; easing.type: Easing.OutBack }
-                                    NumberAnimation { target: recommendedBorder; property: "radius"; to: 0; duration: 200; easing.type: Easing.OutBack }
-                                    NumberAnimation { target: recommendedBorder; property: "anchors.margins"; to: -17; duration: 200; easing.type: Easing.OutBack }
-                                    ColorAnimation  { target: recommendedBorder; property: "border.color"; to: "white"; duration: 200 }
-                                    NumberAnimation { target: recommendedBorder; property: "opacity"; to: 0.5; duration: 200 }
-                                }
-
-                                ParallelAnimation {
-                                    NumberAnimation { target: recommendedBorder; property: "radius"; to: 0; duration: 200; easing.type: Easing.InOutQuad }
-                                    NumberAnimation { target: recommendedBorder; property: "anchors.margins"; to: -7; duration: 200; easing.type: Easing.InOutQuad }
-                                    NumberAnimation { target: recommendedBorder; property: "border.width"; to: 4; duration: 200; easing.type: Easing.OutBack }
-                                }
-
-                                SequentialAnimation {
-                                    loops: Animation.Infinite
-                                    NumberAnimation { target: recommendedBorder; property: "opacity"; to: 0.2; duration: 500 }
-                                    NumberAnimation { target: recommendedBorder; property: "opacity"; to: 0.5; duration: 500 }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // MOUSEAREA С 2 УСЛОВИЯМИ
-                   MouseArea {
-    anchors.fill: parent
-    
-    onClicked: {
-        // Проверяем: находимся ли мы в нужной зоне И имеет ли сам список фокус
-        if (root.focusZone !== 2 || !recommendedList.activeFocus) {
-            // Если фокуса нет или зона не та — только фокусируемся
-            root.goToZone(2)
-            sNav.stop();
-sNav.play();
-            recommendedList.currentIndex = index
-            recommendedList.forceActiveFocus()
-            flick.contentY = topH + (middleH * (index >= 7 ? 1.140 : 0.78))
-        } 
-        else if (recommendedList.currentIndex !== index) {
-            // Если мы уже в зоне, но кликнули на другой индекс
-            recommendedList.currentIndex = index
-            sNav.stop();
-sNav.play();
-            flick.contentY = topH + (middleH * (index >= 7 ? 1.140 : 0.78))
-        } 
-        else {
-            // ТОЛЬКО если зона 2, список в фокусе И индекс совпал — запускаем
-            if (isLibraryButton) {
-                theme.openPage(1)
-            } else if (isGame && gameData) {
-                var sourceIndex = -1
-                for (var i = 0; i < middleSorted.count; i++) {
-                    var sortedGame = middleSorted.get(i)
-                    if (sortedGame && sortedGame.title === gameData.title) {
-                        sourceIndex = i
-                        break
-                    }
-                }
-                
-                if (sourceIndex !== -1) {
-                    var realSourceIndex = middleSorted.mapToSource(sourceIndex)
-                    var realGame = api.allGames.get(realSourceIndex)
-                    if (realGame) {
-                        theme.currentGame = realGame
-                        theme.openPage(8)
-                    }
-                }
-            }
-        }
-    }
-}
-}
-}
-   
-            
-            // Навигация клавишами
-            Keys.onLeftPressed: {
-    if (currentIndex > 0) {
-        currentIndex--
-        // УСЛОВИЕ: если индекс > 7, двигаем камеру на 1.1, иначе 0.78
-        flick.contentY = topH + (middleH * (currentIndex >= 7 ? 1.140 : 0.78))
-        sNav.stop();
-            sNav.play();
-    }
-}
-
-Keys.onRightPressed: {
-    if (currentIndex < displayCount - 1) {
-        currentIndex++
-        // УСЛОВИЕ: если индекс > 7, двигаем камеру на 1.1, иначе 0.78
-        flick.contentY = topH + (middleH * (currentIndex >= 7 ? 1.140 : 0.78))
-        sNav.stop();
-            sNav.play();
-    }
-}
-
-Keys.onUpPressed: {
-    if (currentIndex >= 7) {
-        currentIndex -= 7
-        // УСЛОВИЕ: если индекс > 7, двигаем камеру на 1.1, иначе 0.78
-        flick.contentY = topH + (middleH * (currentIndex >= 7 ? 1.140 : 0.78))
-        sNav.stop();
-            sNav.play();
-    } else {
-        bottomTabsRow.inContent = false
-        bottomTabsRow.forceActiveFocus()
-        sNav.stop();
-            sNav.play();
-    }
-}
-
-Keys.onDownPressed: {
-    if (currentIndex + 7 < displayCount) {
-        currentIndex += 7
-        // УСЛОВИЕ: если индекс > 7, двигаем камеру на 1.1
-        flick.contentY = topH + (middleH * 1.140)
-        sNav.stop();
-            sNav.play();
-    }
-}
-            
-            Keys.onPressed: {
-    if (api.keys.isAccept(event) && focus) {
-        var item = children[currentIndex]
-        if (item) {
-            if (item.isLibraryButton) {
-                theme.openPage(1)
-            } else if (item.isGame && item.gameData) {
-                theme.currentGame = item.gameData
-                theme.openPage(8)
-            }
-            event.accepted = true
-        }
-    }
-}
-          
-            onFocusChanged: {
-                if (focus && displayCount > 0) {
-                    currentIndex = Math.min(currentIndex, displayCount - 1)
-                }
-            }
-        }
-    }
-    
-    Component.onCompleted: updateUnfilteredGames()
-    
-    Connections {
-        target: middleSorted
-        function onCountChanged() {
-            recommendedContainer.updateUnfilteredGames() // DECKOS: out of scope here
-        }
-    }
-}
-}
 }
 } // bottomZone
        } // Column content
@@ -3715,7 +3191,7 @@ else if (api.keys.isMenu(event)) {
         // (focus, scroll position), instead of rebuilding it from homeReturnContext
         function resumePage() {
             api.memory.set("homeReturnContext", null)
-            recommendedContainer.updateUnfilteredGames() // a game may have been played meanwhile
+            shelvesTimer.restart() // DECKOS: a game may have been played meanwhile
             gameList.snapLater() // the row back on the selected game (scrollTarget)
             enterAnim.start()
             focusTimer.start()
@@ -3734,9 +3210,7 @@ else if (api.keys.isMenu(event)) {
         }
 
         Component.onCompleted: {
-        NewsJS.fetchNews(function(items) {
-            root.newsData = items;
-        });
+        shelvesTimer.start() // DECKOS: What's New etc. from deckos.feeds / deckos.stats (was GameSpot through a third-party proxy)
         enterAnim.start()        
 
         var ctx = api.memory.has("homeReturnContext") ? api.memory.get("homeReturnContext") : null

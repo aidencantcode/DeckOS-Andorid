@@ -1,0 +1,26 @@
+{
+    "_about": "Where DeckOS finds new versions of emulators (Settings › Updates, the Store). github: owner/repo whose latest release has the APK, asset: a regular expression for its file name. url: a download address with {version} (from the GitHub release named in versionFrom; {version_} has underscores). page: where to go when DeckOS can't install it itself. Checked 2026-11-28: each repository's latest release had a matching APK.",
+    "checked": "2026-11-28",
+    "emulators": [
+        { "package": "com.retroarch.aarch64", "name": "RetroArch (64-bit)", "versionFrom": "libretro/RetroArch",
+          "url": "https://buildbot.libretro.com/stable/{version}/android/RetroArch_aarch64.apk", "page": "https://www.retroarch.com/?page=platforms" },
+        { "package": "com.retroarch", "name": "RetroArch", "versionFrom": "libretro/RetroArch",
+          "url": "https://buildbot.libretro.com/stable/{version}/android/RetroArch.apk", "page": "https://www.retroarch.com/?page=platforms" },
+        { "package": "org.ppsspp.ppsspp", "name": "PPSSPP", "versionFrom": "hrydgard/ppsspp",
+          "url": "https://www.ppsspp.org/files/{version_}/ppsspp.apk", "page": "https://www.ppsspp.org/download/" },
+        { "package": "com.flycast.emulator", "name": "Flycast", "github": "flyinghead/flycast", "asset": "^flycast-.*\\.apk$" },
+        { "package": "me.magnum.melonds", "name": "melonDS", "github": "rafaelvcaetano/melonDS-android", "asset": "prod-release\\.apk$" },
+        { "package": "org.azahar_emu.azahar", "name": "Azahar", "github": "azahar-emu/azahar", "asset": "^azahar-android-vanilla-.*\\.apk$" },
+        { "package": "com.winlator", "name": "Winlator", "github": "brunodev85/winlator", "asset": "^Winlator_.*\\.apk$" },
+        { "package": "com.winlator.cmod", "name": "Winlator CMod", "github": "coffincolors/winlator", "asset": "^Winlator-Cmod-.*\\.apk$" },
+        { "package": "app.gamenative", "name": "GameNative", "github": "utkarshdalal/GameNative", "asset": "^gamenative-v[0-9.]+\\.apk$" },
+        { "package": "aenu.aps3e", "name": "aPS3e", "github": "aenu1/aps3e", "asset": "^[0-9.]+\\.apk$" },
+        { "package": "come.nanodata.armsx2", "name": "ARMSX2", "github": "ARMSX2/ARMSX2", "asset": "^ARMSX2-[0-9.]+-.*sdk(\\d+)\\.apk$" },
+        { "package": "com.sky.SkyEmu", "name": "SkyEmu", "github": "skylersaleh/SkyEmu", "asset": "-Android\\.apk$" },
+        { "package": "io.github.borked3ds.android", "name": "Borked3DS", "github": "Borked3DS/Borked3DS", "asset": "-android-universal\\.apk$" },
+        { "package": "com.seleuco.mame4d2024", "name": "MAME4droid 2024", "github": "seleuco/MAME4droid-2024", "asset": "-release\\.apk$" },
+        { "package": "info.cemu.cemu", "name": "Cemu", "github": "SSimco/Cemu", "asset": "^Cemu-.*\\.apk$" },
+        { "package": "org.dolphinemu.dolphinemu", "name": "Dolphin", "page": "https://dolphin-emu.org/download/" },
+        { "package": "com.github.stenzek.duckstation", "name": "DuckStation", "page": "https://play.google.com/store/apps/details?id=com.github.stenzek.duckstation" }
+    ]
+}

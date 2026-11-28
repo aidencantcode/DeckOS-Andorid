@@ -489,6 +489,41 @@ public final class Session {
         return Privileged.run(reboot ? "svc power reboot" : "svc power shutdown");
     }
 
+    /// Updates (com.deckos.media.Packages): installs an APK through PServer / root without Android's
+    /// installer screen; `thenStart` (package/activity, or "") is opened afterwards - DeckOS itself after its
+    /// own update. The APK is copied into Privileged's folder first, where the privileged shell can read it.
+    /// Fire-and-forget: the caller watches the package's version. False if neither is there.
+    public static boolean installPrivileged(String apkPath, String thenStart) {
+        if (sApp == null || apkPath == null || !Privileged.available())
+            return false;
+        java.io.File src = new java.io.File(apkPath);
+        java.io.File dst = new java.io.File(Privileged.dir(sApp), "update.apk");
+        try (java.io.InputStream in = new java.io.FileInputStream(src);
+             java.io.OutputStream out = new java.io.FileOutputStream(dst)) {
+            byte[] buf = new byte[1 << 16];
+            int n;
+            while ((n = in.read(buf)) > 0)
+                out.write(buf, 0, n);
+        }
+        catch (Exception e) {
+            Log.w(TAG, "can't stage the update: " + e);
+            return false;
+        }
+        dst.setReadable(true, false);
+        String body = "pm install -r " + Privileged.quote(dst.getAbsolutePath()) + " > install.txt 2>&1\n"
+                    + "rm -f " + Privileged.quote(dst.getAbsolutePath()) + "\n"
+                    + (thenStart == null || thenStart.isEmpty() ? "" : "am start -n " + Privileged.quote(thenStart) + "\n");
+        Log.i(TAG, "installing through PServer / root: " + src.getName());
+        return Privileged.runScript(sApp, "install.sh", body);
+    }
+
+    /// the Downloads page: gives DeckOS's notification listener "Notification access" through PServer / root
+    public static boolean allowNotificationListener(String component) {
+        if (sApp == null || component == null || !Privileged.available())
+            return false;
+        return Privileged.run("cmd notification allow_listener " + Privileged.quote(component));
+    }
+
     /// Close > Restart DeckOS: RestartActivity opens DeckOS again once it has quit
     public static boolean restartApp() {
         return RestartActivity.start(sApp);

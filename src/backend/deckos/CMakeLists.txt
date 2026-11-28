@@ -5,10 +5,18 @@ target_sources(pegasus-backend PRIVATE
     ClusterTunePresets.h
     DeckosApi.cpp
     DeckosApi.h
+    DeviceDownloads.cpp
+    DeviceDownloads.h
+    Feeds.cpp
+    Feeds.h
     GameOverrides.cpp
     GameOverrides.h
+    ImageCache.cpp
+    ImageCache.h
     InGame.cpp
     InGame.h
+    LibraryStats.cpp
+    LibraryStats.h
     MediaLibrary.cpp
     MediaLibrary.h
     RaMatcher.cpp
@@ -21,6 +29,10 @@ target_sources(pegasus-backend PRIVATE
     Underclock.h
     UnderclockCore.cpp
     UnderclockCore.h
+    Updates.cpp
+    Updates.h
     UserCollections.cpp
     UserCollections.h
+    Web.cpp
+    Web.h
 )

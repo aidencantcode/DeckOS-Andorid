@@ -207,6 +207,7 @@ FocusScope {
                         ["Collections",   "L", "settings/collections.qml"], /* DECKOS: hide, rename, games folder */
                         ["Scraping",      "♠︎", "settings/scraping.qml"], /* DECKOS: was in Library */
                         ["Emulators",     "D", "settings/emulators.qml"],
+                        ["Updates",       "♠︎", "settings/updates.qml"], /* DECKOS: DeckOS and emulator updates */
                         ["Profile",       "F", "settings/profile.qml"],
                         ["Sound",         "S", "settings/sound.qml"],
                         ["Overlay",       "4", "settings/ingame.qml"], /* DECKOS: in-game menu + performance overlay */

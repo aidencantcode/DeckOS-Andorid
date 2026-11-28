@@ -5,6 +5,11 @@
 
 #include "GameOverrides.h"
 #include "ImageCache.h"
+#include "Feeds.h"
+#include "LibraryStats.h"
+#include "Updates.h"
+#include "Web.h"
+#include "DeviceDownloads.h"
 #include "InGame.h"
 #include "MediaLibrary.h"
 #include "Underclock.h"
@@ -19,6 +24,7 @@
 #include "Paths.h"
 
 #include <QDateTime>
+#include <QGuiApplication>
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonObject>
@@ -39,17 +45,54 @@ DeckosApi::DeckosApi(model::ApiObject* api, QObject* parent)
     , m_media(new MediaLibrary(api, this))
     , m_collections(new UserCollections(api, this))
     , m_images(new ImageCache(api, this))
+    , m_feeds(new Feeds(api, this))
+    , m_stats(new LibraryStats(api, this))
+    , m_updates(new Updates(this))
+    , m_web(new Web(this))
+    , m_device_downloads(new DeviceDownloads(this))
 {
     // a scan that changed system files reloads the library (from the cache for everything else)
     connect(m_library, &RomLibrary::scanFinished, this, [this](int, int changed) {
         if (changed > 0)
             emit libraryRefreshRequested();
     });
+    // Home's shelves: a session's play time is in once it has ended
+    connect(m_ingame, &InGame::sessionEnded, m_stats, &LibraryStats::invalidate);
+    // Updates: an installer that just finished, or "Install unknown apps" just allowed
+    connect(qApp, &QGuiApplication::applicationStateChanged, m_updates, [this](Qt::ApplicationState s) {
+        if (s == Qt::ApplicationActive)
+            m_updates->onAppActive();
+    });
 }
 
 QObject* DeckosApi::mediaObj() const
 {
     return m_media;
+}
+
+QObject* DeckosApi::feedsObj() const
+{
+    return m_feeds;
+}
+
+QObject* DeckosApi::updatesObj() const
+{
+    return m_updates;
+}
+
+QObject* DeckosApi::webObj() const
+{
+    return m_web;
+}
+
+QObject* DeckosApi::deviceDownloadsObj() const
+{
+    return m_device_downloads;
+}
+
+QObject* DeckosApi::statsObj() const
+{
+    return m_stats;
 }
 
 QObject* DeckosApi::imagesObj() const
@@ -146,6 +189,7 @@ void DeckosApi::refreshLibrary()
 
 void DeckosApi::onLibraryReady()
 {
+    m_stats->invalidate();
     if (!m_started) {
         // first load of this run: look for new or removed ROMs in the background
         m_started = true;

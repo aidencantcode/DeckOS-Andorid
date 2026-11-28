@@ -133,6 +133,7 @@
         <file>deckos/assets/video/loading.webp</file>
         <file>deckos/javascript/RetroAchievementsApi.js</file>
         <file>deckos/javascript/news.js</file>
+        <file>deckos/javascript/shelves.js</file>
         <file>deckos/javascript/steamApi.js</file>
         <file>deckos/ra/RAGameInfoSection.qml</file>
         <file>deckos/ra/assets/icons/NO_RA.svg</file>
@@ -157,6 +158,9 @@
         <file>deckos/screens/media.qml</file>
         <file>deckos/screens/newspage.qml</file>
         <file>deckos/screens/nothing.qml</file>
+        <file>deckos/screens/pages/StoreContent.qml</file>
+        <file>deckos/screens/pages/DownloadsContent.qml</file>
+        <file>deckos/screens/pages/FriendsContent.qml</file>
         <file>deckos/screens/search.qml</file>
         <file>deckos/screens/settings.qml</file>
         <file>deckos/screens/settings/collections.qml</file>
@@ -166,6 +170,7 @@
         <file>deckos/screens/settings/general.qml</file>
         <file>deckos/screens/settings/highcontrast.qml</file>
         <file>deckos/screens/settings/ingame.qml</file>
+        <file>deckos/screens/settings/updates.qml</file>
         <file>deckos/screens/settings/underclock.qml</file>
         <file>deckos/screens/settings/library.qml</file>
         <file>deckos/screens/settings/parts/CollectionPicker.qml</file>
@@ -178,6 +183,10 @@
         <file>deckos/screens/settings/parts/SteamToasts.qml</file>
         <file>deckos/screens/settings/parts/LaunchGuard.qml</file>
         <file>deckos/screens/settings/parts/ArtworkLoadingBar.qml</file>
+        <file>deckos/screens/settings/parts/ShelfView.qml</file>
+        <file>deckos/screens/settings/parts/ShelfCard.qml</file>
+        <file>deckos/screens/settings/parts/IconCard.qml</file>
+        <file>deckos/screens/settings/parts/DeckListRow.qml</file>
         <file>deckos/screens/settings/parts/TextEntry.qml</file>
         <file>deckos/screens/settings/scraping.qml</file>
         <file>deckos/screens/settings/profile.qml</file>

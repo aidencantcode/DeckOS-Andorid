@@ -221,7 +221,7 @@ function getPageSource(index) {
     switch (index) {
         case 0: return "screens/home.qml" // Добавьте эту строку
         case 1: return "screens/library.qml"
-        case 2: return "screens/store.qml"
+        case 2: return "screens/nothing.qml" // DECKOS: the Emulator Store (pages/StoreContent.qml); StMini's mock store is unused
         case 3: return "screens/nothing.qml"
         case 4: return "screens/media.qml"
         case 5: return "screens/nothing.qml"
@@ -1001,6 +1001,81 @@ function playGame(game, launch) {
 
 LaunchGuard {
     id: launchGuard
+}
+
+// DECKOS: what a shelf card does (ShelfView.qml on Home and the Friends & Chat page). `page` may offer
+// openNews(shelf, index) for its own reader; otherwise articles open in the browser.
+function openShelfItem(shelf, item, index, page) {
+    if (!item) return
+    var d = (typeof deckos !== "undefined" && deckos) ? deckos : null
+    if (item.game) {
+        try { sAccept.play() } catch (e) {}
+        currentGame = item.game
+        openPage(8)
+        return
+    }
+    var kind = shelf.kind
+    if (kind === "news") {
+        if (page && typeof page.openNews === "function") page.openNews(shelf, index)
+        else Qt.openUrlExternally(item.link)
+    } else if (kind === "video") {
+        if (d && d.web) d.web.playVideo(item.videoId || "", item.title || "", item.link || "")
+        else Qt.openUrlExternally(item.link)
+    } else if (kind === "action") {
+        if (item.action === "ra-signin") { loginReturnPage = -1; openPage(13) }
+        else if (item.action === "ra-site") Qt.openUrlExternally("https://retroachievements.org/")
+        else if (item.action === "discord-add") discordEntry.open("")
+        else if (item.action === "discord-help") Qt.openUrlExternally("https://github.com/Phineas/lanyard")
+    } else if (kind === "discord") {
+        if (item.id) Qt.openUrlExternally("https://discord.com/users/" + item.id)
+    } else if (kind === "system") {
+        openPage(1)
+    } else if (kind === "update") {
+        if (d && d.updates) d.updates.updateEmulator(item.package)
+    } else if (item.link) {
+        Qt.openUrlExternally(item.link)
+    }
+}
+
+// X on a card: a video in the YouTube app, an article in the browser, a Discord friend removed
+function shelfSecondary(shelf, item, index) {
+    if (!item) return
+    var d = (typeof deckos !== "undefined" && deckos) ? deckos : null
+    if (shelf.kind === "video") {
+        if (d && d.web) d.web.openInYouTube(item.videoId || "", item.link || "")
+        else Qt.openUrlExternally(item.link)
+    } else if (shelf.kind === "news") {
+        Qt.openUrlExternally(item.link)
+    } else if (shelf.kind === "discord" && item.id && d && d.feeds) {
+        d.feeds.removeDiscordId(item.id)
+        notify({ id: "discord", icon: "-", title: "Removed from Discord friends", text: item.name || item.id, timeout: 3000 })
+    } else if (shelf.kind === "update" && d && d.updates) {
+        d.updates.openPage(item.package)
+    }
+}
+
+TextEntry {
+    id: discordEntry
+    z: 6000
+    title: "Add a Discord friend"
+    hint: "Their Discord user id (17-20 digits). In Discord: Settings › Advanced › Developer Mode on, then long-press their name › Copy User ID. They also join discord.gg/lanyard once, so Lanyard can share their status."
+    maxLength: 22
+    onAccepted: {
+        var f = (typeof deckos !== "undefined" && deckos) ? deckos.feeds : null
+        if (f && text.trim() !== "" && !f.addDiscordId(text))
+            root.notify({ id: "discord", icon: "!", title: "That isn't a Discord user id", text: "It's a number of 17 to 20 digits.", timeout: 4000 })
+        Qt.callLater(function () { // the focus back to the page under it
+            var page = pageLoader.item
+            if (page && typeof page.resumeFocus === "function") page.resumeFocus()
+            else if (page) page.forceActiveFocus()
+        })
+    }
+}
+
+// DECKOS: updates found, downloaded, installed or failed (deckos.updates): a card top-left
+Connections {
+    target: (typeof deckos !== "undefined" && deckos) ? deckos.updates : null
+    function onNotice(title, text) { toasts.notify({ id: "updates", icon: "↓", title: title, text: text, timeout: 6000 }) }
 }
 
 property bool scrapeToastShown: false

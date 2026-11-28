@@ -19,6 +19,11 @@ class Underclock;
 class MediaLibrary;
 class UserCollections;
 class ImageCache;
+class Feeds;
+class LibraryStats;
+class Updates;
+class Web;
+class DeviceDownloads;
 
 class DeckosApi : public QObject {
     Q_OBJECT
@@ -36,6 +41,16 @@ class DeckosApi : public QObject {
     Q_PROPERTY(QObject* collections READ collectionsObj CONSTANT)
     /// artwork thumbnails for grids and rows: image://deckthumb/ (ImageCache.h)
     Q_PROPERTY(QObject* images READ imagesObj CONSTANT)
+    /// What's New and Friends from the web: news, videos, RetroAchievements, Discord (Feeds.h)
+    Q_PROPERTY(QObject* feeds READ feedsObj CONSTANT)
+    /// the library's shelves: recently / most played, the week's best, unplayed (LibraryStats.h)
+    Q_PROPERTY(QObject* stats READ statsObj CONSTANT)
+    /// DeckOS and emulator updates, the Store (Updates.h)
+    Q_PROPERTY(QObject* updates READ updatesObj CONSTANT)
+    /// videos played in DeckOS, YouTube links (Web.h)
+    Q_PROPERTY(QObject* web READ webObj CONSTANT)
+    /// other apps' downloads for the Downloads page (DeviceDownloads.h)
+    Q_PROPERTY(QObject* deviceDownloads READ deviceDownloadsObj CONSTANT)
 
 public:
     explicit DeckosApi(model::ApiObject* api, QObject* parent = nullptr);
@@ -76,6 +91,12 @@ public:
     QObject* mediaObj() const;
     QObject* collectionsObj() const;
     QObject* imagesObj() const;
+    QObject* feedsObj() const;
+    QObject* statsObj() const;
+    QObject* updatesObj() const;
+    QObject* webObj() const;
+    QObject* deviceDownloadsObj() const;
+    Updates* updates() const { return m_updates; }
     InGame* ingame() const { return m_ingame; }
     UserCollections* collections() const { return m_collections; }
 
@@ -95,6 +116,11 @@ private:
     MediaLibrary* const m_media;
     UserCollections* const m_collections;
     ImageCache* const m_images;
+    Feeds* const m_feeds;
+    LibraryStats* const m_stats;
+    Updates* const m_updates;
+    Web* const m_web;
+    DeviceDownloads* const m_device_downloads;
     bool m_started = false;
 };
 

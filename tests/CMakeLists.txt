@@ -31,6 +31,7 @@ endfunction()
 
 add_subdirectory(backend/api)
 add_subdirectory(backend/configfile)
+add_subdirectory(backend/deckos/feeds) # DECKOS
 add_subdirectory(backend/deckos/gameoverrides) # DECKOS
 add_subdirectory(backend/deckos/ingame) # DECKOS
 add_subdirectory(backend/deckos/ramatcher) # DECKOS

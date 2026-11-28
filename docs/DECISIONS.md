@@ -281,6 +281,33 @@ Format: `## YYYY-MM-DD — Title` · **Decision** · **Why** · **Alternatives c
 - **Frosted bars:** each page's `globalBlurSource` (the whole page drawn again into an FBO every frame, only ever shown blurred) now renders at 1/3 resolution (`textureSize`).
 - **Back from Change artwork:** pages read `steamGridSource` from theme memory and set it to `null` after use. The next visit read `null` and navigated to page `null`. Replaced by `theme.artworkReturnPage` / `propertiesReturnPage`, set in `openPage`. `finalizeNavigation` turns any non-number into Home.
 
+## 2026-11-28 — What's New / Friends / Recommended, videos, updates, Store, Downloads (0.1.7)
+- **Feeds (`deckos/Feeds`):** RSS/Atom through `QXmlStreamReader` in C++ (rule 5: no HTTP in QML for new features; StMini's GameSpot fetch went through the third-party rss2json proxy).
+  - Sources live in `<DeckOS folder>/feeds.json` (written with defaults, user-editable); content is cached in `<config>/deckos/feeds-cache.json`.
+  - Defaults, each checked 2026-11-28: retrohandhelds.gg/feed/, retroachievements.org/rss-news, gamespot.com/feeds/news, and YouTube channel feeds (`/feeds/videos.xml?channel_id=`, no API key) for Joey's Retro Handhelds (UCwUiHJUm1wpSaUXiQt_H12A), Retro Game Corps, Retro Handhelds, Taki Udon, ETA PRIME and Retro Dodo.
+  - **Joey's own site (joeysretrohandhelds.com) is behind bot protection and has no feed.** His channel's Retro Newscast (each video lists its sources) is the honest source for his news; it isn't scraped.
+  - YouTube's feeds sometimes answer 503: the cache stays, and a failed feed is retried after 5 min.
+- **RetroAchievements:** endpoints checked in api-docs.retroachievements.org on 2026-11-28.
+  - New sets: `API_GetClaims k=1`, SetType 0, one card per game. Community: `API_GetRecentGameAwards`. Achievement of the Week: `API_GetAchievementOfTheWeek` + `API_GetGame` for its pictures.
+  - Friends: `API_GetUsersIFollow`, then `API_GetUserSummary` per user (Status, RichPresenceMsg, LastGame), one at a time 350 ms apart, every 2 min only while a Friends view is shown.
+- **Discord:** reading a user's friends list or presences needs a user token (self-botting, against Discord's terms; it can get the account banned), so it isn't done (CLAUDE.md: nothing that can get the owner banned).
+  - Instead: **Lanyard** (`api.lanyard.rest/v1/users/:id`, checked 2026-11-28). A bot in Lanyard's Discord server exposes the presence of members who joined, by user id, and friends are added by id. Rich presence *from* DeckOS (showing "Playing X" on Discord) isn't possible on Android without a token either.
+- **Play-time stats:** "best of the week" reads Pegasus's `stats.db` (`plays`: one row per session with start time and duration). It uses its own read-only connection, because the play-time writer uses the default connection on a worker thread.
+- **Videos (`VideoActivity`):** YouTube's official IFrame player in a WebView, driven by the controller (no stream extraction, which YouTube's terms forbid).
+  - Error 153 in WebViews (2025+): the iframe is written with `referrerpolicy="strict-origin"` and the page is loaded from an https base URL, so a referrer is sent (iframely help page on the error, read 2026-11-28).
+  - Embedding refused (101/150/152/153) or no load in 15 s: the YouTube app opens instead. Not verified on a device yet.
+  - Rejected: QtWebView (a native view above the Qt surface, awkward focus); in-app stream extraction (terms).
+- **Updates (`deckos/Updates`):** GitHub's REST API without auth (60 requests/hour/IP). Checks run at most every 12 h by themselves, every 10 min on demand, and ignore a second press within 15 s.
+  - DeckOS reads its own repo's releases (pre-releases included), asset `*_arm64.apk`. **When the repo is made private again the check fails** and says so; a token would be needed then.
+  - Emulator sources are in `catalog/emulator-sources.json`: a GitHub repo + asset regex, or a versioned URL template (RetroArch buildbot `stable/{version}/android/RetroArch_aarch64.apk`, ppsspp.org `files/{version_}/ppsspp.apk`). Each was checked 2026-11-28.
+  - ARMSX2 publishes one APK per Android version (`sdkNN`): the highest one ≤ the device's SDK is picked.
+  - Version compare: numbers left to right, missing = 0. Unparseable versions compare release date against the app's last update.
+  - Play Store installs (`getInstallSourceInfo`) go to the Play Store page: different signing key, so an update would fail.
+  - Install: `ACTION_VIEW` on a FileProvider URI (`REQUEST_INSTALL_PACKAGES`; "Install unknown apps" is opened when missing). Or, opt-in with PServer/root, `pm install -r` from Privileged's world-readable folder; for DeckOS itself that's followed by `am start` so it reopens.
+- **Store:** StMini's store page was a mock (banners, fake sales). Page 2 now loads `pages/StoreContent.qml` inside the same chrome page as Friends and Chat (3) and Downloads (5). `nothing.qml` became that host; its old ReferenceErrors (`flick`, `cancelButton`, `topNavRow`, `focusTimer`) are fixed.
+- **Downloads of other apps:** a `NotificationListenerService` keeps title, text, app and progress of notifications with a progress bar, in memory only. Access is granted with `cmd notification allow_listener` through PServer/root, or in Android's settings.
+- **Shelves:** `ShelfView`/`ShelfCard` with explicit scrolling. ListView's highlight range did nothing without a highlight item: lower shelves were focused off-screen.
+
 ## 2026-11-25 — 0.0.13 report (Retroid Pocket Classic): presets, Quick Access focus, shortcut, screenshots
 - **Underclock presets for every chip:** ClusterTune ships presets for CQ8725S and QCS8550 only. Elsewhere `bundledFor` makes DeckOS's own Small / Medium / Large: ~85 / 70 / 55 % of each cluster's top, snapped down to its table, ids `deckos_*`, tagged "DeckOS preset". The seeding key became `<soc>#2`, so devices that had already seeded zero presets get them once.
 - **Quick Access blank rows (the "gaps"):** `Ui.settingRow` re-added the toggle with WRAP_CONTENT params, and `Toggle` had no `onMeasure`. As "wrap content", a plain View takes all the width it's offered, which squeezed the labels to zero. `Toggle` now measures itself, and `settingRow` keeps a child's own size.

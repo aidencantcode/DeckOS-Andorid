@@ -3,6 +3,40 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+**A real What's New, Friends and Recommended; videos inside DeckOS; updates for DeckOS and your emulators; a Store and a Downloads page.**
+- **What's New** is a page of Steam-style shelves (UP/DOWN between shelves, LEFT/RIGHT along one, A opens, X does the second thing):
+  - Recently Played; Best Games of the Week (play time in the last 7 days, with sessions); Most Played So Far.
+  - Joey's Retro Handhelds (his Retro Newscast videos), Retro Handheld News (retrohandhelds.gg), Latest Videos (Retro Game Corps, Retro Handhelds, Taki Udon, ETA PRIME, Retro Dodo), Gaming News (GameSpot).
+  - With your RetroAchievements account: **New on RetroAchievements** (sets released lately, also for games you don't have), the **Achievement of the Week**, the **community feed** (latest masteries and beaten games) and RetroAchievements News.
+  - Something New to Play: games you've never started, on 16:9 cards with their cover in the corner.
+  - Everything is kept, so the tab shows at once and offline. The list of feeds and channels is `feeds.json` in your DeckOS folder: add or remove any RSS feed or YouTube channel there.
+- **Videos play inside DeckOS:** A on a video opens YouTube's own player full screen, with the controller (A play/pause, LEFT/RIGHT 10 s, UP/DOWN volume, B back). **X opens it in the YouTube app.** A video whose owner doesn't allow playing it elsewhere opens in the YouTube app by itself.
+- **Recommended:** Emulator Updates, Unplayed Retro Games (16:9 with the cover as an icon), Because You Played…, Your Systems and Collections, Your Favourites, and videos.
+- **Friends** (Home tab and the Friends and Chat page):
+  - The people you follow on RetroAchievements: who's online, their rich presence ("Playing… · 3 lives"), the game.
+  - **Discord friends** through Lanyard: add their Discord user id. They need to join Lanyard's Discord server once (discord.gg/lanyard); then their status and game show here.
+  - Discord's full friends list isn't possible. Discord only gives it out with your account's token, which its rules forbid, and that can get the account banned.
+- **Settings › Updates:**
+  - **DeckOS checks its GitHub releases** and offers the newer version: download with a progress bar, then Android's installer.
+  - With PServer/root and *Install without Android's installer* on, it installs silently and DeckOS opens again by itself.
+  - **Your emulators** are checked against their newest releases: RetroArch, PPSSPP, Flycast, melonDS, Azahar, Winlator (and CMod), GameNative, aPS3e, ARMSX2, SkyEmu, Borked3DS, MAME4droid 2024, Cemu. Each has its own Update button.
+  - Play Store apps are sent to the Play Store, because a GitHub build can't replace them.
+  - DeckOS looks by itself when it starts and every 12 hours (it can be turned off).
+- **Store:** the emulators DeckOS can install and keep up to date, plus DeckOS itself. Tabs: ALL / INSTALLED / UPDATES (LB/RB). A installs or updates, X opens the website, Y checks. StMini's empty mock store is gone.
+- **Downloads:**
+  - DeckOS's own downloads, with progress (Install, Cancel, Try again).
+  - With Android's *Notification access*, **every other app's download that shows a progress bar** (Play Store installs, browser downloads, emulators fetching files). On PServer/root devices DeckOS turns that access on itself (*Allow*).
+- Downloads also show in Android's notifications with their progress, and a card says when updates are found or installed.
+- The Steam menu's Friends and Chat and Downloads pages were StMini placeholders ("Sorry Nothing Here Now"). Fixed two old errors on those pages.
+
+### Test checklist
+1. **What's New:** Home › down to WHAT'S NEW. The shelves show; the news cards have pictures; LEFT/RIGHT/UP/DOWN move smoothly. A on a news card opens the reader.
+2. **Video:** A on a video in *Joey's Retro Handhelds*. It plays inside DeckOS: A pauses, RIGHT skips 10 s, B returns. X on a video opens the YouTube app. Tell me if a video shows "Error 153" or any error instead of playing.
+3. **RetroAchievements:** *New on RetroAchievements*, *Achievement of the Week* and *Community* show (signed in).
+4. **Friends:** FRIENDS tab › *Add a Discord friend*, enter a Discord user id of someone in Lanyard's server (yours works if you join discord.gg/lanyard). Their status shows within a minute.
+5. **Updates:** Settings › Updates › *Check for updates*. Your installed emulators are listed with their versions. Try *Update* on one that has an update (Android asks for "Install unknown apps" the first time). Then try *Install without Android's installer* (root) on another.
+6. **Store:** Steam menu › Store. Install one emulator you don't have; the bar fills; Android's installer opens.
+7. **Downloads:** Steam menu › Downloads › *Allow* (Notification access). Start a Play Store update or a browser download: it appears there with its bar.
 
 ## 0.1.6 — 2026-11-28
 **One game at a time, no more stuck performance overlay, a much faster Library, and navigation fixes.**

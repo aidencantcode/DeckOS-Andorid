@@ -59,14 +59,43 @@ FocusScope {
         color: "#0F1318"
     }
     
-    // ================= ЦЕНТР ЭКРАНА =================
+    // DECKOS: the page's content - the Store (2), Friends and Chat (3), Downloads (5) - under StMini's top
+    // and bottom bars and Steam menu. StMini had a "nothing here" placeholder for all of them.
+    Loader {
+        id: contentLoader
+        anchors.fill: parent
+        focus: true
+        source: root.pageIndex === 2 ? "pages/StoreContent.qml"
+              : root.pageIndex === 3 ? "pages/FriendsContent.qml"
+              : root.pageIndex === 5 ? "pages/DownloadsContent.qml" : ""
+        onLoaded: {
+            item.theme = root.theme
+            if (!leftBar.isOpen) item.forceActiveFocus()
+        }
+    }
     Text {
+        visible: contentLoader.status !== Loader.Ready && root.pageIndex >= 0
         anchors.centerIn: parent
-        text: "Sorry Nothing Here Now :("
+        text: contentLoader.status === Loader.Error ? "This page couldn't be opened" : ""
         color: "white"
         font.pixelSize: 40
         font.family: bold.name
     }
+    }
+
+    // DECKOS: which page this is, read once (theme.currentPage moves on while the page fades out)
+    property int pageIndex: -1
+    onThemeChanged: if (theme && pageIndex < 0) pageIndex = theme.currentPage
+
+    // DECKOS: the Steam menu closing hands the controller back to the page's content (the menu's code
+    // started a timer of this name that didn't exist)
+    Timer {
+        id: focusTimer
+        interval: 80
+        onTriggered: if (!leftBar.isOpen && !root.closeMenuVisible) contentLoader.forceActiveFocus()
+    }
+    function resumeFocus() {
+        if (!leftBar.isOpen && !root.closeMenuVisible) contentLoader.forceActiveFocus()
     }
     
     /* ================= TOP BAR ================= */
@@ -77,9 +106,7 @@ FocusScope {
         color: "transparent"
         z: 10000
 
-        property real scrollRatio: (flick.contentHeight > flick.height)
-            ? (flick.contentY / (flick.contentHeight - flick.height))
-            : 0
+        property real scrollRatio: 0 // DECKOS: this page has no scrolling list (StMini read a missing `flick`)
 
         Rectangle {
             anchors.fill: parent
@@ -628,7 +655,7 @@ FocusScope {
 
     property int currentButtonIndex: 0
     // Массив теперь содержит только 2 кнопки
-    property var buttons: [exitButton, cancelButton]
+    property var buttons: [exitButton, cancelButton1] // DECKOS: the button's id (was a missing name)
 
     /* CLOSE MENU ФОН */
 Item {
@@ -1092,7 +1119,7 @@ Item {
 
     Component.onCompleted: {
 enterAnim.start()
-    topNavRow.currentIndex = currentPage
+    if (theme && pageIndex < 0) pageIndex = theme.currentPage // DECKOS: (StMini set a topNavRow this page doesn't have)
 }
 
     // Появление: страница идет «вперед» (из глубины на пользователя)
