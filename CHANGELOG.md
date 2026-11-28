@@ -3,6 +3,8 @@
 One entry per build the owner tests. Newest first.
 
 ## Unreleased
+
+## 0.1.7 — 2026-11-28
 **A real What's New, Friends and Recommended; videos inside DeckOS; updates for DeckOS and your emulators; a Store and a Downloads page.**
 - **What's New** is a page of Steam-style shelves (UP/DOWN between shelves, LEFT/RIGHT along one, A opens, X does the second thing):
   - Recently Played; Best Games of the Week (play time in the last 7 days, with sessions); Most Played So Far.
